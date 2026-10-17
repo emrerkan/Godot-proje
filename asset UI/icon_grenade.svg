@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <filter id="glow-gr" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Blast Shockwave Arcs -->
+  <g stroke="#FB923C" stroke-width="8" stroke-linecap="round" opacity="0.7">
+    <path d="M 120 180 A 180 180 0 0 0 120 360"/>
+    <path d="M 392 180 A 180 180 0 0 1 392 360"/>
+    <path d="M 80 140 A 240 240 0 0 0 80 400" stroke-width="5" opacity="0.4"/>
+    <path d="M 432 140 A 240 240 0 0 1 432 400" stroke-width="5" opacity="0.4"/>
+  </g>
+  <!-- Grenade Body -->
+  <g filter="url(#glow-gr)">
+    <ellipse cx="256" cy="285" rx="100" ry="125" fill="#1E2922" stroke="#FB923C" stroke-width="12"/>
+    <!-- Rib Grid -->
+    <path d="M 158 245 C 190 270, 322 270, 354 245" stroke="#FB923C" stroke-width="8" fill="none"/>
+    <path d="M 158 300 C 190 325, 322 325, 354 300" stroke="#FB923C" stroke-width="8" fill="none"/>
+    <path d="M 172 355 C 200 375, 312 375, 340 355" stroke="#FB923C" stroke-width="8" fill="none"/>
+    <line x1="256" y1="160" x2="256" y2="410" stroke="#FB923C" stroke-width="8"/>
+    <!-- Glowing Middle Core -->
+    <path d="M 160 275 C 190 300, 322 300, 352 275" stroke="#F97316" stroke-width="14" fill="none"/>
+    <!-- Fuse Neck -->
+    <rect x="226" y="125" width="60" height="40" rx="8" fill="#334155" stroke="#FB923C" stroke-width="8"/>
+    <!-- Lever -->
+    <path d="M 286 130 L 350 170 L 360 320 L 342 320 L 334 180 Z" fill="#FB923C"/>
+    <!-- Ring -->
+    <circle cx="180" cy="120" r="24" stroke="#E2E8F0" stroke-width="10" fill="none"/>
+    <circle cx="180" cy="120" r="24" stroke="#FB923C" stroke-width="4" fill="none"/>
+  </g>
+</svg>
