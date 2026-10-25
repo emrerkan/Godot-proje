@@ -29,6 +29,8 @@ const MAPS: Array[Dictionary] = [
 var room_settings: Dictionary = _default_settings()
 var _migration_settings: Dictionary = {}
 var _saved_character: String = ""
+var _saved_upgrades: Dictionary = {}  # migration: seçili karakterin profil yükseltmeleri
+const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 ## Yeni host: migration sonrası yeniden bağlananları oyun sürerken de kabul etme penceresi
 var _migration_window_until: int = 0
 var _migration_room: String = ""
@@ -128,6 +130,7 @@ func disconnect_all() -> void:
 	_migration_addresses     = {}
 	peer_addresses           = {}
 	_saved_character         = ""
+	_saved_upgrades          = {}
 	_migration_window_until  = 0
 	room_settings = _default_settings()
 	chat_history.clear()
@@ -176,7 +179,7 @@ func _on_peer_disconnected(id: int) -> void:
 func _on_connected_to_server() -> void:
 	_local_id_cache = multiplayer.get_unique_id()  # Peer açıkken cache'le
 	# joined_server emit etmiyoruz — host _accept_player RPC'si ile onaylayacak
-	register_player.rpc_id(1, _local_id_cache, local_player_name, _pending_password, _saved_team_id, _saved_character)
+	register_player.rpc_id(1, _local_id_cache, local_player_name, _pending_password, _saved_team_id, _saved_character, _saved_upgrades)
 
 
 func _on_connection_failed() -> void:
@@ -203,6 +206,7 @@ func _on_server_disconnected() -> void:
 	var my_id := _local_id_cache
 	_saved_team_id = players.get(my_id, {}).get("team_id", -1)
 	_saved_character = players.get(my_id, {}).get("character", "")
+	_saved_upgrades = players.get(my_id, {}).get("upgrades", {})
 	_migration_players = players.duplicate(true)
 	_migration_settings = room_settings.duplicate(true)
 	_migration_addresses = peer_addresses.duplicate()
@@ -236,6 +240,7 @@ func _on_server_disconnected() -> void:
 		players[1] = { "name": local_player_name, "team_id": _saved_team_id, "is_ready": false }
 		if not _saved_character.is_empty():
 			players[1]["character"] = _saved_character
+			players[1]["upgrades"] = PROFILE.sanitize(_saved_upgrades)
 		# Oda ayarları (harita, takım boyutu) eski host'tan devralınır
 		if not _migration_settings.is_empty():
 			room_settings = _migration_settings.duplicate(true)
@@ -285,7 +290,7 @@ func _reconnect_loop(target_room: String, password: String) -> void:
 # ─────────────────────────────────────────────
 
 @rpc("any_peer", "reliable")
-func register_player(peer_id: int, player_name: String, password: String, saved_team_id: int = -1, saved_character: String = "") -> void:
+func register_player(peer_id: int, player_name: String, password: String, saved_team_id: int = -1, saved_character: String = "", saved_upgrades: Dictionary = {}) -> void:
 	if not multiplayer.is_server():
 		return
 	# Şifre kontrolü
@@ -304,6 +309,7 @@ func register_player(peer_id: int, player_name: String, password: String, saved_
 	players[peer_id] = { "name": player_name, "team_id": saved_team_id, "is_ready": false }
 	if not saved_character.is_empty():
 		players[peer_id]["character"] = saved_character
+		players[peer_id]["upgrades"] = PROFILE.sanitize(saved_upgrades)
 	if reconnecting:
 		GameManager.adopt_migrated_stats(peer_id, player_name)
 	# Client adresini kaydet ve herkese yay (host migration'da doğrudan bağlantı için)
@@ -425,16 +431,18 @@ func _are_teams_balanced() -> bool:
 # Karakter Seçimi
 # ─────────────────────────────────────────────
 
+## Seçilen karakterin profil yükseltmeleri de gönderilir → players[peer]["upgrades"] (Player.initialize herkeste uygular)
 func request_select_character(char_name: String) -> void:
 	var my_id := get_local_id()
+	var levels := PROFILE.get_levels(char_name)
 	if is_host():
-		_apply_character_selection(my_id, char_name)
+		_apply_character_selection(my_id, char_name, levels)
 	else:
-		_apply_character_selection.rpc_id(1, my_id, char_name)
+		_apply_character_selection.rpc_id(1, my_id, char_name, levels)
 
 
 @rpc("any_peer", "reliable")
-func _apply_character_selection(peer_id: int, char_name: String) -> void:
+func _apply_character_selection(peer_id: int, char_name: String, levels: Dictionary = {}) -> void:
 	if not multiplayer.is_server():
 		return
 	if not players.has(peer_id):
@@ -448,6 +456,7 @@ func _apply_character_selection(peer_id: int, char_name: String) -> void:
 		if other.get("team_id", -1) == my_team and other.get("character", "") == char_name:
 			return  # Takım arkadaşı zaten almış
 	players[peer_id]["character"] = char_name
+	players[peer_id]["upgrades"] = PROFILE.sanitize(levels)
 	_broadcast_player_list()
 	emit_signal("player_list_updated")
 	GameManager.check_all_characters_selected()
@@ -656,6 +665,9 @@ func get_local_id() -> int:
 
 
 func is_host() -> bool:
+	# Host migration sırasında peer kısa süre null — is_server() o an "No multiplayer peer" hatası basıyordu
+	if not multiplayer.has_multiplayer_peer():
+		return false
 	return multiplayer.is_server()
 
 

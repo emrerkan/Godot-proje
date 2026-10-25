@@ -1,1 +1,9 @@
 res://default_env.tres
+res://autoload/GameManager.gd
+res://autoload/NetworkManager.gd
+res://scenes/world/PowerupManager.gd
+res://scenes/player/Player.gd
+res://scenes/ui/CharacterSelect.gd
+res://scenes/ui/HUD.gd
+res://scenes/ui/MainMenu.gd
+res://scenes/ui/UpgradePage.gd

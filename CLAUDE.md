@@ -8,6 +8,17 @@ sorularına nokta atışı cevap vermek için. **Yeni oturumda önce [docs/PROJE
 kullanıcı tercihleri (Türkçe cevap), karar gerekçeleri, özellik geçmişi, açık işler, test yöntemi ve tuzaklar orada.
 Teknik doküman: `DOKUMANTASYON.md`, oyun tasarımı: `OYUN_TASARIM_DOKUMANI.md`.
 
+## Profil / XP — `scenes/profile/PlayerProfile.gd` (class_name, statik, kullananlar `preload` eder)
+Kalıcı profil `user://profile.cfg`: `xp` (harcanabilir), `total_xp`, `upgrades[karakter][stat]` (5 stat × MAX_LEVEL 5).
+`next_cost(char)` = 150×1.18^(karakterin yükseltme sayısı), `buy(char, stat)`, `multipliers(levels)` → Player.initialize
+(can/hız) + `_equip_default_weapon` (hasar/şarjör/atış) + stamina drenajı. Akış: `NetworkManager.request_select_character`
+seviyeleri yollar → host `players[peer]["upgrades"]` (sanitize) → herkes aynı stat. Migration: `_saved_upgrades` + `register_player(..., saved_upgrades)`.
+XP: `GameManager.gain_xp(amount, reason)` YEREL (her peer kendine): `_announce_kill_rpc` (kill/taşıyıcı bonusu),
+`_apply_card_pickup_rpc`, `_process` (hayatta kalma/kart taşıma tick'leri), `_end_game_rpc` (maç+zafer, `match_xp`),
+PowerupManager `_set_item_rpc(..., picked_up)` ve `_medic_heal_rpc`. `xp_gained` → HUD `_xp_feed`. UI: MainMenu sol alttaki operatör
+kartında profil seviyesi + XP + **PROFİL** butonu → `_open_profile()` bulanık modal (`_profile_modal`, ESC/✕/dışına tık kapatır)
+içinde `UpgradePage.gd` (oda sekmeleri sadece oyun bulmak için — profil oraya konmayacak, kullanıcı isteği); CharacterSelect kartları yükseltilmiş değer + "SV n". Kurallar/fikir havuzu: docs/PROJE_GECMISI.md §5.
+
 ## Autoload sırası (project.godot) — bozulursa parse hatası
 `GameManager` → `TeamManager` → `RoomManager` → `NetworkManager` (RoomManager, NetworkManager'dan ÖNCE)
 
@@ -233,6 +244,10 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   flaş → FLASH_RADIUS 11 m + duvar ışını + bakış yönü (sırtı dönük ~%35) → `flashed(strength)` → HUD `_blind_rect` beyaz ekran.
   Flaş atanı ve takımını da kör eder. Hasar/iyileşme görseli: `Player._sync_health` farkı → `flash_fx()` (her peer'da karakter
   kırmızı/yeşil parlar, `_fx_light` layer 20) + local `healed(amount)` → HUD yeşil vinyet; HUD kırmızı vinyet hasar miktarıyla ölçeklenir.
+  **Başlangıç gücü:** `GameManager._begin_actual_game_rpc` (host, sadece maç başı — migration/respawn'da DEĞİL) →
+  `grant_starting_items()` 2 s sonra `STARTING_ITEMS[karakter]` (Tank/Runner Bomba, Visioner Uydu, Sniper Flaş, Medic Sağlık).
+  **Medic sağlığı:** `_medic_heal_target` — nişana ≤2.5 m ve Medic'e ≤6 m yaralı takım arkadaşı; yoksa yaralıysa kendisi,
+  değilse menzildeki en yaralı arkadaş → `_medic_heal_rpc` bildirim. Diğer karakterler sağlığı sadece kendine kullanır.
   Alma: `Powerup.gd` yerel oyuncu ≤1.3 m + slot boşsa `local_touched` → `_request_pickup` (host: mesafe/ölü/slot
   kontrolü) → `_set_item_rpc(peer, type)` (herkese; `inventory` peer→type, tek slot). Ölünce `kill_happened` → slot boşalır.
   Kullanma: `Q` (`_unhandled_key_input`, sohbette değilken) → `_request_use(aim)` host:

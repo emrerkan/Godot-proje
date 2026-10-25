@@ -9,6 +9,27 @@ signal local_player_spawned(player: Node)
 signal card_picked_up(carrier_peer_id: int, carrier_pos: Vector3, carrier_team_id: int)
 signal card_dropped(drop_pos: Vector3, carrier_team_id: int)
 signal kill_happened(killer_peer_id: int, victim_peer_id: int)
+signal xp_gained(amount: int, reason: String)  # yerel oyuncu XP kazandı (HUD "+100 XP")
+
+## ─── XP (kalıcı profil — PlayerProfile) ───
+## Her peer KENDİ XP'sini, zaten herkese yayılan olaylardan yerelde hesaplar (kill/kart RPC'leri, maç sonu).
+## Profil yerel olduğu için ek ağ trafiği yok. Steam sürümünde sunucu doğrulaması gerekecek (bkz docs/PROJE_GECMISI.md).
+const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+const XP_KILL := 100
+const XP_CARRIER_KILL_BONUS := 150    # kart taşıyıcısını öldürmek
+const XP_CARD_PICKUP := 150
+const XP_CARRY := 25                  # kart sendeyken her XP_CARRY_INTERVAL
+const XP_CARRY_INTERVAL := 10.0
+const XP_SURVIVE := 10                # hayattayken her XP_SURVIVE_INTERVAL
+const XP_SURVIVE_INTERVAL := 15.0
+const XP_HEAL_ALLY := 75              # Medic takım arkadaşını iyileştirdi (PowerupManager)
+const XP_POWERUP := 25                # yerden güç aldı (PowerupManager)
+const XP_MATCH := 100                 # maçı bitirdi
+const XP_WIN := 300                   # kazanan takım
+var match_xp := 0                     # bu maçta kazanılan (oyun sonu ekranı)
+var _xp_survive_timer := 0.0
+var _xp_carry_timer := 0.0
+var _match_xp_closed := false
 
 enum State { MENU, LOBBY, CHARACTER_SELECT, IN_GAME, ENDED }
 
@@ -84,12 +105,20 @@ func check_all_characters_selected() -> void:
 @rpc("authority", "call_local", "reliable")
 func _begin_actual_game_rpc() -> void:
 	state = State.IN_GAME
+	match_xp = 0
+	_xp_survive_timer = 0.0
+	_xp_carry_timer = 0.0
+	_match_xp_closed = false
 	get_tree().change_scene_to_packed(_get_map_scene())
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_spawn_local_player()
 	if NetworkManager.is_host():
 		_spawn_card_and_door()
+		# Maç başı karaktere özel tek seferlik güç (migration/respawn'da verilmez — sadece bu yoldan)
+		var powerups := get_tree().current_scene.get_node_or_null("PowerupManager")
+		if powerups and powerups.has_method("grant_starting_items"):
+			powerups.grant_starting_items()
 	emit_signal("game_started")
 
 
@@ -231,6 +260,9 @@ func _apply_card_pickup_rpc(carrier_peer_id: int, carrier_pos: Vector3, carrier_
 	var player: Node = active_players.get(carrier_peer_id)
 	if player:
 		player.pick_up_card()
+	if carrier_peer_id == NetworkManager.get_local_id():
+		gain_xp(XP_CARD_PICKUP, "Kart alındı")
+		_xp_carry_timer = 0.0
 	emit_signal("card_picked_up", carrier_peer_id, carrier_pos, carrier_team_id)
 
 
@@ -308,6 +340,12 @@ func _announce_kill_rpc(killer_peer_id: int, victim_peer_id: int) -> void:
 		player_stats[victim_peer_id] = {"kills": 0, "deaths": 0}
 	player_stats[killer_peer_id]["kills"] += 1
 	player_stats[victim_peer_id]["deaths"] += 1
+	# Kart düşürme RPC'si bundan SONRA gelir → card_carrier_peer_id hâlâ kurbanı gösteriyor
+	if killer_peer_id == NetworkManager.get_local_id() and killer_peer_id != victim_peer_id:
+		if card_carrier_peer_id == victim_peer_id:
+			gain_xp(XP_KILL + XP_CARRIER_KILL_BONUS, "Kart taşıyıcısı öldürüldü")
+		else:
+			gain_xp(XP_KILL, "Düşman öldürüldü")
 	emit_signal("kill_happened", killer_peer_id, victim_peer_id)
 
 
@@ -335,8 +373,45 @@ func _on_team_won(team_id: int) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _end_game_rpc(winning_team: int) -> void:
+	# Maç sonu XP'si game_ended'dan ÖNCE (HUD oyun sonu ekranı match_xp'yi gösterir)
+	if not _match_xp_closed:
+		_match_xp_closed = true
+		gain_xp(XP_MATCH, "Maç tamamlandı")
+		var my_team: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
+		if my_team >= 0 and my_team == winning_team:
+			gain_xp(XP_WIN, "Zafer")
 	state = State.ENDED
 	emit_signal("game_ended", winning_team)
+
+
+# ─────────────────────────────────────────────
+# XP
+# ─────────────────────────────────────────────
+
+## Yerel oyuncuya XP ver (profil kaydedilir). PowerupManager de çağırır (güç alma, Medic iyileştirme).
+func gain_xp(amount: int, reason: String) -> void:
+	if amount <= 0:
+		return
+	PROFILE.add_xp(amount)
+	match_xp += amount
+	xp_gained.emit(amount, reason)
+
+
+func _process(delta: float) -> void:
+	if state != State.IN_GAME:
+		return
+	var me: Variant = active_players.get(NetworkManager.get_local_id())
+	if me == null or not is_instance_valid(me) or me.is_dead:
+		return
+	_xp_survive_timer += delta
+	if _xp_survive_timer >= XP_SURVIVE_INTERVAL:
+		_xp_survive_timer = 0.0
+		gain_xp(XP_SURVIVE, "Hayatta kalma")
+	if me.has_card:
+		_xp_carry_timer += delta
+		if _xp_carry_timer >= XP_CARRY_INTERVAL:
+			_xp_carry_timer = 0.0
+			gain_xp(XP_CARRY, "Kartı taşıma")
 
 
 # ─────────────────────────────────────────────

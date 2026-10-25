@@ -13,6 +13,16 @@ const CALLSIGNS: Array[String] = ["Kurt", "Gölge", "Baykuş", "Şahin", "Kobra"
 
 const MENU_BACKGROUND := preload("res://scenes/ui/MenuBackground3D.gd")
 const MENU_OVERLAY := preload("res://scenes/ui/MenuOverlay.gdshader")
+const UPGRADE_PAGE := preload("res://scenes/ui/UpgradePage.gd")
+const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+
+# Profil (sol alttaki operatör kartı → PROFİL penceresi)
+var _profile_level_lbl: Label
+var _profile_xp_lbl: Label
+var _profile_modal: Control
+var _profile_card: Control
+var _profile_page: Node
+var _profile_blur: ShaderMaterial
 var _background: Node = null
 
 var _name_input: LineEdit
@@ -66,6 +76,10 @@ func _process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and _profile_modal.visible:
+		_close_profile()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("ui_cancel") and _modal.visible:
 		_close_modal()
 		get_viewport().set_input_as_handled()
@@ -103,6 +117,81 @@ func _build_ui() -> void:
 	columns.add_child(_build_main_panel())
 
 	_build_password_modal()
+	_build_profile_modal()
+
+
+## PROFİL penceresi: bulanık arka plan + ortada UpgradePage (karakter başına yükseltme). Dışına tık / ✕ / ESC kapatır.
+func _build_profile_modal() -> void:
+	_profile_modal = Control.new()
+	_profile_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_profile_modal.visible = false
+	add_child(_profile_modal)
+
+	var blur := ColorRect.new()
+	blur.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	blur.mouse_filter = Control.MOUSE_FILTER_STOP
+	_profile_blur = ShaderMaterial.new()
+	_profile_blur.shader = preload("res://scenes/ui/BlurBackdrop.gdshader")
+	blur.material = _profile_blur
+	blur.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_close_profile())
+	_profile_modal.add_child(blur)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_profile_modal.add_child(center)
+
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(1000, 640)
+	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.97), 16, Color(UITheme.ACCENT, 0.35), 1, 26, 20))
+	center.add_child(card)
+	_profile_card = card
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	card.add_child(box)
+
+	var head := HBoxContainer.new()
+	box.add_child(head)
+	var title := UITheme.label("PROFİL", 12, UITheme.ACCENT, UITheme.font_caps)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	var close := Button.new()
+	close.text = "✕"
+	close.theme_type_variation = "GhostButton"
+	close.focus_mode = Control.FOCUS_NONE
+	close.pressed.connect(_close_profile)
+	head.add_child(close)
+
+	_profile_page = UPGRADE_PAGE.new()
+	(_profile_page as Control).size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(_profile_page)
+
+
+func _open_profile() -> void:
+	_profile_page.refresh()
+	_profile_modal.visible = true
+	_profile_card.modulate.a = 0.0
+	var tw := create_tween().set_parallel(true)
+	tw.tween_method(func(v: float) -> void: _profile_blur.set_shader_parameter("amount", v), 0.0, 1.0, 0.18)
+	tw.tween_property(_profile_card, "modulate:a", 1.0, 0.16)
+
+
+func _close_profile() -> void:
+	if not _profile_modal.visible:
+		return
+	_refresh_profile_summary()
+	var tw := create_tween().set_parallel(true)
+	tw.tween_method(func(v: float) -> void: _profile_blur.set_shader_parameter("amount", v), 1.0, 0.0, 0.14)
+	tw.tween_property(_profile_card, "modulate:a", 0.0, 0.12)
+	tw.chain().tween_callback(func() -> void: _profile_modal.visible = false)
+
+
+func _refresh_profile_summary() -> void:
+	if _profile_xp_lbl:
+		_profile_level_lbl.text = "PROFİL SEVİYESİ %d" % PROFILE.profile_level()
+		_profile_xp_lbl.text = "◆ %d XP" % PROFILE.get_xp()
 
 
 func _build_brand_column() -> Control:
@@ -175,6 +264,28 @@ func _build_brand_column() -> Control:
 	dice.add_theme_font_size_override("font_size", 18)
 	dice.pressed.connect(func() -> void: _name_input.text = _random_name())
 	name_row.add_child(dice)
+
+	# Profil özeti + PROFİL butonu (karakter yükseltmeleri ayrı pencerede — oda paneli sadece oyun bulmak için)
+	card_box.add_child(_spacer(4))
+	var prof_row := HBoxContainer.new()
+	prof_row.add_theme_constant_override("separation", 10)
+	card_box.add_child(prof_row)
+	var prof_info := VBoxContainer.new()
+	prof_info.add_theme_constant_override("separation", 0)
+	prof_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	prof_row.add_child(prof_info)
+	_profile_level_lbl = UITheme.label("", 10, UITheme.TEXT_DIM, UITheme.font_caps)
+	prof_info.add_child(_profile_level_lbl)
+	_profile_xp_lbl = UITheme.label("", 16, UITheme.ACCENT, UITheme.font_bold)
+	prof_info.add_child(_profile_xp_lbl)
+	var prof_btn := Button.new()
+	prof_btn.text = "PROFİL"
+	prof_btn.theme_type_variation = "PrimaryButton"
+	prof_btn.custom_minimum_size = Vector2(110, 0)
+	prof_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	prof_btn.pressed.connect(_open_profile)
+	prof_row.add_child(prof_btn)
+	_refresh_profile_summary()
 
 	col.add_child(_spacer(14))
 	col.add_child(UITheme.label("LAN  ·  PORT %d  ·  v0.1" % NetworkManager.PORT, 10, Color(UITheme.TEXT_DIM, 0.6), UITheme.font_caps))
@@ -631,7 +742,9 @@ func _show_tab(which: String) -> void:
 	_current_tab = which
 	for key: String in _pages:
 		(_pages[key] as Control).visible = (key == which)
-	(_tab_buttons[which] as Button).set_pressed_no_signal(true)
+	# set_pressed_no_signal ButtonGroup'taki diğerlerini kapatmıyor — hepsini elle ayarla
+	for key: String in _tab_buttons:
+		(_tab_buttons[key] as Button).set_pressed_no_signal(key == which)
 	_set_status("")
 	# Oda keşfi sadece Odalar sekmesinde açık
 	if which == "browse":

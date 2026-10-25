@@ -51,6 +51,15 @@ const FLASH_RADIUS := 11.0         # görüş hattı varsa bu mesafeye kadar kö
 const INTEL_DURATION := 8.0
 const ENEMY_SAT_DURATION := 6.0
 
+## Maç başında karaktere özel TEK SEFERLİK güç (GameManager._begin_actual_game_rpc → grant_starting_items)
+const STARTING_ITEMS := {
+	"Tank": Type.BOMB, "Visioner": Type.INTEL_SAT, "Runner": Type.BOMB, "Sniper": Type.FLASH, "Medic": Type.HEAL,
+}
+const STARTING_ITEM_DELAY := 2.0   # client'ların haritası yüklensin (geç kalan zaten _request_sync ile alır)
+## Medic sağlığı takım arkadaşına da verebilir: nişan noktasına en yakın, yaralı, menzildeki takım arkadaşı
+const MEDIC_HEAL_RANGE := 6.0      # Medic'e uzaklık
+const MEDIC_AIM_RADIUS := 2.5      # nişan noktasına uzaklık
+
 const USE_KEY := KEY_Q
 ## Test modu: editörden/debug build'den çalıştırınca açık (F1-F5, bkz _handle_test_key). false yapılırsa tamamen kapanır.
 var TEST_MODE := OS.is_debug_build()
@@ -300,19 +309,35 @@ func _request_pickup(id: int) -> void:
 		return
 	var type: int = item.get("item_type")
 	_despawn_rpc.rpc(id)
-	_set_item_rpc.rpc(peer, type)
+	_set_item_rpc.rpc(peer, type, true)
 
 
+## picked_up: yerden toplandı (XP verilir) — başlangıç gücü / test / temizleme false
 @rpc("authority", "call_local", "reliable")
-func _set_item_rpc(peer_id: int, type: int) -> void:
+func _set_item_rpc(peer_id: int, type: int, picked_up: bool = false) -> void:
 	if type == NONE:
 		inventory.erase(peer_id)
 	else:
 		inventory[peer_id] = type
 	if peer_id == NetworkManager.get_local_id():
+		if picked_up:
+			GameManager.gain_xp(GameManager.XP_POWERUP, "Güç toplandı")
 		inventory_changed.emit(type)
 		if type != NONE:
 			notice.emit("%s %s alındı  ·  [Q] kullan" % [INFO[type]["glyph"], INFO[type]["name"]], Color(INFO[type]["color"]))
+
+
+## Host: maç başında her oyuncuya karakterine göre bir güç verir (slotu boşsa). Sadece bir kez çağrılır.
+func grant_starting_items() -> void:
+	if not NetworkManager.is_host():
+		return
+	await get_tree().create_timer(STARTING_ITEM_DELAY).timeout
+	if not is_instance_valid(self) or GameManager.state != GameManager.State.IN_GAME:
+		return
+	for pid: int in NetworkManager.players:
+		var character: String = NetworkManager.players[pid].get("character", "")
+		if STARTING_ITEMS.has(character) and get_item(pid) == NONE:
+			_set_item_rpc.rpc(pid, STARTING_ITEMS[character])
 
 
 func _on_kill_happened(_killer: int, victim: int) -> void:
@@ -340,8 +365,13 @@ func _request_use(aim: Vector3) -> void:
 	var team := _team_of(peer)
 	match type:
 		Type.HEAL:
-			player.health = minf(player.health + HEAL_AMOUNT, player.max_health)
-			player._sync_health.rpc(player.health)
+			var target: Node = player
+			if player.character_type == "Medic":
+				target = _medic_heal_target(peer, team, player as Node3D, aim)
+			target.health = minf(target.health + HEAL_AMOUNT, target.max_health)
+			target._sync_health.rpc(target.health)
+			if target != player:
+				_medic_heal_rpc.rpc(peer, target.peer_id)
 		Type.BOMB:
 			_throw_bomb(peer, team, player as Node3D, aim, false)
 		Type.FLASH:
@@ -351,6 +381,50 @@ func _request_use(aim: Vector3) -> void:
 			_reveal_rpc.rpc(team, "all_players", INTEL_DURATION, peer)
 		Type.ENEMY_SAT:
 			_reveal_rpc.rpc(team, "enemies", ENEMY_SAT_DURATION, peer)
+
+
+## Medic: nişan noktasına en yakın yaralı takım arkadaşı (Medic'e ≤ MEDIC_HEAL_RANGE, nişana ≤ MEDIC_AIM_RADIUS).
+## Nişanda kimse yoksa: Medic yaralıysa kendisi, değilse menzildeki en yaralı takım arkadaşı, o da yoksa kendisi.
+func _medic_heal_target(peer: int, team: int, medic: Node3D, aim: Vector3) -> Node:
+	var aimed: Node = null
+	var aimed_d := MEDIC_AIM_RADIUS
+	var weakest: Node = null
+	var weakest_ratio := 1.0
+	for pid: int in GameManager.active_players:
+		var pl: Variant = GameManager.active_players[pid]
+		if pid == peer or pl == null or not is_instance_valid(pl) or pl.is_dead or _team_of(pid) != team:
+			continue
+		if pl.health >= pl.max_health:
+			continue
+		var pos := (pl as Node3D).global_position
+		if pos.distance_to(medic.global_position) > MEDIC_HEAL_RANGE:
+			continue
+		var d := Vector2(pos.x - aim.x, pos.z - aim.z).length()
+		if d <= aimed_d:
+			aimed_d = d
+			aimed = pl
+		var ratio: float = pl.health / maxf(pl.max_health, 1.0)
+		if ratio < weakest_ratio:
+			weakest_ratio = ratio
+			weakest = pl
+	if aimed:
+		return aimed
+	if medic.get("health") < medic.get("max_health") or weakest == null:
+		return medic
+	return weakest
+
+
+@rpc("authority", "call_local", "reliable")
+func _medic_heal_rpc(medic_peer: int, target_peer: int) -> void:
+	var me := NetworkManager.get_local_id()
+	var medic_name: String = NetworkManager.players.get(medic_peer, {}).get("name", "?")
+	var target_name: String = NetworkManager.players.get(target_peer, {}).get("name", "?")
+	var col: Color = INFO[Type.HEAL]["color"]
+	if me == medic_peer:
+		notice.emit("✚ %s iyileştirildi (+%d)" % [target_name, int(HEAL_AMOUNT)], col)
+		GameManager.gain_xp(GameManager.XP_HEAL_ALLY, "Takım arkadaşı iyileştirildi")
+	elif me == target_peer:
+		notice.emit("✚ MEDIC %s seni iyileştirdi" % medic_name, col)
 
 
 func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool) -> void:

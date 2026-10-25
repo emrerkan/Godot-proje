@@ -134,12 +134,18 @@ const FX_DECAY := 1.8               # 1/sn
 var _fx_light: OmniLight3D = null
 var _fx_level := 0.0
 
+## Profil yükseltme çarpanları (PlayerProfile.multipliers) — initialize'da dolar
+const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+var _upgrade_mult: Dictionary = PROFILE.multipliers({})
+
 
 func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner") -> void:
 	character_type = p_character
 	var char_stats: Dictionary = CHARACTER_STATS.get(p_character, CHARACTER_STATS["Visioner"])
-	max_health = char_stats["health"]
-	speed      = char_stats["speed"]
+	# Profil yükseltmeleri (karakter başına, NetworkManager.players[peer]["upgrades"] — her peer aynı değeri görür)
+	_upgrade_mult = PROFILE.multipliers(NetworkManager.players.get(p_peer_id, {}).get("upgrades", {}))
+	max_health = char_stats["health"] * _upgrade_mult["health"]
+	speed      = char_stats["speed"] * _upgrade_mult["speed"]
 
 	peer_id = p_peer_id
 	team_id = p_team_id
@@ -368,7 +374,11 @@ func _equip_default_weapon() -> void:
 				_broadcast_action(Action.RELOAD))
 	# Atış her peer'da tetiklenir (_spawn_bullet call_local) → ateş pozu
 	current_weapon.fired.connect(_on_weapon_fired)
-	current_weapon.configure(WEAPON_CONFIGS.get(character_type, WEAPON_CONFIGS["Visioner"]))
+	var cfg: Dictionary = WEAPON_CONFIGS.get(character_type, WEAPON_CONFIGS["Visioner"]).duplicate()
+	cfg["damage"] = float(cfg["damage"]) * float(_upgrade_mult["damage"])
+	cfg["reload_time"] = float(cfg["reload_time"]) * float(_upgrade_mult["reload"])
+	cfg["fire_rate"] = float(cfg["fire_rate"]) * float(_upgrade_mult["fire_rate"])
+	current_weapon.configure(cfg)
 	_add_render_layer(current_weapon, BODY_LIGHT_LAYER_BIT)
 	_disable_shadow_casting(current_weapon)
 	# Üst gövde taban pozu: tüfek nişanda
@@ -516,7 +526,7 @@ func _update_move_mode(dir: Vector3, typing: bool, delta: float) -> void:
 
 	if want_crouch and not crouch_locked and crouch_stamina > 0.0:
 		move_mode = MoveMode.CROUCH
-		crouch_stamina = maxf(crouch_stamina - delta / CROUCH_MAX_TIME, 0.0)
+		crouch_stamina = maxf(crouch_stamina - delta / (CROUCH_MAX_TIME * float(_upgrade_mult["stamina"])), 0.0)
 		_crouch_delay = STAMINA_REGEN_DELAY
 		if crouch_stamina <= 0.0:
 			crouch_locked = true
@@ -529,7 +539,7 @@ func _update_move_mode(dir: Vector3, typing: bool, delta: float) -> void:
 
 	if move_mode != MoveMode.CROUCH and want_sprint and not sprint_locked and sprint_stamina > 0.0:
 		move_mode = MoveMode.RUN
-		sprint_stamina = maxf(sprint_stamina - delta / SPRINT_MAX_TIME, 0.0)
+		sprint_stamina = maxf(sprint_stamina - delta / (SPRINT_MAX_TIME * float(_upgrade_mult["stamina"])), 0.0)
 		_sprint_delay = STAMINA_REGEN_DELAY
 		if sprint_stamina <= 0.0:
 			sprint_locked = true

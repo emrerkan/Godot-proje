@@ -8,6 +8,8 @@
 
 extends Control
 
+const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+
 const CHARACTERS: Array[Dictionary] = [
 	{"name": "Tank",     "role": "Ön Hat",       "color": Color(0.9,  0.35, 0.25), "stats": {"Can": 150.0, "Hız": 5.5,  "Hasar": 22.0,  "Menzil": 45.0}},
 	{"name": "Visioner", "role": "Keşif",        "color": Color(0.25, 0.55, 1.0),  "stats": {"Can": 100.0, "Hız": 8.0,  "Hasar": 18.0,  "Menzil": 35.0}},
@@ -305,6 +307,20 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	badge_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	badge.add_child(badge_lbl)
 
+	# Sol üst seviye rozeti — karakter seviyesi = profilde o karaktere alınan yükseltme sayısı (0..25)
+	var up_count := PROFILE.upgrade_count(char_name)
+	var max_count := PROFILE.STATS.size() * PROFILE.MAX_LEVEL
+	var lv_badge := PanelContainer.new()
+	lv_badge.position = Vector2(10, 10)
+	var lv_col: Color = UITheme.ACCENT if up_count > 0 else COL_TEXT_DIM
+	lv_badge.add_theme_stylebox_override("panel", UITheme.style(Color(0, 0, 0, 0.62), 6, Color(lv_col, 0.7), 1, 8, 3))
+	mask.add_child(lv_badge)
+	var lv_box := HBoxContainer.new()
+	lv_box.add_theme_constant_override("separation", 4)
+	lv_badge.add_child(lv_box)
+	lv_box.add_child(_make_label("SV", 9, Color(lv_col, 0.8), _font_caps))
+	lv_box.add_child(_make_label(str(up_count), 14, lv_col, _font_bold))
+
 	# ── İsim / rol / statlar ──
 	var content_margin := MarginContainer.new()
 	content_margin.add_theme_constant_override("margin_left",   14)
@@ -330,6 +346,17 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	role_row.add_child(accent)
 	role_row.add_child(_make_label((char_data["role"] as String).to_upper(), 10, char_color, _font_caps))
 
+	# Seviye ilerlemesi: "SEVİYE 3 / 25" + ince çubuk
+	var lv_row := HBoxContainer.new()
+	content.add_child(lv_row)
+	var lv_lbl := _make_label("SEVİYE", 9, COL_TEXT_DIM, _font_caps)
+	lv_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lv_row.add_child(lv_lbl)
+	lv_row.add_child(_make_label("%d / %d" % [up_count, max_count], 10, lv_col, _font_bold))
+	var lv_bar := _make_bar(UITheme.ACCENT, 3)
+	lv_bar.value = float(up_count) / float(max_count)
+	content.add_child(lv_bar)
+
 	var stats_box := VBoxContainer.new()
 	stats_box.add_theme_constant_override("separation", 7)
 	content.add_child(stats_box)
@@ -337,9 +364,13 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	spacer_top.custom_minimum_size = Vector2(0, 2)
 	stats_box.add_child(spacer_top)
 
+	# Profil yükseltmeleri (bu karakter için) — yükseltilmiş değer vurgulu
+	var m := PROFILE.multipliers(PROFILE.get_levels(char_name))
+	var stat_mult := {"Can": m["health"], "Hız": m["speed"], "Hasar": m["damage"], "Menzil": 1.0}
 	var stats: Dictionary = char_data["stats"]
 	for stat_name: String in STAT_ORDER:
-		var value: float = stats[stat_name]
+		var value: float = snappedf(float(stats[stat_name]) * float(stat_mult[stat_name]), 0.1)
+		var boosted: bool = float(stat_mult[stat_name]) > 1.0
 		var stat_col := VBoxContainer.new()
 		stat_col.add_theme_constant_override("separation", 3)
 		stats_box.add_child(stat_col)
@@ -350,10 +381,10 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label_row.add_child(name_lbl)
 		#label_row.add_child(_make_label("%g" % value, 10, COL_TEXT, _font_bold))
-		label_row.add_child(_make_label(str(value), 10, COL_TEXT, _font_bold))
+		label_row.add_child(_make_label(str(value), 10, UITheme.ACCENT if boosted else COL_TEXT, _font_bold))
 
 		var bar := _make_bar(char_color, 5)
-		bar.value = value / (STAT_MAX[stat_name] as float)
+		bar.value = minf(value / (STAT_MAX[stat_name] as float), 1.0)
 		stat_col.add_child(bar)
 
 	# ── Alt şerit: durum ──
@@ -575,6 +606,12 @@ func _refresh_roster() -> void:
 			row.add_child(_make_label("seçiyor…", 11, COL_TEXT_DIM))
 		else:
 			row.add_child(_make_label(ch.to_upper(), 11, ch_color, _font_caps))
+			# Seçtiği karakterin seviyesi (host'a seçimle gönderilen yükseltmelerden)
+			var lv := 0
+			var ups: Dictionary = pdata.get("upgrades", {})
+			for s: String in ups:
+				lv += int(ups[s])
+			row.add_child(_make_label("SV %d" % lv, 10, UITheme.ACCENT if lv > 0 else COL_TEXT_DIM, _font_caps))
 		_roster_row.add_child(chip)
 
 

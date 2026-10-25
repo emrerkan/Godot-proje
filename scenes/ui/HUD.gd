@@ -10,6 +10,8 @@ extends CanvasLayer
 
 const KILL_FEED_MAX := 5
 const RESPAWN_TIME := 3.0  # GameManager._schedule_respawn ile aynı
+const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+const XP_POPUP_MAX := 4
 
 var _root: Control
 var _local_player: Node = null
@@ -90,6 +92,7 @@ func _ready() -> void:
 	GameManager.card_dropped.connect(_on_card_dropped)
 	GameManager.kill_happened.connect(_on_kill_happened)
 	GameManager.local_player_spawned.connect(_on_local_player_spawned)
+	GameManager.xp_gained.connect(_on_xp_gained)
 
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -102,6 +105,7 @@ func _ready() -> void:
 	_setup_kill_feed()
 	_setup_player_card()
 	_setup_item_slot()
+	_setup_xp_feed()
 	_setup_chat()
 	_setup_minimap()
 	_setup_death_overlay()
@@ -471,6 +475,42 @@ func _setup_item_slot() -> void:
 		if _powerups.TEST_MODE:
 			_setup_test_hint()
 	_on_item_changed(-1)
+
+
+## XP kazanımları — güç slotunun üstünde kısa süreli "+100 XP  Düşman öldürüldü" satırları
+var _xp_feed: VBoxContainer
+
+
+func _setup_xp_feed() -> void:
+	_xp_feed = VBoxContainer.new()
+	_xp_feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_xp_feed.offset_left = 368
+	_xp_feed.offset_top = -132
+	_xp_feed.offset_bottom = -132
+	_xp_feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_xp_feed.alignment = BoxContainer.ALIGNMENT_END
+	_xp_feed.add_theme_constant_override("separation", 2)
+	_xp_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_xp_feed)
+
+
+func _on_xp_gained(amount: int, reason: String) -> void:
+	if _xp_feed == null:
+		return
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(UITheme.label("+%d XP" % amount, 14, UITheme.ACCENT, UITheme.font_bold))
+	row.add_child(UITheme.label(reason, 12, UITheme.TEXT_DIM))
+	_xp_feed.add_child(row)
+	while _xp_feed.get_child_count() > XP_POPUP_MAX:
+		_xp_feed.get_child(0).free()
+	row.modulate.a = 0.0
+	var tw := row.create_tween()
+	tw.tween_property(row, "modulate:a", 1.0, 0.15)
+	tw.tween_interval(2.2)
+	tw.tween_property(row, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(row.queue_free)
 
 
 ## Test modu (debug build) tuş hatırlatıcısı — skor panelinin altında
@@ -1026,7 +1066,8 @@ func _on_game_ended(winning_team: int) -> void:
 	_end_sub.text = "%s TAKIMI KAZANDI" % TeamManager.get_team_name(winning_team).to_upper()
 	_end_sub.add_theme_color_override("font_color", team_color)
 	var stats: Dictionary = GameManager.player_stats.get(NetworkManager.get_local_id(), {"kills": 0, "deaths": 0})
-	_end_stats.text = "%d KILL   ·   %d ÖLÜM" % [stats.get("kills", 0), stats.get("deaths", 0)]
+	_end_stats.text = "%d KILL   ·   %d ÖLÜM\n+%d XP KAZANILDI   ·   PROFİL: %d XP" % [
+		stats.get("kills", 0), stats.get("deaths", 0), GameManager.match_xp, PROFILE.get_xp()]
 	_end_overlay.modulate.a = 0.0
 	_end_overlay.show()
 	create_tween().tween_property(_end_overlay, "modulate:a", 1.0, 0.4)
