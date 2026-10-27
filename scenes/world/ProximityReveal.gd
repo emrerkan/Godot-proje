@@ -41,7 +41,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var target := 0.0
 	var player := _get_local_player()
-	if player and _target.is_visible_in_tree():
+	if player and _target.is_visible_in_tree() and _test_reveal():
+		target = 1.0  # test modu F7: mesafeye bakmadan göster
+	elif player and _target.is_visible_in_tree():
 		var d := player.global_position.distance_to(_target.global_position)
 		target = clampf((reveal_far - d) / maxf(reveal_far - reveal_near, 0.01), 0.0, 1.0)
 		target = target * target * (3.0 - 2.0 * target)  # smoothstep
@@ -60,6 +62,14 @@ func _apply(f: float) -> void:
 	if mesh_hidden_when_far:
 		for m in _meshes:
 			m.visible = f > 0.01
+
+
+func _test_reveal() -> bool:
+	if _target != GameManager.card_instance and _target != GameManager.door_instance:
+		return false  # sadece kart + kapı (güçler değil)
+	var scene := get_tree().current_scene
+	var pm: Node = scene.get_node_or_null("PowerupManager") if scene else null
+	return pm != null and pm.get("test_show_objectives") == true
 
 
 func _get_local_player() -> Node3D:

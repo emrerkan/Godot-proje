@@ -3,8 +3,8 @@
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
 
-uniform vec4 base_color : source_color = vec4(0.045, 0.05, 0.065, 1.0);
-uniform vec4 line_color : source_color = vec4(0.5, 0.53, 0.6, 1.0);
+uniform vec4 base_color : source_color = vec4(0.04, 0.045, 0.05, 1.0);   // soğuk duman grisi (UITheme.BG ailesi)
+uniform vec4 line_color : source_color = vec4(0.56, 0.61, 0.67, 1.0);    // soğuk gri — ışıkta belirginleşir
 uniform float cell = 2.0;          // ince çizgi aralığı (m)
 uniform float major_every = 4.0;   // her N hücrede kalın çizgi
 uniform float glow = 0.006;        // karanlıkta görünür kalan ızgara

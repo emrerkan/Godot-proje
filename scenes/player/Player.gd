@@ -136,6 +136,7 @@ var _fx_level := 0.0
 
 ## Profil yükseltme çarpanları (PlayerProfile.multipliers) — initialize'da dolar
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+const GAME_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
 var _upgrade_mult: Dictionary = PROFILE.multipliers({})
 
 
@@ -568,7 +569,8 @@ func _get_aim_target() -> Vector3:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return global_position + Vector3(0, 0, -1)
-	var mouse := get_viewport().get_mouse_position()
+	# Sanal nişangah (fare hassasiyeti) — Crosshair günceller; yoksa gerçek fare konumu
+	var mouse: Vector2 = GAME_SETTINGS.aim_screen_position(get_viewport())
 	var from  := cam.project_ray_origin(mouse)
 	var dir   := cam.project_ray_normal(mouse)
 	if absf(dir.y) < 0.001:

@@ -149,14 +149,15 @@ func _build_header() -> Control:
 	count_box.add_theme_constant_override("separation", 0)
 	count_chip.add_child(count_box)
 	count_box.add_child(UITheme.label("OYUNCU", 10, UITheme.TEXT_DIM, UITheme.font_caps))
-	_player_count_lbl = UITheme.label("", 18, UITheme.TEXT, UITheme.font_bold)
+	_player_count_lbl = UITheme.label("", 18, UITheme.TEXT, UITheme.font_mono)
 	count_box.add_child(_player_count_lbl)
 	header.add_child(count_chip)
 
 	# Oda kodu + kopyala
 	var code_chip := PanelContainer.new()
 	code_chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	code_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.ACCENT, 0.08), 12, Color(UITheme.ACCENT, 0.35), 1, 14, 10))
+	code_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.ACCENT, 0.08), 10, Color(UITheme.ACCENT, 0.35), 1, 14, 10))
+	UITheme.add_brackets(code_chip, UITheme.ACCENT, 8)
 	var code_row := HBoxContainer.new()
 	code_row.add_theme_constant_override("separation", 14)
 	code_chip.add_child(code_row)
@@ -164,7 +165,7 @@ func _build_header() -> Control:
 	code_box.add_theme_constant_override("separation", 0)
 	code_row.add_child(code_box)
 	code_box.add_child(UITheme.label("ODA KODU", 10, UITheme.TEXT_DIM, UITheme.font_caps))
-	_room_code_lbl = UITheme.label("", 18, UITheme.ACCENT, UITheme.font_title)
+	_room_code_lbl = UITheme.label("", 20, UITheme.ACCENT, UITheme.font_mono)
 	code_box.add_child(_room_code_lbl)
 	_copy_btn = Button.new()
 	_copy_btn.text = "Kopyala"
@@ -218,7 +219,6 @@ func _build_team_card(team_id: int) -> Control:
 	var header := PanelContainer.new()
 	var hs := UITheme.style(Color(color, 0.12), 0, Color.TRANSPARENT, 0, 14, 9)
 	hs.corner_radius_top_left = 12
-	hs.corner_radius_top_right = 12
 	hs.border_width_top = 3
 	hs.border_color = color
 	header.add_theme_stylebox_override("panel", hs)
@@ -229,8 +229,8 @@ func _build_team_card(team_id: int) -> Control:
 	name_box.add_theme_constant_override("separation", 0)
 	name_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hrow.add_child(name_box)
-	name_box.add_child(UITheme.label(TeamManager.get_team_name(team_id).to_upper(), 17, color, UITheme.font_title))
-	var count_lbl := UITheme.label("0/%d" % NetworkManager.get_team_size(), 14, UITheme.TEXT, UITheme.font_bold)
+	name_box.add_child(UITheme.label(UITheme.team_tag(team_id), 17, color, UITheme.font_title))
+	var count_lbl := UITheme.label("0/%d" % NetworkManager.get_team_size(), 14, UITheme.TEXT, UITheme.font_mono)
 	count_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hrow.add_child(count_lbl)
 
@@ -378,6 +378,7 @@ func _build_settings_panel() -> Control:
 	st.shadow_color = Color(0, 0, 0, 0.5)
 	st.shadow_size = 30
 	panel.add_theme_stylebox_override("panel", st)
+	UITheme.add_brackets(panel, UITheme.FRAME, 16)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
@@ -838,7 +839,10 @@ func _update_team_styles() -> void:
 		var is_full := _get_team_count(i) >= NetworkManager.get_team_size()
 		var is_hover := i == _hovered_team and not is_mine and not is_full
 
-		var ps := UITheme.style(UITheme.SURFACE_2 if is_hover else UITheme.SURFACE, 14, UITheme.BORDER, 1)
+		var ps := UITheme.style(UITheme.SURFACE_2 if is_hover else UITheme.SURFACE, 0, UITheme.BORDER, 1)
+		# Asimetrik pah: sol üst + sağ alt kesik (künye/etiket formu)
+		ps.corner_radius_top_left = 14
+		ps.corner_radius_bottom_right = 14
 		if is_mine:
 			ps.border_color = color
 			ps.set_border_width_all(2)
@@ -852,7 +856,6 @@ func _update_team_styles() -> void:
 		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if not (is_mine or is_full) else Control.CURSOR_ARROW
 
 		var fs := UITheme.style(Color(1, 1, 1, 0.025), 0)
-		fs.corner_radius_bottom_left = 12
 		fs.corner_radius_bottom_right = 12
 		var footer_lbl: Label = t["footer_lbl"]
 		if is_mine:

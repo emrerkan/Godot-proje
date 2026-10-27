@@ -7,6 +7,10 @@ extends Node
 signal rooms_updated
 
 const DISCOVERY_PORT    := 7778
+## Aynı bilgisayarda birden fazla oyun penceresi: bir UDP portunu (Windows'ta) tek süreç dinleyebiliyor.
+## Dinleyici bu listeden ilk boş portu alır, host yayını HEPSİNE gönderir → her pencere odaları görür.
+const DISCOVERY_PORTS: Array[int] = [7778, 7779, 7780, 7781]
+const LISTEN_RETRY := 1.0          # tüm portlar doluysa tekrar deneme aralığı (sn)
 const BROADCAST_INTERVAL := 2.0
 const ROOM_STALE_MS     := 7000
 
@@ -27,9 +31,18 @@ var _broadcast_timer: float = 0.0
 var _stale_accum:     float = 0.0
 var _is_hosting:   bool = false
 var _is_listening: bool = false
+var _want_listening: bool = false   # dinlemek isteniyor ama port alınamadıysa _process tekrar dener
+var _retry_timer: float = 0.0
+var listen_port: int = -1           # şu an dinlenen port (-1 = dinlenemiyor)
 
 
 func _process(delta: float) -> void:
+	if _want_listening and not _is_listening:
+		_retry_timer -= delta
+		if _retry_timer <= 0.0:
+			_retry_timer = LISTEN_RETRY
+			_try_bind()
+
 	if _is_hosting and _broadcast_sock:
 		_broadcast_timer += delta
 		if _broadcast_timer >= BROADCAST_INTERVAL:
@@ -56,21 +69,41 @@ func create_room(p_name: String, p_password: String) -> String:
 	_is_hosting   = true
 	_broadcast_sock = PacketPeerUDP.new()
 	_broadcast_sock.set_broadcast_enabled(true)
-	_broadcast_sock.set_dest_address("255.255.255.255", DISCOVERY_PORT)
 	_broadcast_timer = BROADCAST_INTERVAL  # İlk broadcast hemen
 	return room_code
 
 
-## Client: LAN odaları dinlemeye başla
+## Client: LAN odaları dinlemeye başla (port alınamazsa arka planda tekrar dener)
 func start_listening() -> void:
+	_want_listening = true
 	if _is_listening:
 		return
-	_listen_sock = PacketPeerUDP.new()
-	if _listen_sock.bind(DISCOVERY_PORT) != OK:
-		push_warning("RoomManager: UDP port %d bağlanamadı" % DISCOVERY_PORT)
-		_listen_sock = null
-		return
-	_is_listening = true
+	_try_bind()
+
+
+func _try_bind() -> void:
+	for port in DISCOVERY_PORTS:
+		var sock := PacketPeerUDP.new()
+		if sock.bind(port) == OK:
+			_listen_sock = sock
+			listen_port = port
+			_is_listening = true
+			emit_signal("rooms_updated")  # arayüz durum yazısını güncellesin
+			return
+	listen_port = -1
+
+
+## "Yenile": listeyi temizle, dinlemeyi baştan kur (port boşaldıysa artık alınır) — odalar ≤2 sn içinde yeniden gelir
+func refresh() -> void:
+	var was_wanted := _want_listening
+	stop_listening()
+	if was_wanted:
+		start_listening()
+	emit_signal("rooms_updated")
+
+
+func is_listening() -> bool:
+	return _is_listening
 
 
 func stop_hosting() -> void:
@@ -85,6 +118,8 @@ func stop_hosting() -> void:
 
 func stop_listening() -> void:
 	_is_listening = false
+	_want_listening = false
+	listen_port = -1
 	if _listen_sock:
 		_listen_sock.close()
 		_listen_sock = null
@@ -116,8 +151,10 @@ func _send_broadcast() -> void:
 	}
 	# Oda özellikleri: team_size, max_players, map_name, state ("lobby"/"game") — ana menü listesi gösterir
 	info.merge(NetworkManager.get_room_status())
-	var data := JSON.stringify(info)
-	_broadcast_sock.put_packet(data.to_utf8_buffer())
+	var data := JSON.stringify(info).to_utf8_buffer()
+	for port in DISCOVERY_PORTS:
+		_broadcast_sock.set_dest_address("255.255.255.255", port)
+		_broadcast_sock.put_packet(data)
 
 
 func _receive_broadcasts() -> void:

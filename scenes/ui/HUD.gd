@@ -26,6 +26,12 @@ var _objective_lbl: Label
 var _alert_chip: PanelContainer
 var _alert_lbl: Label
 var _banner_tween: Tween = null
+var _unlock_panel: PanelContainer
+var _unlock_lbl: Label
+var _unlock_time_lbl: Label
+var _unlock_bar: ProgressBar
+var _unlock_fill: StyleBoxFlat
+var _last_unlock := 0.0
 
 # Kill feed
 var _kill_feed_root: VBoxContainer
@@ -68,6 +74,7 @@ var _end_sub: Label
 var _end_stats: Label
 var _chat: ChatBox
 var _crosshair: Control
+var _settings_window: Control
 
 # Dayanıklılık çubukları
 var _sprint_bar: ProgressBar
@@ -114,6 +121,8 @@ func _ready() -> void:
 	_root.add_child(_crosshair)  # menülerin altında kalsın — menü açıkken zaten gizlenir
 	_setup_blind_overlay()       # flaş körlüğü HUD'ı da kapatır, menüleri değil
 	_setup_pause_menu()
+	_settings_window = preload("res://scenes/ui/SettingsWindow.gd").new()
+	_root.add_child(_settings_window)   # pause menüsünün üstünde
 	_setup_end_overlay()
 
 	_carrier_peer = GameManager.card_carrier_peer_id
@@ -260,7 +269,7 @@ func _setup_scores() -> void:
 		strip.custom_minimum_size = Vector2(3, 16)
 		strip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(strip)
-		var name_lbl := UITheme.label(TeamManager.get_team_name(i).to_upper(), 12, color, UITheme.font_caps)
+		var name_lbl := UITheme.label(UITheme.team_tag(i), 12, color, UITheme.font_caps)
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_lbl)
 		var value := UITheme.label("0", 15, UITheme.TEXT, UITheme.font_bold)
@@ -285,6 +294,33 @@ func _setup_objective() -> void:
 	wrap.add_child(_objective_chip)
 	_objective_lbl = UITheme.label("", 13, UITheme.ACCENT, UITheme.font_caps)
 	_objective_chip.add_child(_objective_lbl)
+
+	# Kapı kilidi ilerlemesi (biri kilit bölgesindeyken herkese görünür)
+	var unlock_wrap := CenterContainer.new()
+	col.add_child(unlock_wrap)
+	_unlock_panel = PanelContainer.new()
+	_unlock_panel.custom_minimum_size = Vector2(360, 0)
+	_unlock_panel.visible = false
+	unlock_wrap.add_child(_unlock_panel)
+	var ubox := VBoxContainer.new()
+	ubox.add_theme_constant_override("separation", 6)
+	_unlock_panel.add_child(ubox)
+	var urow := HBoxContainer.new()
+	ubox.add_child(urow)
+	_unlock_lbl = UITheme.label("", 12, UITheme.ACCENT, UITheme.font_caps)
+	_unlock_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	urow.add_child(_unlock_lbl)
+	_unlock_time_lbl = UITheme.label("", 14, UITheme.ACCENT, UITheme.font_mono)
+	urow.add_child(_unlock_time_lbl)
+	_unlock_bar = ProgressBar.new()
+	_unlock_bar.show_percentage = false
+	_unlock_bar.max_value = 1.0
+	_unlock_bar.custom_minimum_size = Vector2(0, 6)
+	_unlock_fill = UITheme.style(UITheme.ACCENT, 3)
+	_unlock_bar.add_theme_stylebox_override("fill", _unlock_fill)
+	_unlock_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.08), 3))
+	ubox.add_child(_unlock_bar)
+	GameManager.door_unlock_changed.connect(_on_door_unlock_changed)
 
 	var alert_wrap := CenterContainer.new()
 	col.add_child(alert_wrap)
@@ -315,7 +351,8 @@ func _setup_player_card() -> void:
 	card.offset_bottom = -16
 	card.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	card.custom_minimum_size = Vector2(340, 0)
-	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.8), 14, UITheme.BORDER, 1, 16, 12))
+	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 12, UITheme.BORDER, 1, 16, 12))
+	UITheme.add_brackets(card, UITheme.FRAME, 10)
 	_root.add_child(card)
 
 	var box := VBoxContainer.new()
@@ -344,7 +381,7 @@ func _setup_player_card() -> void:
 	var hp_row := HBoxContainer.new()
 	hp_row.add_theme_constant_override("separation", 4)
 	hp_box.add_child(hp_row)
-	_hp_value = UITheme.label("100", 30, UITheme.TEXT, UITheme.font_title)
+	_hp_value = UITheme.label("100", 30, UITheme.TEXT, UITheme.font_mono)
 	hp_row.add_child(_hp_value)
 	_hp_max = UITheme.label("/100", 13, UITheme.TEXT_DIM)
 	_hp_max.size_flags_vertical = Control.SIZE_SHRINK_END
@@ -371,7 +408,7 @@ func _setup_player_card() -> void:
 	var ammo_row := HBoxContainer.new()
 	ammo_row.add_theme_constant_override("separation", 4)
 	ammo_box.add_child(ammo_row)
-	_ammo_value = UITheme.label("30", 30, UITheme.TEXT, UITheme.font_title)
+	_ammo_value = UITheme.label("30", 30, UITheme.TEXT, UITheme.font_mono)
 	ammo_row.add_child(_ammo_value)
 	_ammo_max = UITheme.label("/30", 13, UITheme.TEXT_DIM)
 	_ammo_max.size_flags_vertical = Control.SIZE_SHRINK_END
@@ -517,13 +554,13 @@ func _on_xp_gained(amount: int, reason: String) -> void:
 func _setup_test_hint() -> void:
 	var chip := PanelContainer.new()
 	chip.position = Vector2(16, 186)
-	chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.8), 10, Color(UITheme.ACCENT, 0.5), 1, 10, 6))
+	chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 10, Color(UITheme.ACCENT, 0.5), 1, 10, 6))
 	_root.add_child(chip)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	chip.add_child(box)
 	box.add_child(UITheme.label("TEST MODU", 9, UITheme.ACCENT, UITheme.font_caps))
-	for line: String in ["F1 Bomba   F2 Sağlık", "F3 Uydu   F4 Takım uydusu", "F6 Flaş bombası", "F5 Önüne güç doğur   Q Kullan"]:
+	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu   4 Takım uydusu", "6 Flaş   8 Sis bombası", "7 Kart/kapı göster", "5 Önüne güç doğur   Q Kullan"]:
 		box.add_child(UITheme.label(line, 11, UITheme.TEXT_DIM))
 	_ignore_mouse_recursive(chip)
 
@@ -543,7 +580,7 @@ func _on_item_changed(item_type: int) -> void:
 		create_tween().tween_property(_item_slot, "modulate", Color.WHITE, 0.4)
 	_item_glyph.add_theme_color_override("font_color", col)
 	_item_name.add_theme_color_override("font_color", col)
-	var st := UITheme.style(Color(UITheme.BG, 0.8), 14, Color(col, 0.6) if item_type >= 0 else UITheme.BORDER, 1, 10, 8)
+	var st := UITheme.style(Color(UITheme.BG, 0.62), 14, Color(col, 0.6) if item_type >= 0 else UITheme.BORDER, 1, 10, 8)
 	if item_type >= 0:
 		st.shadow_color = Color(col, 0.3)
 		st.shadow_size = 10
@@ -600,7 +637,7 @@ func _setup_death_overlay() -> void:
 	var t := UITheme.label("ETKİSİZ HALE GETİRİLDİN", 14, UITheme.DANGER, UITheme.font_caps)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(t)
-	_death_count = UITheme.label("3", 72, UITheme.TEXT, UITheme.font_title)
+	_death_count = UITheme.label("3", 72, UITheme.TEXT, UITheme.font_mono)
 	_death_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_death_count)
 	var sub := UITheme.label("YENİDEN DOĞUŞ", 11, UITheme.TEXT_DIM, UITheme.font_caps)
@@ -657,10 +694,11 @@ func _setup_pause_menu() -> void:
 	_pause_panel.add_child(center)
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(320, 0)
-	var st := UITheme.style(UITheme.SURFACE_2, 16, Color(UITheme.ACCENT, 0.25), 1, 26, 24)
+	var st := UITheme.style(UITheme.SURFACE_2, 14, Color(UITheme.ACCENT, 0.25), 1, 26, 24)
 	st.shadow_color = Color(0, 0, 0, 0.5)
 	st.shadow_size = 30
 	card.add_theme_stylebox_override("panel", st)
+	UITheme.add_brackets(card, UITheme.FRAME, 16)
 	center.add_child(card)
 
 	var box := VBoxContainer.new()
@@ -675,6 +713,10 @@ func _setup_pause_menu() -> void:
 	var resume := _menu_button("DEVAM ET", "PrimaryButton")
 	resume.pressed.connect(_toggle_pause_menu)
 	box.add_child(resume)
+	# Ayarlar (grafik/kontrol/ses) — pencere menünün üstünde açılır, kapanınca menüye döner
+	var settings_btn := _menu_button("AYARLAR", "")
+	settings_btn.pressed.connect(func() -> void: _settings_window.open())
+	box.add_child(settings_btn)
 	var leave := _menu_button("ANA MENÜYE DÖN", "")
 	leave.pressed.connect(_on_leave_pressed)
 	box.add_child(leave)
@@ -787,7 +829,7 @@ func _on_local_player_spawned(player: Node) -> void:
 	var team_id: int = player.team_id
 	_char_lbl.text = String(player.character_type).to_upper()
 	_char_lbl.add_theme_color_override("font_color", TeamManager.get_color(team_id))
-	_team_chip_lbl.text = "%s TAKIM" % TeamManager.get_team_name(team_id).to_upper()
+	_team_chip_lbl.text = "%s TAKIM" % UITheme.team_tag(team_id)
 	_refresh_scores()
 	_update_objective()
 
@@ -901,7 +943,7 @@ func _refresh_scoreboard() -> void:
 		group.add_child(header)
 		var hrow := HBoxContainer.new()
 		header.add_child(hrow)
-		var tname := UITheme.label(TeamManager.get_team_name(tid).to_upper(), 13, team_color, UITheme.font_caps)
+		var tname := UITheme.label(UITheme.team_tag(tid), 13, team_color, UITheme.font_caps)
 		tname.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		hrow.add_child(tname)
 		hrow.add_child(UITheme.label("%d KILL" % TeamManager.scores.get(tid, 0), 12, UITheme.TEXT, UITheme.font_caps))
@@ -945,7 +987,7 @@ func _update_objective() -> void:
 	if _carrier_peer == -1:
 		text = "◆  KART YERDE  ·  BUL VE AL"
 	elif _carrier_peer == local_id:
-		text = "◆  KART SENDE  ·  KAPIYA GÖTÜR!"
+		text = "◆  KART SENDE  ·  KAPININ ÇEMBERİNDE %d SN KAL" % int(GameManager.DOOR_UNLOCK_TIME)
 		col = UITheme.SUCCESS
 	else:
 		var tid: int = NetworkManager.players.get(_carrier_peer, {}).get("team_id", -1)
@@ -957,13 +999,13 @@ func _update_objective() -> void:
 			col = TeamManager.get_color(tid)
 	_objective_lbl.text = text
 	_objective_lbl.add_theme_color_override("font_color", col)
-	_objective_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.8), 18, Color(col, 0.5), 1, 18, 7))
+	_objective_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 18, Color(col, 0.5), 1, 18, 7))
 
 
 func _show_banner(text: String, color: Color) -> void:
 	_alert_lbl.text = text
 	_alert_lbl.add_theme_color_override("font_color", color)
-	var st := UITheme.style(Color(UITheme.BG, 0.85), 10, Color(color, 0.7), 1, 22, 10)
+	var st := UITheme.style(Color(UITheme.BG, 0.62), 10, Color(color, 0.7), 1, 22, 10)
 	st.shadow_color = Color(color, 0.25)
 	st.shadow_size = 16
 	_alert_chip.add_theme_stylebox_override("panel", st)
@@ -986,6 +1028,38 @@ func _on_card_picked_up(carrier_peer_id: int, _carrier_pos: Vector3, carrier_tea
 		_show_banner("KARTI ALDIN!  KAPIYA KOŞ", UITheme.SUCCESS)
 	else:
 		_show_banner("⚠  %s TAKIM KARTI ALDI!" % team_name, TeamManager.get_color(carrier_team_id))
+
+
+## Kapı kilidi: taşıyıcıya "KAPIDA KAL", takımına "KORU", rakiplere "DURDUR" + kalan süre
+func _on_door_unlock_changed(ratio: float, carrier_peer_id: int) -> void:
+	var was := _last_unlock
+	_last_unlock = ratio
+	if ratio <= 0.0 or ratio >= 1.0:
+		_unlock_panel.visible = false
+		# Taşıyıcı çemberden çıktıysa (hâlâ kart sendeyse) uyar
+		if ratio <= 0.0 and was > 0.0 and carrier_peer_id == NetworkManager.get_local_id() and _carrier_peer == carrier_peer_id:
+			_show_banner("✕  KİLİT SIFIRLANDI  ·  ÇEMBERDE KAL", UITheme.DANGER)
+		return
+	var tid: int = NetworkManager.players.get(carrier_peer_id, {}).get("team_id", -1)
+	var col := UITheme.ACCENT
+	var text := ""
+	if carrier_peer_id == NetworkManager.get_local_id():
+		text = "◇  KİLİT AÇILIYOR  ·  KAPIDA KAL"
+		col = UITheme.SUCCESS
+	elif tid == _get_local_team():
+		text = "◇  %s KAPIYI AÇIYOR  ·  KORU" % UITheme.team_tag(tid)
+		col = TeamManager.get_color(tid)
+	else:
+		text = "⚠  %s KAPIYI AÇIYOR  ·  DURDUR!" % UITheme.team_tag(tid)
+		col = UITheme.DANGER
+	_unlock_lbl.text = text
+	_unlock_lbl.add_theme_color_override("font_color", col)
+	_unlock_time_lbl.text = "%.1f sn" % ((1.0 - ratio) * GameManager.DOOR_UNLOCK_TIME)
+	_unlock_time_lbl.add_theme_color_override("font_color", col)
+	_unlock_fill.bg_color = col
+	_unlock_bar.value = ratio
+	_unlock_panel.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 10, Color(col, 0.6), 1, 16, 9))
+	_unlock_panel.visible = true
 
 
 func _on_card_dropped(_drop_pos: Vector3, carrier_team_id: int) -> void:

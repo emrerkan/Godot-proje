@@ -10,6 +10,16 @@ signal card_picked_up(carrier_peer_id: int, carrier_pos: Vector3, carrier_team_i
 signal card_dropped(drop_pos: Vector3, carrier_team_id: int)
 signal kill_happened(killer_peer_id: int, victim_peer_id: int)
 signal xp_gained(amount: int, reason: String)  # yerel oyuncu XP kazandı (HUD "+100 XP")
+signal door_unlock_changed(ratio: float, carrier_peer_id: int)  # kapı kilidi ilerlemesi (Door.gd + HUD)
+
+## ─── Kapı kilidi ───
+## Kart taşıyıcısı kapının çevresindeki çemberde (DOOR_UNLOCK_RADIUS) DOOR_UNLOCK_TIME sn kalırsa kazanır.
+## Çıkar / ölür / kartı düşürürse ilerleme SIFIRLANIR. Host hesaplar (_update_door_unlock), _door_unlock_rpc ile yayar.
+const DOOR_UNLOCK_TIME := 5.0
+const DOOR_UNLOCK_RADIUS := 3.0
+const DOOR_SYNC_INTERVAL := 0.1
+var door_unlock := 0.0                # 0..1 (tüm peer'larda, host'tan gelir)
+var _door_sync_timer := 0.0
 
 ## ─── XP (kalıcı profil — PlayerProfile) ───
 ## Her peer KENDİ XP'sini, zaten herkese yayılan olaylardan yerelde hesaplar (kill/kart RPC'leri, maç sonu).
@@ -109,16 +119,18 @@ func _begin_actual_game_rpc() -> void:
 	_xp_survive_timer = 0.0
 	_xp_carry_timer = 0.0
 	_match_xp_closed = false
+	door_unlock = 0.0
 	get_tree().change_scene_to_packed(_get_map_scene())
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_spawn_local_player()
+	# Maç başı karaktere özel tek seferlik güç — HER PEER kendi hesaplar (bekleme/RPC yok, oyun başlar başlamaz).
+	# Migration/respawn'da verilmez — sadece bu yoldan.
+	var powerups := get_tree().current_scene.get_node_or_null("PowerupManager")
+	if powerups and powerups.has_method("grant_starting_items"):
+		powerups.grant_starting_items()
 	if NetworkManager.is_host():
 		_spawn_card_and_door()
-		# Maç başı karaktere özel tek seferlik güç (migration/respawn'da verilmez — sadece bu yoldan)
-		var powerups := get_tree().current_scene.get_node_or_null("PowerupManager")
-		if powerups and powerups.has_method("grant_starting_items"):
-			powerups.grant_starting_items()
 	emit_signal("game_started")
 
 
@@ -293,17 +305,15 @@ func _apply_card_drop_rpc(drop_pos: Vector3, carrier_team_id: int) -> void:
 # Kart Teslimatı
 # ─────────────────────────────────────────────
 
+## ESKİ: girince anında teslim. Artık teslimat sadece host'un kilit sayacıyla (_update_door_unlock) olur —
+## client'ın bu RPC ile kilidi atlaması engellensin diye bilerek etkisiz (RPC imzası uyumluluk için duruyor).
 @rpc("any_peer", "reliable")
-func request_card_delivery(carrier_peer_id: int) -> void:
-	if not NetworkManager.is_host():
-		return
-	if card_carrier_peer_id != carrier_peer_id:
-		return
-	handle_card_delivered(carrier_peer_id)
+func request_card_delivery(_carrier_peer_id: int) -> void:
+	pass
 
 
 func handle_card_delivered(carrier_peer_id: int) -> void:
-	if not NetworkManager.is_host():
+	if not NetworkManager.is_host() or state != State.IN_GAME:
 		return
 	var team_id: int = NetworkManager.players.get(carrier_peer_id, {}).get("team_id", -1)
 	state = State.ENDED
@@ -385,6 +395,46 @@ func _end_game_rpc(winning_team: int) -> void:
 
 
 # ─────────────────────────────────────────────
+# Kapı kilidi (host)
+# ─────────────────────────────────────────────
+
+func _update_door_unlock(delta: float) -> void:
+	var inside := false
+	var carrier: Variant = active_players.get(card_carrier_peer_id)
+	if card_carrier_peer_id != -1 and carrier != null and is_instance_valid(carrier) and not carrier.is_dead \
+			and door_instance and is_instance_valid(door_instance):
+		var cp: Vector3 = (carrier as Node3D).global_position
+		var dp: Vector3 = (door_instance as Node3D).global_position
+		inside = Vector2(cp.x - dp.x, cp.z - dp.z).length() <= DOOR_UNLOCK_RADIUS
+	var prev := door_unlock
+	door_unlock = minf(door_unlock + delta / DOOR_UNLOCK_TIME, 1.0) if inside else 0.0
+	if door_unlock >= 1.0:
+		_send_door_unlock(1.0)
+		handle_card_delivered(card_carrier_peer_id)
+		return
+	if door_unlock == prev:
+		return
+	_door_sync_timer -= delta
+	# Başlama / sıfırlanma anı hemen, arada 10 Hz
+	if prev == 0.0 or door_unlock == 0.0 or _door_sync_timer <= 0.0:
+		_door_sync_timer = DOOR_SYNC_INTERVAL
+		_send_door_unlock(door_unlock)
+
+
+func _send_door_unlock(ratio: float) -> void:
+	if multiplayer.get_peers().size() > 0:
+		_door_unlock_rpc.rpc(ratio, card_carrier_peer_id)
+	else:
+		_door_unlock_rpc(ratio, card_carrier_peer_id)
+
+
+@rpc("authority", "call_local", "reliable")
+func _door_unlock_rpc(ratio: float, carrier_peer_id: int) -> void:
+	door_unlock = ratio
+	door_unlock_changed.emit(ratio, carrier_peer_id)
+
+
+# ─────────────────────────────────────────────
 # XP
 # ─────────────────────────────────────────────
 
@@ -400,6 +450,10 @@ func gain_xp(amount: int, reason: String) -> void:
 func _process(delta: float) -> void:
 	if state != State.IN_GAME:
 		return
+	if NetworkManager.is_host():
+		_update_door_unlock(delta)
+		if state != State.IN_GAME:
+			return
 	var me: Variant = active_players.get(NetworkManager.get_local_id())
 	if me == null or not is_instance_valid(me) or me.is_dead:
 		return
@@ -494,6 +548,7 @@ func _stats_by_name() -> Dictionary:
 
 ## Migration sonrası oyunu geri yükle (yeni host + yeniden bağlanan clientlar)
 func restore_from_migration(mig: Dictionary) -> void:
+	door_unlock = 0.0  # kilit ilerlemesi host değişince sıfırdan
 	# Skorları geri yükle
 	var saved_scores: Dictionary = mig.get("scores", {})
 	for tid in saved_scores:

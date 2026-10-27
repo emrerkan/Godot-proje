@@ -19,7 +19,7 @@ signal reveal_started(kind: String, duration: float, own_team: bool)
 signal notice(text: String, color: Color)
 signal flashed(strength: float)                     # yerel oyuncu flaşla kör oldu (0..1)
 
-enum Type { BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH }
+enum Type { BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE }  # index sabit (Powerup.gd/Minimap sayıyla kullanır)
 const NONE := -1
 
 ## Görünüm/isim (HUD, Powerup.gd, Minimap ortak kullanır)
@@ -29,8 +29,9 @@ const INFO := {
 	Type.INTEL_SAT: {"name": "UYDU",          "glyph": "◈", "color": Color(0.3, 0.85, 1.0),   "desc": "Tüm oyuncular + kart taşıyıcı haritada"},
 	Type.ENEMY_SAT: {"name": "TAKIM UYDUSU",  "glyph": "◉", "color": Color(0.8, 0.45, 1.0),   "desc": "Düşmanlar haritada"},
 	Type.FLASH:     {"name": "FLAŞ BOMBASI",  "glyph": "✦", "color": Color(0.85, 0.93, 1.0),  "desc": "Fareye fırlat, görenleri kör eder"},
+	Type.SMOKE:     {"name": "SİS BOMBASI",   "glyph": "≋", "color": Color(0.72, 0.78, 0.86), "desc": "Fareye fırlat, görüşü kapatan sis bulutu"},
 }
-const WEIGHTS := {Type.BOMB: 25, Type.HEAL: 25, Type.FLASH: 20, Type.INTEL_SAT: 15, Type.ENEMY_SAT: 15}
+const WEIGHTS := {Type.BOMB: 22, Type.HEAL: 22, Type.FLASH: 18, Type.SMOKE: 16, Type.INTEL_SAT: 11, Type.ENEMY_SAT: 11}
 
 ## Zamanlama (sn)
 const FIRST_SPAWN_DELAY := 12.0
@@ -48,6 +49,9 @@ const BOMB_FUSE := 1.2             # yere düştükten sonra
 const BOMB_SHAKE_RANGE := 16.0     # bu mesafenin ötesinde sarsıntı yok
 const FLASH_FUSE := 0.8
 const FLASH_RADIUS := 11.0         # görüş hattı varsa bu mesafeye kadar kör eder (atan + takımı dahil!)
+const SMOKE_FUSE := 0.4            # yere düştükten sonra duman çıkana kadar
+const SMOKE_RADIUS := 6.0          # duman bulutu yarıçapı (koridor ~4 m — kavşağı da kapatır)
+const SMOKE_DURATION := 15.0       # duman tam yoğunlukta ne kadar kalır (sonra ~3.5 sn'de seyrelir)
 const INTEL_DURATION := 8.0
 const ENEMY_SAT_DURATION := 6.0
 
@@ -55,7 +59,6 @@ const ENEMY_SAT_DURATION := 6.0
 const STARTING_ITEMS := {
 	"Tank": Type.BOMB, "Visioner": Type.INTEL_SAT, "Runner": Type.BOMB, "Sniper": Type.FLASH, "Medic": Type.HEAL,
 }
-const STARTING_ITEM_DELAY := 2.0   # client'ların haritası yüklensin (geç kalan zaten _request_sync ile alır)
 ## Medic sağlığı takım arkadaşına da verebilir: nişan noktasına en yakın, yaralı, menzildeki takım arkadaşı
 const MEDIC_HEAL_RANGE := 6.0      # Medic'e uzaklık
 const MEDIC_AIM_RADIUS := 2.5      # nişan noktasına uzaklık
@@ -63,6 +66,8 @@ const MEDIC_AIM_RADIUS := 2.5      # nişan noktasına uzaklık
 const USE_KEY := KEY_Q
 ## Test modu: editörden/debug build'den çalıştırınca açık (F1-F5, bkz _handle_test_key). false yapılırsa tamamen kapanır.
 var TEST_MODE := OS.is_debug_build()
+## Test (F7): kart + kapı konumunu göster — tamamen yerel (Minimap + ProximityReveal okur)
+var test_show_objectives := false
 const PICKUP_RANGE := 2.5          # host doğrulaması
 
 const POWERUP_SCRIPT := preload("res://scenes/world/Powerup.gd")
@@ -90,6 +95,8 @@ func _ready() -> void:
 		push_warning("PowerupPoints bulunamadı — güç spawn edilmeyecek")
 	_spawn_timer = FIRST_SPAWN_DELAY
 	GameManager.kill_happened.connect(_on_kill_happened)
+	# Sis dokusu harita yüklenirken hazırlansın (ilk sis bombasında donma olmasın)
+	preload("res://scenes/world/SmokeCloud.gd").warm_up()
 	# Geç katılan / migration sonrası client: aktif güçleri host'tan iste
 	# (biraz beklenir — host'un Map/PowerupManager'ı henüz yüklenmemişse RPC "node bulunamadı" hatası verir)
 	if not NetworkManager.is_host() and multiplayer.has_multiplayer_peer():
@@ -141,11 +148,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 # ─────────────────────────────────────────────
 #  TEST MODU (sadece debug build — editörden çalıştırınca; dışa aktarılmış oyunda kapalı)
-#  F1 bomba · F2 sağlık · F3 uydu · F4 takım uydusu · F6 flaş → doğrudan envantere (slot doluysa değiştirir)
-#  F5 → önüne rastgele bir güç doğur (yerden almayı denemek için)
+#  1 bomba · 2 sağlık · 3 uydu · 4 takım uydusu · 6 flaş · 8 sis → doğrudan envantere (slot doluysa değiştirir)
+#  7 → kart + kapı konumunu göster/gizle (yerel, minimap + 3D)
+#  5 → önüne rastgele bir güç doğur (yerden almayı denemek için)
 # ─────────────────────────────────────────────
 
-const TEST_KEYS := {KEY_F1: Type.BOMB, KEY_F2: Type.HEAL, KEY_F3: Type.INTEL_SAT, KEY_F4: Type.ENEMY_SAT, KEY_F6: Type.FLASH}
+## Rakam tuşları — F tuşları KULLANILMAZ: oyun editör içinde çalışırken F1 yardım, F5 çalıştır, F6 sahne, F7 duraklat,
+## F8 DURDUR (oyunu kapatıyordu!) editör kısayolları.
+const TEST_KEYS := {KEY_1: Type.BOMB, KEY_2: Type.HEAL, KEY_3: Type.INTEL_SAT, KEY_4: Type.ENEMY_SAT, KEY_6: Type.FLASH, KEY_8: Type.SMOKE}
+const TEST_KEY_SPAWN := KEY_5          # önüne rastgele güç
+const TEST_KEY_OBJECTIVES := KEY_7     # kart + kapı göster/gizle
 
 
 func _handle_test_key(code: Key) -> bool:
@@ -158,7 +170,12 @@ func _handle_test_key(code: Key) -> bool:
 		else:
 			_request_test_give.rpc_id(1, TEST_KEYS[code])
 		return true
-	if code == KEY_F5:
+	if code == TEST_KEY_OBJECTIVES:
+		# Sadece yerel görsel: minimapte kart + kapı, 3D'de ProximityReveal mesafeyi yok sayar
+		test_show_objectives = not test_show_objectives
+		notice.emit("TEST: kart ve kapı %s" % ("GÖSTERİLİYOR" if test_show_objectives else "GİZLENDİ"), UITheme.SIGNAL)
+		return true
+	if code == TEST_KEY_SPAWN:
 		var fwd: Vector3 = -(me as Node3D).global_transform.basis.z
 		var pos: Vector3 = (me as Node3D).global_position + Vector3(fwd.x, 0, fwd.z).normalized() * 2.5
 		if NetworkManager.is_host():
@@ -276,7 +293,7 @@ func _request_sync() -> void:
 		if is_instance_valid(item):
 			_spawn_rpc.rpc_id(requester, id, item.get("item_type"), item.global_position, item.get("time_left"))
 	for pid: int in inventory:
-		_set_item_rpc.rpc_id(requester, pid, inventory[pid])
+		_set_item_rpc.rpc_id(requester, pid, inventory[pid], false, true)  # senkron — bildirim yok
 
 
 # ─────────────────────────────────────────────
@@ -313,8 +330,9 @@ func _request_pickup(id: int) -> void:
 
 
 ## picked_up: yerden toplandı (XP verilir) — başlangıç gücü / test / temizleme false
+## silent: bildirim bandı yok (başlangıç gücü slotta sessizce doğar)
 @rpc("authority", "call_local", "reliable")
-func _set_item_rpc(peer_id: int, type: int, picked_up: bool = false) -> void:
+func _set_item_rpc(peer_id: int, type: int, picked_up: bool = false, silent: bool = false) -> void:
 	if type == NONE:
 		inventory.erase(peer_id)
 	else:
@@ -323,21 +341,18 @@ func _set_item_rpc(peer_id: int, type: int, picked_up: bool = false) -> void:
 		if picked_up:
 			GameManager.gain_xp(GameManager.XP_POWERUP, "Güç toplandı")
 		inventory_changed.emit(type)
-		if type != NONE:
+		if type != NONE and not silent:
 			notice.emit("%s %s alındı  ·  [Q] kullan" % [INFO[type]["glyph"], INFO[type]["name"]], Color(INFO[type]["color"]))
 
 
-## Host: maç başında her oyuncuya karakterine göre bir güç verir (slotu boşsa). Sadece bir kez çağrılır.
+## Maç başında her oyuncuya karakterine göre bir güç (GameManager._begin_actual_game_rpc, TÜM peer'larda).
+## RPC yok: herkes aynı players listesinden aynı sonucu YEREL hesaplar → oyun başlar başlamaz slotta, host'un
+## envanteri de aynı (kullanım host'ta doğrulanır). Sadece maç başı bir kez.
 func grant_starting_items() -> void:
-	if not NetworkManager.is_host():
-		return
-	await get_tree().create_timer(STARTING_ITEM_DELAY).timeout
-	if not is_instance_valid(self) or GameManager.state != GameManager.State.IN_GAME:
-		return
 	for pid: int in NetworkManager.players:
 		var character: String = NetworkManager.players[pid].get("character", "")
 		if STARTING_ITEMS.has(character) and get_item(pid) == NONE:
-			_set_item_rpc.rpc(pid, STARTING_ITEMS[character])
+			_set_item_rpc(pid, STARTING_ITEMS[character], false, true)  # yerel çağrı (rpc değil), bildirimsiz
 
 
 func _on_kill_happened(_killer: int, victim: int) -> void:
@@ -376,6 +391,8 @@ func _request_use(aim: Vector3) -> void:
 			_throw_bomb(peer, team, player as Node3D, aim, false)
 		Type.FLASH:
 			_throw_bomb(peer, team, player as Node3D, aim, true)
+		Type.SMOKE:
+			_throw_bomb(peer, team, player as Node3D, aim, false, true)
 		Type.INTEL_SAT:
 			# Tüm oyuncular + kart taşıyıcı (kart/kapı konumu GÖSTERİLMEZ) — Minimap._draw_satellite_reveals
 			_reveal_rpc.rpc(team, "all_players", INTEL_DURATION, peer)
@@ -427,7 +444,7 @@ func _medic_heal_rpc(medic_peer: int, target_peer: int) -> void:
 		notice.emit("✚ MEDIC %s seni iyileştirdi" % medic_name, col)
 
 
-func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool) -> void:
+func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool, smoke: bool = false) -> void:
 	var from := player.global_position + Vector3(0, 1.2, 0)
 	var flat := Vector3(aim.x - from.x, 0.0, aim.z - from.z)
 	if flat.length() > BOMB_MAX_THROW:
@@ -443,9 +460,9 @@ func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool
 		target = Vector3(back.x, 0.15, back.z)
 	var id := _next_id
 	_next_id += 1
-	_bomb_rpc.rpc(id, from, target, team, peer, flash)
-	if not flash:
-		_detonate_later(peer, team, target)  # flaş hasarsız — körlük her peer'da yerel (_on_bomb_exploded)
+	_bomb_rpc.rpc(id, from, target, team, peer, flash, smoke)
+	if not flash and not smoke:
+		_detonate_later(peer, team, target)  # flaş/sis hasarsız — etkileri her peer'da yerel
 
 
 func _detonate_later(peer: int, team: int, pos: Vector3) -> void:
@@ -482,14 +499,18 @@ func _player_rids() -> Array[RID]:
 
 
 @rpc("authority", "call_local", "reliable")
-func _bomb_rpc(_id: int, from: Vector3, target: Vector3, team: int, thrower: int = -1, flash: bool = false) -> void:
+func _bomb_rpc(_id: int, from: Vector3, target: Vector3, team: int, thrower: int = -1, flash: bool = false, smoke: bool = false) -> void:
 	# Fırlatanın el bombası atma animasyonu (her peer'da)
 	var pl: Variant = GameManager.active_players.get(thrower)
 	if pl != null and is_instance_valid(pl) and pl.has_method("play_action"):
 		pl.play_action(1)  # Player.Action.TOSS
 	var bomb: Node3D = BOMB_SCRIPT.new()
 	bomb.is_flash = flash
-	bomb.setup(from, target, BOMB_FLIGHT, FLASH_FUSE if flash else BOMB_FUSE, BOMB_RADIUS, TeamManager.get_color(team))
+	bomb.is_smoke = smoke
+	bomb.smoke_radius = SMOKE_RADIUS
+	bomb.smoke_duration = SMOKE_DURATION
+	var fuse := FLASH_FUSE if flash else (SMOKE_FUSE if smoke else BOMB_FUSE)
+	bomb.setup(from, target, BOMB_FLIGHT, fuse, BOMB_RADIUS, TeamManager.get_color(team))
 	bomb.exploded.connect(_on_bomb_exploded)
 	get_parent().add_child(bomb)
 

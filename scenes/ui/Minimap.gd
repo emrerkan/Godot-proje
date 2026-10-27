@@ -150,6 +150,21 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			draw_arc(ep, 7.0, 0.0, TAU, 16, Color(c2, pulse), 1.5)
 		status += "◉ %d" % ceili(_powerups.reveal_until["enemies"] - now)
 
+	# TEST (F7): kart (yerdeyse) + kapı konumu
+	if _powerups.get("test_show_objectives") == true:
+		var door: Variant = GameManager.door_instance
+		if door != null and is_instance_valid(door):
+			var dp := _w2m((door as Node3D).global_position)
+			draw_rect(Rect2(dp - Vector2(5, 5), Vector2(10, 10)), UITheme.ACCENT)
+			draw_arc(dp, 10.0, 0.0, TAU, 20, Color(UITheme.ACCENT, pulse), 1.5)
+		var card: Variant = GameManager.card_instance
+		if card != null and is_instance_valid(card) and (card as Node3D).visible:
+			var cp := _w2m((card as Node3D).global_position)
+			var dia := PackedVector2Array([cp + Vector2(0, -6), cp + Vector2(5, 0), cp + Vector2(0, 6), cp + Vector2(-5, 0)])
+			draw_colored_polygon(dia, Color(1.0, 0.9, 0.1))
+			draw_arc(cp, 10.0, 0.0, TAU, 20, Color(1.0, 0.9, 0.1, pulse), 1.5)
+		status += "TEST: ■ KAPI ◆ KART"
+
 	if not status.is_empty():
 		draw_string(font, Vector2(PAD + 4, SIZE.y - PAD - 4), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.9))
 

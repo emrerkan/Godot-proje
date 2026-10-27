@@ -19,13 +19,35 @@ PowerupManager `_set_item_rpc(..., picked_up)` ve `_medic_heal_rpc`. `xp_gained`
 kartında profil seviyesi + XP + **PROFİL** butonu → `_open_profile()` bulanık modal (`_profile_modal`, ESC/✕/dışına tık kapatır)
 içinde `UpgradePage.gd` (oda sekmeleri sadece oyun bulmak için — profil oraya konmayacak, kullanıcı isteği); CharacterSelect kartları yükseltilmiş değer + "SV n". Kurallar/fikir havuzu: docs/PROJE_GECMISI.md §5.
 
+## Ayarlar — `scenes/settings/GameSettings.gd` (class_name, statik, `preload`) + `scenes/ui/SettingsWindow.gd`
+`user://options.cfg` (oyuncu adı ayrı: user://settings.cfg). `DEFAULTS` / `PRESETS` (Düşük-Orta-Yüksek-Ultra). `apply_once` UITheme.apply'dan
+(ölçeklemeden sonra) → `apply_all`: pencere modu/çözünürlük (**sadece kayıtlı dosya varsa**, debug'da ortalama yok — editörün çok
+pencereli testi bozulmasın), vsync, `Engine.max_fps`, root `scaling_3d_scale` (3D ölçek), FXAA/MSAA, gölge atlası (0 = kapalı),
+`content_scale_factor` (UI 0.8-1.0), ses kanalları Master/Music/SFX/UI (yoksa oluşturur — oyunda henüz ses YOK), FpsCounter.
+**Sanal nişangah:** Crosshair görünürken fare CAPTURED, `cursor_pos += relative × mouse_sensitivity`; `aim_screen_position(vp)`
+→ Player._get_aim_target + Crosshair çizimi. Gizlenince fare serbest + `warp_mouse(cursor_pos)`. CameraController.add_trauma × `camera_shake`.
+MenuBackground3D `menu_background` false → asker yok. SettingsWindow: TASLAK + UYGULA/KAPAT/VARSAYILAN, sekmeler GRAFİK/KONTROLLER/SES/OYUN;
+MainMenu sol alt "⚙ AYARLAR" (kapanınca arka plan ayarı değiştiyse yeniden kurar), HUD ESC menüsü "AYARLAR".
+
 ## Autoload sırası (project.godot) — bozulursa parse hatası
 `GameManager` → `TeamManager` → `RoomManager` → `NetworkManager` (RoomManager, NetworkManager'dan ÖNCE)
 
 `scenes/ui/UITheme.gd` (**class_name, statik — autoload DEĞİL**): `UITheme.apply(get_tree())` (Main.gd + MainMenu._ready)
-kodla Theme kurup `root.theme`'e atar (sahne geçişlerinde korunur, tüm sahneler etkilenir). Palet sabitleri
+kodla Theme kurup `root.theme`'e atar (sahne geçişlerinde korunur, tüm sahneler etkilenir). **Ekran ölçekleme de burada**
+(`_apply_scaling`): root `content_scale_mode=CANVAS_ITEMS`, `aspect=EXPAND`, taban `BASE_RESOLUTION` 1152×648 — UI tüm
+çözünürlüklerde orantılı (project.godot'da stretch ayarı YOK, kodla yapılıyor). Yeni UI 1152×648'e göre tasarlanır
+(ekran bu yüksekliğe SIĞMALI — `get_combined_minimum_size()` ile ölç; hedef ekran 1920×1080 = ×1.67).
+**UI içinde 3D gösterirken `SubViewportContainer` KULLANMA** → `scenes/ui/SharpViewport.gd` (TextureRect; SubViewport'u
+gerçek ekran pikselinde çizer, yoksa ölçeklemede bulanık). MenuBackground3D bundan türer, CharacterSelect önizlemeleri kullanır. Palet sabitleri
 (`ACCENT` el feneri sarısı, `SURFACE*`, `TEXT_DIM`...), `style()`/`label()` helper'ları, fontlar (`font_bold/title/caps`).
 Tip varyasyonları: Button → `PrimaryButton`/`GhostButton`/`TabButton`, Label → `TitleLabel`/`CapsLabel`/`DimLabel`.
+**Görsel kimlik v2 "Sis & Cam" (BF1 etkisi) → [docs/SANAT_KITABI.md](docs/SANAT_KITABI.md)** (yeni UI bu kurallara uymalı):
+saydam koyu cam paneller (`SURFACE*` α 0.58-0.7), ince beyaz `BORDER`, beyaz köşe braketi `FRAME` (`add_brackets` varsayılanı;
+draw sinyaline bağlanır, çocuk node yok), beyaz `TEXT`, sekmeler beyaz alt çizgi, cam düğmeler (hover beyazlaşır);
+`ACCENT` kehribar SADECE birincil buton/XP/oda kodu/logo; küçük pah (`RADIUS` 4, `corner_detail=1`), `font_mono` sayılar,
+`team_tag(id)` takım sembolü (●▲■◆). Menü katmanı `MenuOverlay.gdshader` = süzülen duman (fbm) + vinyet + tarama + gren;
+MenuBackground3D: PERFORMANS ayarlı (`RENDER_SCALE` 0.6 bilinear, MSAA yok, hacimsel sis `FOG_DENSITY`=0, sadece fare feneri gölgeli) —
+menü iGPU'da pahalıydı. NetworkManager `_notification`: odakta olmayan pencere `UNFOCUSED_MAX_FPS` 30. Font değişikliği bekliyor (kullanıcı: sonra).
 
 ---
 
@@ -117,7 +139,10 @@ Client'lar sadece `request_*` RPC'leriyle host'a istek yollar.
 
 ## autoload/RoomManager.gd — LAN keşif + oda kodu
 
-- UDP broadcast port 7778, 2s aralık. Host `_send_broadcast()`, client `_receive_broadcasts()`.
+- UDP broadcast, 2s aralık. Host `_send_broadcast()` yayını `DISCOVERY_PORTS` (7778-7781) HEPSİNE yollar; client `_try_bind()`
+  ilk boş portu alır (Windows'ta bir portu tek süreç dinler → aynı PC'de çok pencere), alamazsa `_process` 1 sn'de bir tekrar dener.
+  `refresh()` = liste temizle + dinlemeyi baştan kur (MainMenu "Yenile" → `_on_refresh_pressed`, 2 sn "Taranıyor…").
+  `is_listening()` false ise menüde "DİNLEME PORTU MEŞGUL" yazar. `_receive_broadcasts()`.
   Yayın: room_name/code, has_password, player_count + `NetworkManager.get_room_status()` (team_size, max_players, map_name,
   state "lobby"/"game") → MainMenu oda satırında BEKLEMEDE/OYUNDA + format + harita çipleri, oyundaki odaya KATIL kapalı.
 - Oda kodu: host IPv4 → base-32 7 hane (`_ip_to_code`/`_code_to_ip`), alfabe `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (0/1/I/O yok).
@@ -234,18 +259,31 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   rastgele birini seçer (eski sabit koordinatlar duvara denk geliyordu). `TeamManager.get_spawn_position` ofseti ±0.6 m.
 - `Card.gd` (Area3D): `_on_body_entered` — sadece local oyuncu + ölü değil + kart yok + pickup-blocked değilse →
   host ise `GameManager.handle_card_pickup()` direkt, client ise `request_card_pickup.rpc_id(1,...)`.
-- `Door.gd` (Area3D): aynı patern, `has_card` kontrolü → `handle_card_delivered()` / `request_card_delivery`.
+- **Kapı KİLİDİ (anında teslim YOK):** host `GameManager._process` → `_update_door_unlock`: kart taşıyıcısı kapıya XZ
+  ≤ `DOOR_UNLOCK_RADIUS` (3 m) ise `door_unlock += delta/DOOR_UNLOCK_TIME` (5 s), dışarı çıkar/ölür/kart düşerse **0'a sıfırlanır**;
+  1.0 → `handle_card_delivered` (state IN_GAME guard). `_door_unlock_rpc` (başlangıç/sıfırlanma anında + 10 Hz) → `door_unlock_changed`
+  sinyali → `Door.gd` (görsel: `_init`'te eklenen yer çemberi `spatial_door_zone.gdshader` progress/active, etiket "KİLİT AÇILIYOR %",
+  ışık kehribara döner; ProximityReveal çemberi de yakınlıkla gösterir) + HUD `_unlock_panel` (taşıyıcı KAPIDA KAL / takım KORU /
+  rakip DURDUR + kalan sn). `request_card_delivery` RPC bilerek etkisiz (client kilidi atlayamasın); Door `_on_body_entered` boş
+  (tscn bağlantısı duruyor). Başlangıç güçleri bildirimsiz (`_set_item_rpc(..., silent=true)`).
 - **`PowerupManager.gd`** (Map.tscn → `PowerupManager` Node; RPC'ler bu node path'iyle, tüm peer'larda aynı):
   host `_process` → `SPAWN_INTERVAL` (8-15s) aralıkla `PowerupPoints/Point*` (33 köşe, `tools/maze_corners.py`)
   üzerinde `_spawn_rpc(id, type, pos, lifetime 5-10s)`, `MAX_ACTIVE=3`, ömür dolunca `_despawn_rpc`.
-  Tipler `Type {BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH}` (index sabit — Powerup.gd/Minimap sayıyla kullanır), görünüm/isim `INFO` (HUD/Minimap/Powerup ortak).
+  Tipler `Type {BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE}` (index sabit — Powerup.gd/Minimap sayıyla kullanır), görünüm/isim `INFO` (HUD/Minimap/Powerup ortak).
+  **SMOKE** (sis bombası, test 8): `_throw_bomb(..., flash=false, smoke=true)` → `_bomb_rpc(..., smoke)` → Bomb.gd `is_smoke`
+  fitil (`SMOKE_FUSE`) sonra `SmokeCloud.gd` bırakır (YEREL görsel, her peer): **hacimsel sis FogVolume** (CS:GO tarzı; eski parçacık
+  sürümü 'kare kare' görünüyordu), elipsoid `SMOKE_RADIUS` 6 m × 3.6 m, `DENSITY` 6 (opak), NoiseTexture3D + yavaş dönme,
+  0.9 sn'de patlayıp büyür, `SMOKE_DURATION` 15 s sonra 3.5 s'de seyrelir. Haritanın Environment'ında hacimsel sis normalde
+  KAPALI: ilk bulut açar (global density 0), son bulut `_exit_tree`'de eski ayarlara döndürür (`_active_count`).
+  FogMaterial `emission` (0.45) gri kütlenin karanlıkta seçilmesini sağlar. Ölçüm 1080p: 1 bulut ~-%15 FPS, 2. bulut ~0 ek.
+  Kısa donmalarda kopma olmasın: NetworkManager `_relax_timeout` ENet peer timeout 15-30 s (varsayılan ~5 s).
   **FLASH** bomba gibi atılır (`_throw_bomb(..., flash=true)`, `_bomb_rpc(..., flash)`), hasarsız. Patlama etkileri YEREL:
   `Bomb.exploded(pos, is_flash)` → `_on_bomb_exploded`: bomba → yakınlığa göre `CameraController.add_trauma()` (BOMB_SHAKE_RANGE 16 m);
   flaş → FLASH_RADIUS 11 m + duvar ışını + bakış yönü (sırtı dönük ~%35) → `flashed(strength)` → HUD `_blind_rect` beyaz ekran.
   Flaş atanı ve takımını da kör eder. Hasar/iyileşme görseli: `Player._sync_health` farkı → `flash_fx()` (her peer'da karakter
   kırmızı/yeşil parlar, `_fx_light` layer 20) + local `healed(amount)` → HUD yeşil vinyet; HUD kırmızı vinyet hasar miktarıyla ölçeklenir.
-  **Başlangıç gücü:** `GameManager._begin_actual_game_rpc` (host, sadece maç başı — migration/respawn'da DEĞİL) →
-  `grant_starting_items()` 2 s sonra `STARTING_ITEMS[karakter]` (Tank/Runner Bomba, Visioner Uydu, Sniper Flaş, Medic Sağlık).
+  **Başlangıç gücü:** `GameManager._begin_actual_game_rpc` (TÜM peer'lar, sadece maç başı — migration/respawn'da DEĞİL) →
+  `grant_starting_items()` ANINDA, RPC'siz: herkes `players` listesinden `STARTING_ITEMS[karakter]`'i yerel `_set_item_rpc()` ile yazar (Tank/Runner Bomba, Visioner Uydu, Sniper Flaş, Medic Sağlık).
   **Medic sağlığı:** `_medic_heal_target` — nişana ≤2.5 m ve Medic'e ≤6 m yaralı takım arkadaşı; yoksa yaralıysa kendisi,
   değilse menzildeki en yaralı arkadaş → `_medic_heal_rpc` bildirim. Diğer karakterler sağlığı sadece kendine kullanır.
   Alma: `Powerup.gd` yerel oyuncu ≤1.3 m + slot boşsa `local_touched` → `_request_pickup` (host: mesafe/ölü/slot
@@ -257,7 +295,8 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   üzerindeyse o taşıyıcı sarı elmas+halka ile işaretlenir. ENEMY_SAT → `"enemies"` 6 s (sadece düşmanlar).
   `reveal_until` o takımda; diğer takımlara "konumunuz tespit edildi" uyarısı.
   **TEST MODU** (`TEST_MODE = OS.is_debug_build()` — editörden çalıştırınca açık, export'ta kapalı; host da debug olmalı):
-  F1 Bomba / F2 Sağlık / F3 Uydu / F4 Takım uydusu / F6 Flaş → `_request_test_give` (slotu değiştirir), F5 → `_request_test_spawn`
+  **Test tuşları RAKAM (F tuşu YOK — editör içinde F1/F5/F6/F7/F8 editör kısayolu, F8 oyunu DURDURUR)**: 7 → `test_show_objectives` (yerel: Minimap kart ◆ + kapı ■, ProximityReveal kart/kapıyı mesafesiz gösterir).
+  1 Bomba / 2 Sağlık / 3 Uydu / 4 Takım uydusu / 6 Flaş / 8 Sis → `_request_test_give` (slotu değiştirir), 5 → `_request_test_spawn`
   (önüne rastgele güç, 15 s ömür). HUD skor panelinin altında tuş hatırlatıcısı (`_setup_test_hint`). Sinyaller: `inventory_changed`, `reveal_started`, `notice` (HUD banner).
   Geç katılan client 1.5 s sonra `_request_sync`. HUD envanter slotu oyuncu kartının sağında.
 - **`WallLamps.gd`** (Map.tscn → `WallLamps` Node3D, çocukları `Lamp*` Marker3D — `tools/maze_lamps.py` üretir,

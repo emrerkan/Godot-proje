@@ -34,7 +34,7 @@ Spawn → karanlıkta ilerle / keşif → kartı bul → (takım taşıyıcıyı
 |---|---|
 | Takımlar | 4 takım: Mavi, Kırmızı, Yeşil, Sarı · 2'li – 5'li (oda ayarı) |
 | Kart | Üstüne yürüyünce alınır; taşıyıcı ölünce yere düşer |
-| Kapı | Kart taşıyıcısı girerse maç biter |
+| Kapı | Kart taşıyıcısı kapının kilit çemberinde (3 m) **5 sn** kalırsa maç biter; çıkar/ölürse sayaç sıfırlanır |
 | Dost ateşi | Yok |
 | Respawn | 3 saniye, takımın spawn bölgesinde |
 | Özel güçler | Labirent köşelerinde 5–10 sn beliren güçler, tek slot, Q ile kullanılır |

@@ -60,6 +60,64 @@
     kullanıcı: "orası oda arayıp oyun oynadığımız yer" → sekmelerden çıkarıldı, adı PROFİL oldu. karakter seçimi yükseltilmiş değerleri gösterir, oyun sonu ekranı kazanılan XP'yi gösterir.
     Ayrıntı ve bekleyen fikirler → §5.
 
+17. **Profil konumu:** sekmeden çıkarıldı → sol alttaki operatör kartında PROFİL butonu + modal. Karakter seçiminde seviye rozeti (SV n, n/25).
+18. **UI görsel kimlik yenilemesi "Sodyum & Gece Operasyonu"** ([SANAT_KITABI.md](SANAT_KITABI.md)): soğuk lacivert → grafit zemin,
+    sodyum kehribarı vurgu, fosfor bilgi rengi, pah kırılmış köşeler, köşe braketleri, mono sayılar, takım sembolleri (●▲■◆),
+    menü katmanına tarama çizgisi + gren. Kullanıcı `.claude/` içine bir "Claude Code Game Studios" şablonundan agent/rule/skill
+    indirdi (İngilizce); Türkçe okuma kopyaları `docs/claude_turkce/` altında. Bu şablonun pek çok dosyası projede olmayan
+    yapılara (`design/gdd/`, `production/`, `project.yaml`, diğer agent'lar) bağlı — bkz. `docs/claude_turkce/README.md`.
+
+19. **Tam ekran ölçekleme:** project.godot'da stretch kapalıydı → UI tam ekranda küçük kalıp aralar açılıyordu. `UITheme._apply_scaling`
+    kodla canvas_items + expand, taban 1152×648 (editör açık olduğundan project.godot yerine kod).
+    Kullanıcı: **asıl hedef ekran 1920×1080.** 3D kısımlar (menü arka planı, karakter önizlemeleri) mantıksal boyutta çizilip
+    büyütüldüğü için bulanıktı → `SharpViewport.gd` ile gerçek pikselde. Karakter seçimi 648 yüksekliğe sığmıyordu (690) → sıkılaştırıldı.
+    Hâlâ "bulanık" denince: kesirli ölçek (×1.67) → root `snap_2d_transforms/vertices_to_pixel`, font `HINTING_NORMAL` +
+    `SUBPIXEL_POSITIONING_DISABLED` (UITheme._make_crisp), SharpViewport `TEXTURE_FILTER_NEAREST` (3D önizleme bilinear
+    yeniden örnekleniyordu — en belirgin iyileşme bu). Kullanıcının ekranı 1920×1200, Windows ölçeği %100.
+    Sonraki iyileştirme önerisi: sentetik kalın (embolden) yerine gerçek kalın font dosyaları (OFL lisanslı, ör. Barlow/Rajdhani).
+
+20. **Başlangıç gücü anında + bildirimsiz:** 2 sn bekleme kaldırıldı — her peer `players` listesinden yerel hesaplar (RPC yok),
+    "alındı" bandı gösterilmez ("direkt onlarda doğsun").
+21. **Kapı kilidi:** kartı kapıya getirmek artık anında kazandırmaz. Kapı etrafında 3 m çember; taşıyıcı içinde 5 sn kalmalı,
+    çıkarsa/ölürse sıfırlanır. Herkesin HUD'ında ilerleme çubuğu (rakiplere DURDUR uyarısı). Test: sahte taşıyıcıyla
+    dışarı 0 / içeri 2 sn %40 / çıkınca 0 / toplam 5 sn → oyun biter.
+    Fikir (uygulanmadı): rakip çemberdeyse kilit durur ("kontestli bölge"); ilerleme sıfırlanmak yerine yavaşça geri azalır.
+
+22. **Test F7:** kart + kapı konumunu göster (minimap + 3D, sadece yerel, test modunda).
+23. **"Yenile" odaları göstermiyordu:** aynı PC'de iki pencere → UDP 7778'i ilk pencere tutuyordu, diğerinin bind'ı sessizce
+    başarısızdı; Yenile sadece listeyi yeniden çiziyordu. Çözüm: 7778-7781 port havuzu (host hepsine yayın yapar), başarısız
+    bind tekrar denenir, Yenile dinlemeyi baştan kurar + görsel geri bildirim. Test: 2 dinleyici 7778/7779, ikisi de odayı gördü.
+
+24. **UI v2 "Sis & Cam" (BF1 referansı):** kullanıcı kararları — vurgu "beyaz ana, kehribar az"; tüm ekranlar; **font şimdilik
+    aynı, sonra düşünülecek (NOT ET)**. Saydam cam paneller, beyaz kenar/braket, beyaz sekmeler, cam düğmeler, küçük pah.
+    Sis: ana menü/lobi (hacimsel sis + süzülen duman katmanı) + karakter seçimi duman katmanı; oyun içi **SİS BOMBASI** gücü
+    (kullanıcı: "oyun içerisinde sis özel güç olarak alabilelim"). SANAT_KITABI.md v2'ye güncellendi.
+
+25. **Sis bombası oyunu kasıp oyuncuyu attı:** aşırı overdraw (110 piksel-başı-ışıklı yarı saydam puf + proximity fade) +
+    ilk kullanımda doku üretimi. Düzeltme: 34 büyük puf, köşe başı ışık, fade yok, doku önceden; ENet timeout 15-30 s.
+    Ölçüm (1920×1080, 4 fener + 6 lamba): dumansız 178, 1 bulut 160, 2 bulut 141 FPS. Yeni görsel efektlerde iGPU'yu düşün,
+    FPS'i `scratchpad` benzeri bir ölçüm betiğiyle doğrula.
+
+26. **"F8'e basınca oyun kapandı":** çökme değil — Godot 4.4+ oyunu editörün içinde (Game sekmesi) çalıştırıyor ve **F8 = editörün
+    "projeyi durdur" kısayolu**. Önceki "sis atınca oyundan attı" da büyük ihtimalle buydu. Test tuşları rakamlara taşındı
+    (1-8). KURAL: oyun içi tuşlara F1/F5/F6/F7/F8 (ve F9-F12 debugger) atama.
+
+27. **Sis bombası CS:GO tarzı:** kullanıcı "kare kare görünüyor, daha gerçekçi ve şiddetli olsun" → parçacıklar yerine hacimsel
+    sis (FogVolume): opak, kenarsız, fener içinde saçılır; yarıçap 6 m, 15 sn. Hacimsel sis sadece duman varken açık.
+    Detay sınırı: Godot froxel çözünürlüğü (project setting `rendering/environment/volumetric_fog/volume_size`, varsayılan 64) —
+    artırılırsa daha kabarık kenar ama daha pahalı.
+
+28. **İki pencereyle ana menüde ~1 dk sonra donma:** menü 3D arka planı pahalıydı (1080p iGPU tek pencere 73 FPS; arka plan
+    kapalı 589). İki pencere = GPU tam yük + ısınma (ölçümler de ısındıkça düşüyor). Düzeltme: arka plan `RENDER_SCALE` 0.6
+    (bilinear; FSR/FXAA bu GPU'da daha pahalı çıktı), MSAA kapalı, menüde hacimsel sis kapalı (`FOG_DENSITY` 0), asker fener
+    gölgeleri kapalı, MenuOverlay fbm 4→3 oktav + 2. katman tek oktav, **odakta olmayan pencere 30 FPS** (NetworkManager
+    `_notification`). Sonuç: tam menü ~73 → ~160 FPS (soğukken). Not: FPS ölçümlerini GPU soğukken ve art arda karşılaştırarak yap.
+
+29. **Ayarlar ekranı:** GRAFİK (kalite profili, ekran modu, çözünürlük, VSync, FPS sınırı, 3D çözünürlük ölçeği, kenar
+    yumuşatma, gölgeler, menü 3D arka planı, arayüz ölçeği), KONTROLLER (fare hassasiyeti — sanal nişangahla gerçekten
+    çalışır, ekran sarsıntısı, tuş listesi), SES (4 kanal; oyunda henüz ses yok), OYUN (FPS göster). Ana menü + ESC menüsü.
+    Bekleyen: tuş atama, renk körü modu, ses dosyaları.
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).

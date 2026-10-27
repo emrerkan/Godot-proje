@@ -156,8 +156,35 @@ func _connect_multiplayer_signals() -> void:
 		multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 
+## Pencere odakta değilken (alt-tab, ikinci test penceresi) FPS'i kıs — GPU iki pencereyi tam hızda çizerken ısınıp
+## kilitleniyordu. Ağ/oyun mantığı etkilenmez (sadece çizim hızı). 0 = sınırsız (vsync'e bağlı).
+const UNFOCUSED_MAX_FPS := 30
+const PROFILE_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		Engine.max_fps = UNFOCUSED_MAX_FPS
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		Engine.max_fps = int(PROFILE_SETTINGS.get_value("max_fps"))  # Ayarlar → FPS sınırı
+
+
 func _on_peer_connected(id: int) -> void:
+	_relax_timeout(id)
 	emit_signal("player_connected", id)
+
+
+## ENet varsayılanı ~5 sn cevapsızlıkta bağlantıyı koparır. Sahne yükleme / ilk shader derleme gibi kısa donmalarda
+## oyuncu atılmasın diye süreyi uzatır (gerçek kopma yine en geç PEER_TIMEOUT_MAX_MS'de algılanır).
+const PEER_TIMEOUT_MIN_MS := 15000
+const PEER_TIMEOUT_MAX_MS := 30000
+
+func _relax_timeout(id: int) -> void:
+	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet == null:
+		return
+	var p := enet.get_peer(id)
+	if p:
+		p.set_timeout(32, PEER_TIMEOUT_MIN_MS, PEER_TIMEOUT_MAX_MS)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -178,6 +205,7 @@ func _on_peer_disconnected(id: int) -> void:
 
 func _on_connected_to_server() -> void:
 	_local_id_cache = multiplayer.get_unique_id()  # Peer açıkken cache'le
+	_relax_timeout(1)  # client tarafı: host'a bağlantı da kısa donmalarda kopmasın
 	# joined_server emit etmiyoruz — host _accept_player RPC'si ile onaylayacak
 	register_player.rpc_id(1, _local_id_cache, local_player_name, _pending_password, _saved_team_id, _saved_character, _saved_upgrades)
 

@@ -3,12 +3,18 @@
 ## Patlama yarıçapı yerde halka olarak gösterilir (kaçma şansı).
 ## is_flash: flaş bombası — gri/beyaz gövde, halka yok, patlamada kör edici beyaz flaş (hasar yok).
 ## exploded(pos, is_flash) → PowerupManager yerel etkileri uygular (ekran sarsıntısı, körlük).
+## is_smoke: sis bombası — yere düşünce SmokeCloud.gd (görüşü kapatan duman bulutu) bırakır, hasar/sarsıntı yok.
 
 extends Node3D
 
 signal exploded(pos: Vector3, is_flash: bool)
 
+const SMOKE_CLOUD := preload("res://scenes/world/SmokeCloud.gd")
+
 var is_flash := false
+var is_smoke := false
+var smoke_duration := 12.0
+var smoke_radius := 5.0
 var _from := Vector3.ZERO
 var _to := Vector3.ZERO
 var _flight := 0.5
@@ -40,9 +46,9 @@ func _ready() -> void:
 	s.height = 0.32
 	_ball.mesh = s
 	_ball_mat = StandardMaterial3D.new()
-	_ball_mat.albedo_color = Color(0.55, 0.58, 0.62) if is_flash else Color(0.12, 0.12, 0.12)
+	_ball_mat.albedo_color = Color(0.55, 0.58, 0.62) if is_flash else (Color(0.3, 0.34, 0.3) if is_smoke else Color(0.12, 0.12, 0.12))
 	_ball_mat.emission_enabled = true
-	_ball_mat.emission = Color(0.75, 0.88, 1.0) if is_flash else Color(1.0, 0.35, 0.15)
+	_ball_mat.emission = Color(0.75, 0.88, 1.0) if is_flash else (Color(0.6, 0.65, 0.7) if is_smoke else Color(1.0, 0.35, 0.15))
 	_ball_mat.emission_energy_multiplier = 0.5
 	_ball.material_override = _ball_mat
 	add_child(_ball)
@@ -80,7 +86,7 @@ func _process(delta: float) -> void:
 		_ball.rotation.x += delta * 12.0
 	elif _t < _flight + _fuse:
 		global_position = _to
-		_warn_ring.visible = not is_flash
+		_warn_ring.visible = not is_flash and not is_smoke
 		_warn_ring.global_position = Vector3(_to.x, 0.06, _to.z)
 		# Fitil: giderek hızlanan yanıp sönme
 		var f := (_t - _flight) / _fuse
@@ -96,6 +102,14 @@ func _explode() -> void:
 	_exploded = true
 	_ball.visible = false
 	_warn_ring.visible = false
+	if is_smoke:
+		# Sis: patlama yok — yerde duman bulutu kalır
+		var cloud: Node3D = SMOKE_CLOUD.new()
+		cloud.setup(smoke_radius, smoke_duration)
+		get_parent().add_child(cloud)
+		cloud.global_position = _to
+		queue_free()
+		return
 	exploded.emit(_to, is_flash)
 	if is_flash:
 		_explode_flash()

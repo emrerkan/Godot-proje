@@ -15,6 +15,10 @@ const MENU_BACKGROUND := preload("res://scenes/ui/MenuBackground3D.gd")
 const MENU_OVERLAY := preload("res://scenes/ui/MenuOverlay.gdshader")
 const UPGRADE_PAGE := preload("res://scenes/ui/UpgradePage.gd")
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+const SETTINGS_WINDOW := preload("res://scenes/ui/SettingsWindow.gd")
+const GAME_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
+var _settings_window: Control
+var _menu_bg_setting := true
 
 # Profil (sol alttaki operatör kartı → PROFİL penceresi)
 var _profile_level_lbl: Label
@@ -118,6 +122,25 @@ func _build_ui() -> void:
 
 	_build_password_modal()
 	_build_profile_modal()
+	_settings_window = SETTINGS_WINDOW.new()
+	_settings_window.closed.connect(_on_settings_closed)
+	add_child(_settings_window)
+
+
+## AYARLAR (grafik / kontrol / ses / oyun) — SettingsWindow kendi ESC/kapama mantığını yönetir
+func _open_settings() -> void:
+	_menu_bg_setting = bool(GAME_SETTINGS.get_value("menu_background"))
+	_settings_window.open()
+
+
+func _on_settings_closed() -> void:
+	# "Menü 3D arka planı" değiştiyse arka planı yeniden kur (askerler eklensin/kalksın)
+	if bool(GAME_SETTINGS.get_value("menu_background")) != _menu_bg_setting and _background:
+		var idx := _background.get_index()
+		_background.queue_free()
+		_background = MENU_BACKGROUND.new()
+		add_child(_background)
+		move_child(_background, idx)
 
 
 ## PROFİL penceresi: bulanık arka plan + ortada UpgradePage (karakter başına yükseltme). Dışına tık / ✕ / ESC kapatır.
@@ -145,7 +168,8 @@ func _build_profile_modal() -> void:
 
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(1000, 640)
-	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.97), 16, Color(UITheme.ACCENT, 0.35), 1, 26, 20))
+	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.97), 14, Color(UITheme.ACCENT, 0.35), 1, 26, 20))
+	UITheme.add_brackets(card, UITheme.FRAME, 20)
 	center.add_child(card)
 	_profile_card = card
 	var box := VBoxContainer.new()
@@ -199,39 +223,21 @@ func _build_brand_column() -> Control:
 	col.custom_minimum_size = Vector2(360, 0)
 	col.add_theme_constant_override("separation", 0)
 
-	var eyebrow := UITheme.label("4 TAKIM  ·  2v2 – 5v5  ·  TAKTİK NİŞANCI", 11, UITheme.TEXT_DIM, UITheme.font_caps)
-	col.add_child(eyebrow)
-	col.add_child(_spacer(10))
-
 	col.add_child(UITheme.label("TACTICAL", 34, UITheme.TEXT, UITheme.font_title))
 	var dark := UITheme.label("DARK", 72, UITheme.ACCENT, UITheme.font_title)
 	dark.add_theme_constant_override("line_spacing", -12)
 	col.add_child(dark)
-	col.add_child(_spacer(10))
+	# Logo altı kehribar çizgi (yazısız — kullanıcı isteğiyle etiketler kaldırıldı)
+	var bar := ColorRect.new()
+	bar.color = UITheme.ACCENT
+	bar.custom_minimum_size = Vector2(56, 3)
+	bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	col.add_child(bar)
+	col.add_child(_spacer(14))
 
 	var tagline := UITheme.label("Zifiri karanlıkta yalnızca el fenerin var.\nKartı bul, kapıya ulaştır, takımını zafere taşı.", 14, UITheme.TEXT_DIM)
 	tagline.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(tagline)
-	col.add_child(_spacer(20))
-
-	# Takım renkleri
-	var teams := HBoxContainer.new()
-	teams.add_theme_constant_override("separation", 8)
-	for i in range(4):
-		var c: Color = TeamManager.TEAM_COLORS[i]
-		var chip := PanelContainer.new()
-		chip.add_theme_stylebox_override("panel", UITheme.style(Color(c, 0.12), 12, Color(c, 0.45), 1, 10, 3))
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 6)
-		chip.add_child(row)
-		var dot := Panel.new()
-		dot.custom_minimum_size = Vector2(7, 7)
-		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		dot.add_theme_stylebox_override("panel", UITheme.style(c, 4))
-		row.add_child(dot)
-		row.add_child(UITheme.label(String(TeamManager.TEAM_NAMES[i]).to_upper(), 10, c, UITheme.font_caps))
-		teams.add_child(chip)
-	col.add_child(teams)
 
 	var fill := Control.new()
 	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -239,7 +245,8 @@ func _build_brand_column() -> Control:
 
 	# Oyuncu adı kartı
 	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 14, UITheme.BORDER, 1, 18, 16))
+	card.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 12, UITheme.BORDER, 1, 18, 16))
+	UITheme.add_brackets(card, UITheme.FRAME, 10)
 	col.add_child(card)
 	var card_box := VBoxContainer.new()
 	card_box.add_theme_constant_override("separation", 8)
@@ -276,7 +283,7 @@ func _build_brand_column() -> Control:
 	prof_row.add_child(prof_info)
 	_profile_level_lbl = UITheme.label("", 10, UITheme.TEXT_DIM, UITheme.font_caps)
 	prof_info.add_child(_profile_level_lbl)
-	_profile_xp_lbl = UITheme.label("", 16, UITheme.ACCENT, UITheme.font_bold)
+	_profile_xp_lbl = UITheme.label("", 16, UITheme.ACCENT, UITheme.font_mono)
 	prof_info.add_child(_profile_xp_lbl)
 	var prof_btn := Button.new()
 	prof_btn.text = "PROFİL"
@@ -287,15 +294,28 @@ func _build_brand_column() -> Control:
 	prof_row.add_child(prof_btn)
 	_refresh_profile_summary()
 
-	col.add_child(_spacer(14))
-	col.add_child(UITheme.label("LAN  ·  PORT %d  ·  v0.1" % NetworkManager.PORT, 10, Color(UITheme.TEXT_DIM, 0.6), UITheme.font_caps))
+	col.add_child(_spacer(10))
+	var foot := HBoxContainer.new()
+	col.add_child(foot)
+	var ver := UITheme.label("LAN  ·  PORT %d  ·  v0.1" % NetworkManager.PORT, 10, Color(UITheme.TEXT_DIM, 0.6), UITheme.font_caps)
+	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ver.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	foot.add_child(ver)
+	var settings_btn := Button.new()
+	settings_btn.text = "⚙  AYARLAR"
+	settings_btn.theme_type_variation = "GhostButton"
+	settings_btn.focus_mode = Control.FOCUS_NONE
+	settings_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	settings_btn.pressed.connect(_open_settings)
+	foot.add_child(settings_btn)
 	return col
 
 
 func _build_main_panel() -> Control:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 16, UITheme.BORDER, 1, 0, 0))
+	panel.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 14, UITheme.BORDER, 1, 0, 0))
+	UITheme.add_brackets(panel, UITheme.FRAME, 18)
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 0)
@@ -377,7 +397,7 @@ func _build_browse_page() -> Control:
 	refresh.text = "↻  Yenile"
 	refresh.theme_type_variation = "GhostButton"
 	refresh.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	refresh.pressed.connect(_refresh_room_list)
+	refresh.pressed.connect(_on_refresh_pressed.bind(refresh))
 	header.add_child(refresh)
 
 	var stack := Control.new()
@@ -476,7 +496,7 @@ func _build_code_page() -> Control:
 	_code_input.placeholder_text = "ABCD234"
 	_code_input.max_length = 15
 	_code_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_code_input.add_theme_font_override("font", UITheme.font_title)
+	_code_input.add_theme_font_override("font", UITheme.font_mono)
 	_code_input.add_theme_font_size_override("font_size", 28)
 	_code_input.text_changed.connect(_on_code_text_changed)
 	_code_input.text_submitted.connect(func(_t: String) -> void: _on_join_code_pressed())
@@ -758,13 +778,28 @@ func _show_tab(which: String) -> void:
 #  Odalar
 # ─────────────────────────────────────────────
 
+## Yenile: dinlemeyi baştan kurar (liste temizlenir, odalar yayın aralığı ≤2 sn içinde tekrar gelir) + görsel geri bildirim
+func _on_refresh_pressed(btn: Button) -> void:
+	RoomManager.refresh()
+	_refresh_room_list()
+	btn.disabled = true
+	btn.text = "↻  Taranıyor…"
+	await get_tree().create_timer(2.2).timeout
+	if is_instance_valid(btn):
+		btn.disabled = false
+		btn.text = "↻  Yenile"
+
+
 func _refresh_room_list() -> void:
 	for child in _room_list.get_children():
 		child.queue_free()
 	var rooms := RoomManager.discovered_rooms
 	_empty_state.visible = rooms.is_empty()
 	_room_scroll.visible = not rooms.is_empty()
-	_room_count_lbl.text = "TARANIYOR..." if rooms.is_empty() else "%d ODA BULUNDU" % rooms.size()
+	if not RoomManager.is_listening():
+		_room_count_lbl.text = "DİNLEME PORTU MEŞGUL · TEKRAR DENENİYOR..."
+	else:
+		_room_count_lbl.text = "TARANIYOR..." if rooms.is_empty() else "%d ODA BULUNDU" % rooms.size()
 	for code: String in rooms:
 		_room_list.add_child(_build_room_row(code, rooms[code]))
 

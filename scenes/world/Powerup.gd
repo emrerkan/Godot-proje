@@ -69,6 +69,11 @@ func _ready() -> void:
 			c.bottom_radius = 0.14
 			c.height = 0.5
 			core.mesh = c
+		5:  # sis bombası — kapsül (duman kutusu)
+			var cap := CapsuleMesh.new()
+			cap.radius = 0.15
+			cap.height = 0.55
+			core.mesh = cap
 		_:  # takım uydusu — halka
 			var t := TorusMesh.new()
 			t.inner_radius = 0.18

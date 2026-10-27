@@ -23,7 +23,9 @@ var _noise := FastNoiseLite.new()
 
 
 func add_trauma(amount: float) -> void:
-	_trauma = clampf(_trauma + amount, 0.0, 1.0)
+	# Ayarlar → Kontroller → Ekran sarsıntısı (0 = kapalı)
+	var mult := float(preload("res://scenes/settings/GameSettings.gd").get_value("camera_shake"))
+	_trauma = clampf(_trauma + amount * mult, 0.0, 1.0)
 
 
 ## _physics_process'ten — kamera physics interpolation açık, dönüş fizik karesinde değişmeli

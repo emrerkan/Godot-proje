@@ -5,7 +5,7 @@
 ##  - Fare: yukarıdan fareye bakan spot ışık (eski 2D el feneri efektinin 3D hali). `light_color` lobide takım rengine döner.
 ## Kullanım: MainMenu/Lobby `preload(...).new()` → add_child (en altta), üstüne MenuOverlay.gdshader vinyeti.
 
-extends SubViewportContainer
+extends "res://scenes/ui/SharpViewport.gd"  # 3D'yi ekranın gerçek çözünürlüğünde çizer (1920×1080'de net)
 
 const SURVIVALIST := preload("res://scenes/player/SurvivalistModel.tscn")
 const UPPER_BODY := preload("res://scenes/player/UpperBodyLayer.gd")
@@ -20,6 +20,8 @@ const WALK_SPEED := Vector2(0.85, 1.35)    # m/s
 const WALK_ANIM_REF := 1.3                 # Walk animasyonu bu hızda 1.0x (ayak kaymasın)
 const TURN_RATE := 1.6                     # rad/s
 const SEPARATION := 2.2                    # bu mesafeden yakın askerler birbirinden uzaklaşır
+const FOG_DENSITY := 0.0                   # hacimsel sis (0 = kapalı). Açınca ~%10 FPS; menü dumanı MenuOverlay'den geliyor
+const RENDER_SCALE := 0.6                  # arka plan 3D çözünürlüğü (1 = tam)
 
 ## Fare el fenerinin rengi (Lobby takım rengine göre ayarlar)
 var light_color: Color = UITheme.ACCENT:
@@ -39,15 +41,16 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	# Ofsetler de sıfırlanmalı — set_anchors_preset ofsetleri koruyup boyutu 0 bırakıyordu
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	stretch = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_rng.randomize()
 
-	_vp = SubViewport.new()
+	_vp = viewport  # SharpViewport'un SubViewport'u (boyutu ekran pikseline göre otomatik)
 	_vp.own_world_3d = true
-	_vp.msaa_3d = Viewport.MSAA_2X
-	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	add_child(_vp)
+	# PERFORMANS (ölçüm 1080p, iGPU): tam menü 73 FPS, 3D arka plan kapalıyken 589 → arka plan pahalı.
+	# Duman/vinyet altında kaldığı için düşük çözünürlük fark edilmez; MSAA gereksiz.
+	_vp.msaa_3d = Viewport.MSAA_DISABLED
+	_vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR  # FSR/FXAA bu iGPU'da pahalı çıktı (160 → 80-95 FPS)
+	_vp.scaling_3d_scale = RENDER_SCALE
 
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
@@ -59,6 +62,12 @@ func _ready() -> void:
 	env.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.environment.glow_enabled = true
 	env.environment.glow_intensity = 0.5
+	# Hacimsel sis: fener ve fare ışığı sisin içinde huzme olarak görünür (BF1 dumanlı menü havası)
+	env.environment.volumetric_fog_enabled = FOG_DENSITY > 0.0
+	env.environment.volumetric_fog_density = FOG_DENSITY
+	env.environment.volumetric_fog_albedo = Color(0.78, 0.82, 0.88)
+	env.environment.volumetric_fog_anisotropy = 0.6   # ışık yönünde daha parlak (huzme)
+	env.environment.volumetric_fog_length = 40.0
 	_vp.add_child(env)
 
 	var floor_mesh := MeshInstance3D.new()
@@ -85,8 +94,10 @@ func _ready() -> void:
 	_mouse_light.shadow_enabled = true
 	_vp.add_child(_mouse_light)
 
-	for i in SOLDIER_COUNT:
-		_spawn_soldier(i)
+	# Ayarlar → Grafik → "Menü 3D arka planı" kapalıysa askerler yok (en pahalı kısım) — zemin + fare feneri kalır
+	if bool(preload("res://scenes/settings/GameSettings.gd").get_value("menu_background")):
+		for i in SOLDIER_COUNT:
+			_spawn_soldier(i)
 
 
 func _spawn_soldier(i: int) -> void:
@@ -122,7 +133,7 @@ func _spawn_soldier(i: int) -> void:
 	fl.spot_range = 11.0
 	fl.spot_angle = 26.0
 	fl.spot_attenuation = 0.7
-	fl.shadow_enabled = i < 3  # birkaçı gölgeli yeter (performans)
+	fl.shadow_enabled = false  # performans — sadece fare feneri gölge atar
 	root.add_child(fl)
 	# Gövde ışığı (oyundaki BodyLight gibi) — karanlıkta asker silüeti seçilsin
 	var body := OmniLight3D.new()
@@ -148,6 +159,7 @@ func _random_target() -> Vector3:
 
 
 func _process(delta: float) -> void:
+	super(delta)  # SubViewport boyutunu ekran pikseline eşitle
 	_update_mouse_light(delta)
 	for w: Dictionary in _walkers:
 		_update_soldier(w, delta)
@@ -156,7 +168,7 @@ func _process(delta: float) -> void:
 func _update_mouse_light(delta: float) -> void:
 	if _cam == null:
 		return
-	var mp := get_local_mouse_position()
+	var mp := to_viewport(get_local_mouse_position())
 	var from := _cam.project_ray_origin(mp)
 	var dir := _cam.project_ray_normal(mp)
 	if absf(dir.y) > 0.001:

@@ -5,8 +5,13 @@
 ## - Atışta kısa "tepme" açılması (ammo_changed'de mermi azalınca)
 ## - Şarjör değişirken etrafında dolan halka (weapon.reload_time), mermi bitince kırmızı
 ## Görünmediği durumlarda (menü, sohbet, ölüm, oyun sonu) normal fare imleci geri gelir.
+## SANAL NİŞANGAH (fare hassasiyeti için): görünürken fare kilitlenir (CAPTURED), nişangah fare hareketi ×
+## `mouse_sensitivity` kadar kayar (GameSettings.cursor_pos). Player._get_aim_target bu konumu kullanır.
+## Gizlenince fare serbest kalır ve sistem imleci nişangahın olduğu yere taşınır (zıplama olmasın).
 
 extends Control
+
+const SETTINGS := preload("res://scenes/settings/GameSettings.gd")
 
 const MIN_GAP := 4.0
 const MAX_GAP := 70.0
@@ -32,7 +37,28 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	SETTINGS.cursor_active = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _input(event: InputEvent) -> void:
+	if SETTINGS.cursor_active and event is InputEventMouseMotion:
+		var rel: Vector2 = (event as InputEventMouseMotion).relative
+		var rect := get_viewport().get_visible_rect()
+		SETTINGS.cursor_pos = (SETTINGS.cursor_pos + rel * float(SETTINGS.get_value("mouse_sensitivity"))).clamp(
+			rect.position, rect.end - Vector2.ONE)
+
+
+func _set_cursor_active(on: bool) -> void:
+	if on == SETTINGS.cursor_active:
+		return
+	if on:
+		SETTINGS.cursor_pos = get_viewport().get_mouse_position()
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	else:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		get_viewport().warp_mouse(SETTINGS.cursor_pos)
+	SETTINGS.cursor_active = on
 
 
 func _on_local_player_spawned(player: Node) -> void:
@@ -57,7 +83,7 @@ func _process(delta: float) -> void:
 	var alive: bool = _player != null and is_instance_valid(_player) and not _player.is_dead
 	var show := allowed and alive and not ChatBox.is_typing
 	visible = show
-	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN if show else Input.MOUSE_MODE_VISIBLE
+	_set_cursor_active(show and DisplayServer.window_is_focused())
 	if not show:
 		return
 
@@ -70,7 +96,7 @@ func _process(delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam and _player.current_weapon:
 		var p_screen := cam.unproject_position((_player as Node3D).global_position)
-		var dist := p_screen.distance_to(get_local_mouse_position())
+		var dist := p_screen.distance_to(SETTINGS.aim_screen_position(get_viewport()))
 		target = dist * tan(deg_to_rad(float(_player.current_weapon.spread_degrees)))
 	_gap = lerpf(_gap, clampf(target, MIN_GAP, MAX_GAP), 1.0 - exp(-14.0 * delta))
 	queue_redraw()
@@ -79,7 +105,7 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	if not visible:
 		return
-	var c := get_local_mouse_position()
+	var c := SETTINGS.aim_screen_position(get_viewport()) - global_position
 	var col := UITheme.DANGER if _empty else UITheme.ACCENT
 	var g := _gap + _kick
 	var outline := Color(0, 0, 0, 0.75)

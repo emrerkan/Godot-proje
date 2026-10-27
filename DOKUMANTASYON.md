@@ -56,7 +56,7 @@ oyuncular el feneriyle görür. Haritada bir **kart** ve bir **kapı** vardır: 
 | Enter / T / Tab | Sohbet aç-gönder / takım sohbeti / kanal değiştir |
 | TAB | Skor tablosu |
 | ESC | Duraklatma menüsü |
-| F1–F5 | Test modu (sadece debug build) |
+| 1–8 | Test modu (sadece debug build) — F tuşları editör kısayolu olduğu için kullanılmaz |
 
 ---
 
@@ -245,7 +245,9 @@ animasyonu, ışıklar/çarpışma kapanır), kart taşıyıcıysa kart düşer,
 ### Kart ve kapı
 - Host oyun başında kartı ve kapıyı rastgele işaretçilere koyar.
 - Kart oyuncu üstüne yürüyünce alınır; taşıyıcı ölünce olduğu yere düşer.
-- Kart taşıyıcısı kapıya girerse takımı kazanır.
+- **Kapı kilidi:** Kart taşıyıcısı kapının çevresindeki 3 m'lik çemberde **5 saniye** kalırsa kilit açılır ve takımı kazanır.
+  Çemberden çıkarsa, ölürse ya da kartı düşürürse ilerleme sıfırlanır. Kilit açılırken herkesin ekranında ilerleme ve kalan süre
+  görünür (rakiplere "DURDUR" uyarısı). Hesap host'ta (`GameManager._update_door_unlock`).
 - `ProximityReveal`: kart ve kapının ışığı/etiketi sadece yakına gelince görünür (kart 12→5 m, kapı 16→7 m).
   Uzaktan yeri belli olmaz, aranması gerekir.
 
@@ -258,6 +260,7 @@ Oyuncunun **tek slotluk** envanteri vardır; dolu slotla yeni güç alınamaz. �
 | Bomba | Nişan yönüne en fazla 12 m atılır, 4 m yarıçap, merkezde 75 → kenarda ~%35 hasar. Duvar arkası, dost ve atan etkilenmez. Çömelme korumaz. Yakındakilerin ekranı mesafeye göre sarsılır (16 m'ye kadar). |
 | Flaş bombası | Bomba gibi atılır, hasarsız. 11 m içinde ve görüş hattındaki herkesi (atan ve takımı dahil) kör eder: ekran beyazlar, sonra söner. Flaşa bakan tam, sırtı dönük ~%35 etkilenir. |
 | Sağlık | +60 can, ekran kenarı yeşil parlar, karakter herkese yeşil parıldar |
+| Sis bombası | Bomba gibi atılır, yere düşünce CS:GO tarzı yoğun duman bulutu patlar (hacimsel sis, 6 m yarıçap, 15 sn + seyrelme). Hasarsız; içindekileri ve arkasındakileri tamamen gizler, el feneri ışığı içinde dağılır. |
 | Uydu | 8 sn minimapte **tüm oyuncular** görünür; kart ve kapı görünmez, ama kart birinin üzerindeyse taşıyıcı işaretlenir |
 | Takım uydusu | 6 sn sadece düşmanlar görünür |
 
@@ -338,7 +341,7 @@ Farklı iskelette retarget araçları uyarlanmalıdır. Detaylı teknik şartlar
 
 ## 14. Test ve hata ayıklama
 
-- **Test modu** (debug build'de otomatik açık): F1 Bomba, F2 Sağlık, F3 Uydu, F4 Takım uydusu, F6 Flaş bombası verir; F5 önüne rastgele güç doğurur.
+- **Test modu** (debug build'de otomatik açık): 1 Bomba, 2 Sağlık, 3 Uydu, 4 Takım uydusu, 6 Flaş, 8 Sis bombası verir; 5 önüne rastgele güç doğurur; 7 kart ve kapının yerini gösterir. (F tuşları kullanılmaz: oyun editör içinde çalışırken F8 oyunu durdurur.)
 - **Çoklu oyuncu testi:** Aynı makinede birden fazla Godot penceresi açılıp `localhost` / oda koduyla bağlanılabilir.
   Host migration 3 süreçle (host + 2 client) doğrulanmıştır.
 - Headless script testi: `Godot.exe --path . --script <script.gd>`.

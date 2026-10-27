@@ -45,7 +45,7 @@ func _build() -> void:
 	var xp_box := VBoxContainer.new()
 	xp_box.add_theme_constant_override("separation", 0)
 	xp_chip.add_child(xp_box)
-	_xp_lbl = UITheme.label("", 20, UITheme.ACCENT, UITheme.font_bold)
+	_xp_lbl = UITheme.label("", 20, UITheme.ACCENT, UITheme.font_mono)
 	_xp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	xp_box.add_child(_xp_lbl)
 	_level_lbl = UITheme.label("", 10, UITheme.TEXT_DIM, UITheme.font_caps)

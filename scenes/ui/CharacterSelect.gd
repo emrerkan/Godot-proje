@@ -9,6 +9,7 @@
 extends Control
 
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+const SHARP_VIEWPORT := preload("res://scenes/ui/SharpViewport.gd")
 
 const CHARACTERS: Array[Dictionary] = [
 	{"name": "Tank",     "role": "Ön Hat",       "color": Color(0.9,  0.35, 0.25), "stats": {"Can": 150.0, "Hız": 5.5,  "Hasar": 22.0,  "Menzil": 45.0}},
@@ -21,14 +22,15 @@ const CHARACTERS: Array[Dictionary] = [
 const STAT_ORDER: Array[String] = ["Can", "Hız", "Hasar", "Menzil"]
 const STAT_MAX: Dictionary  = {"Can": 150.0, "Hız": 13.0, "Hasar": 120.0, "Menzil": 130.0}
 
-const COL_BG_TOP     := Color(0.085, 0.095, 0.15)
-const COL_BG_BOTTOM  := Color(0.015, 0.015, 0.03)
-const COL_CARD       := Color(0.075, 0.08, 0.115)
-const COL_CARD_HOVER := Color(0.105, 0.115, 0.165)
-const COL_TEXT       := Color(0.92, 0.93, 0.96)
-const COL_TEXT_DIM   := Color(0.55, 0.57, 0.65)
+# Renkler ortak paletten (UITheme — "Sodyum & Gece Operasyonu")
+const COL_BG_TOP     := Color(0.13, 0.145, 0.16)     # sisli soğuk gri (v2 "Sis & Cam")
+const COL_BG_BOTTOM  := Color(0.02, 0.025, 0.03)
+const COL_CARD       := Color(0.06, 0.07, 0.08, 0.62)  # saydam cam kart
+const COL_CARD_HOVER := Color(0.13, 0.145, 0.16, 0.72)
+const COL_TEXT       := UITheme.TEXT
+const COL_TEXT_DIM   := UITheme.TEXT_DIM
 const COL_TRACK      := Color(1, 1, 1, 0.07)
-const CARD_RADIUS := 14
+const CARD_RADIUS := 12
 
 var _local_selected: String = ""
 var _confirmed: bool = false
@@ -65,7 +67,7 @@ func _process(delta: float) -> void:
 
 
 func _init_fonts() -> void:
-	var base := ThemeDB.fallback_font
+	var base := UITheme.font_regular  # keskin ayarlı (hinting) ortak font
 	_font_title = FontVariation.new()
 	_font_title.base_font = base
 	_font_title.variation_embolden = 0.9
@@ -122,16 +124,28 @@ func _build_ui() -> void:
 	glow.offset_bottom = 160
 	add_child(glow)
 
+	# Süzülen duman katmanı (ana menüyle aynı shader — "Sis & Cam" kimliği), kartlar saydam olduğu için arkadan sezilir
+	var smoke := ColorRect.new()
+	smoke.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	smoke.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sm := ShaderMaterial.new()
+	sm.shader = preload("res://scenes/ui/MenuOverlay.gdshader")
+	sm.set_shader_parameter("fog_strength", 0.3)
+	sm.set_shader_parameter("dim_amount", 0.0)
+	sm.set_shader_parameter("vignette_strength", 0.55)
+	smoke.material = sm
+	add_child(smoke)
+
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side: String in ["left", "right"]:
 		margin.add_theme_constant_override("margin_" + side, 40)
-	margin.add_theme_constant_override("margin_top", 22)
-	margin.add_theme_constant_override("margin_bottom", 18)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
 	add_child(margin)
 
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 16)
+	root.add_theme_constant_override("separation", 12)
 	margin.add_child(root)
 
 	root.add_child(_build_header(team_id))
@@ -175,12 +189,7 @@ func _build_header(team_id: int) -> Control:
 	chip_row.add_theme_constant_override("separation", 8)
 	chip.add_child(chip_row)
 
-	var dot := Panel.new()
-	dot.custom_minimum_size = Vector2(8, 8)
-	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	dot.add_theme_stylebox_override("panel", _rounded_style(_team_color, 4))
-	chip_row.add_child(dot)
-	chip_row.add_child(_make_label("%s TAKIM" % TeamManager.get_team_name(team_id).to_upper(), 12, _team_color, _font_caps))
+	chip_row.add_child(_make_label("%s TAKIM" % UITheme.team_tag(team_id), 12, _team_color, _font_caps))
 
 	var chip_wrap := CenterContainer.new()
 	chip_wrap.add_child(chip)
@@ -213,7 +222,7 @@ func _build_footer() -> Control:
 	_status_lbl = _make_label("", 12, COL_TEXT_DIM, _font_caps)
 	progress_box.add_child(_status_lbl)
 
-	_progress = _make_bar(Color(0.85, 0.87, 0.95), 4)
+	_progress = _make_bar(UITheme.ACCENT, 4)
 	progress_box.add_child(_progress)
 
 	_confirm_btn = Button.new()
@@ -232,7 +241,7 @@ func _build_footer() -> Control:
 	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	action_row.add_child(hint)
 
-	_style_confirm_button(Color(0.4, 0.42, 0.5))
+	_style_confirm_button(Color(0.42, 0.45, 0.42))
 	return footer
 
 
@@ -253,7 +262,7 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 
 	# ── 3D önizleme (üst köşeleri yuvarlak maske ile kırpılır) ──
 	var mask := Panel.new()
-	mask.custom_minimum_size = Vector2(0, 190)
+	mask.custom_minimum_size = Vector2(0, 150)  # ekran 1152×648 tabana sığsın (UITheme.BASE_RESOLUTION)
 	mask.clip_children = CanvasItem.CLIP_CHILDREN_ONLY
 	var mask_style := _rounded_style(Color.WHITE, 0)
 	mask_style.corner_radius_top_left  = CARD_RADIUS - 2
@@ -261,20 +270,18 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	mask.add_theme_stylebox_override("panel", mask_style)
 	vbox.add_child(mask)
 
-	var svc := SubViewportContainer.new()
-	svc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	svc.stretch = true
+	# SharpViewport: önizlemeyi ekranın gerçek piksel çözünürlüğünde çizer (UI ölçeklenince bulanıklaşmasın)
+	var svc: TextureRect = SHARP_VIEWPORT.new()
+	svc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	svc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mask.add_child(svc)
 
-	var sv := SubViewport.new()
-	sv.size = Vector2i(196, 190)
+	var sv: SubViewport = svc.viewport
 	sv.transparent_bg = false
 	sv.msaa_3d = Viewport.MSAA_2X
-	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	# Her kartın kendi 3D dünyası — yoksa 5 önizleme aynı World3D'yi paylaşır ve
 	# tüm karakterler (ve ışıkları) her kartta üst üste görünür
 	sv.own_world_3d = true
-	svc.add_child(sv)
 
 	var preview := _build_preview_world(sv, char_name, char_color)
 
@@ -692,7 +699,7 @@ func _update_card_visuals() -> void:
 	else:
 		_confirm_btn.disabled = _local_selected.is_empty()
 		_confirm_btn.text = "ONAYLA" if _local_selected.is_empty() else "%s İLE ONAYLA" % _local_selected.to_upper()
-	_style_confirm_button(_get_char_color(_local_selected) if not _local_selected.is_empty() else Color(0.4, 0.42, 0.5))
+	_style_confirm_button(_get_char_color(_local_selected) if not _local_selected.is_empty() else Color(0.42, 0.45, 0.42))
 
 
 # ─────────────────────────────────────────────
@@ -710,6 +717,7 @@ func _rounded_style(bg: Color, radius: int) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = bg
 	s.set_corner_radius_all(radius)
+	s.corner_detail = 1  # UITheme şekil dili: pah kırılmış köşe
 	s.anti_aliasing = true
 	return s
 
