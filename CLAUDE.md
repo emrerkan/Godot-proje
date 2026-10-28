@@ -265,7 +265,11 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). Orman/Çöl:
   `Canopy/Needles/Frond` yerel oyuncuya 6 m içindeyse `transparency` 0.78. Bitince `map_ready` → GameManager `_wait_map_ready()`
   (oyuncu/kart/kapı doğmadan önce; Labirent'te sinyal yok → beklemez). Kurulum 0.8-2.9 s. `_get_marker_positions` artık Node3D +
-  `find_child` kabul eder. Player nişan düzlemi = oyuncu y + 0.9 (engebeli arazi). Kapı tabelaları dekor (hepsi aynı, ipucu vermez).
+  `find_child` kabul eder. Player nişan düzlemi = oyuncu y + 0.9 (engebeli arazi).
+  **Basamak:** Player tscn'deki BoxShape (keskin alt kenar 10 cm'ye takılıyordu) `_use_capsule_shape()` ile runtime'da kapsül
+  (r 0.35, h 1.8); `_try_step_up` (move_and_slide öncesi, `test_move` ile) `STEP_HEIGHT` 0.42 m'ye kadar kenara çıkarır.
+  **Adil kart/kapı:** `_spawn_card_and_door` → `_fair_points`: spawn'a `DOOR_MIN_FROM_SPAWN` 25 m / `CARD_MIN_FROM_SPAWN` 15 m'den
+  yakın aday elenir (hiç kalmazsa en uzaklar). Kapı tabelaları dekor (hepsi aynı, ipucu vermez).
 - `CardPoints` / `DoorPoints` (Map.tscn Marker3D'leri): `GameManager._spawn_card_and_door()` → `_get_marker_positions()`
   rastgele birini seçer (eski sabit koordinatlar duvara denk geliyordu). `TeamManager.get_spawn_position` ofseti ±0.6 m.
 - `Card.gd` (Area3D): `_on_body_entered` — sadece local oyuncu + ölü değil + kart yok + pickup-blocked değilse →

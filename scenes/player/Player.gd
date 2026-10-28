@@ -152,6 +152,7 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	team_id = p_team_id
 	is_local = (p_peer_id == NetworkManager.get_local_id())
 	floor_snap_length = 0.3  # Zemin tespitini güvenilir yapar, hız dalgalanmasını engeller
+	_use_capsule_shape()
 	health = max_health
 
 	# FBX karakter mesh'ini bul
@@ -489,6 +490,7 @@ func _handle_local_input(delta: float) -> void:
 	else:
 		velocity.y -= GRAVITY * delta
 
+	_try_step_up(Vector3(velocity.x, 0.0, velocity.z))
 	move_and_slide()
 
 	# Mouse hedefine bak — gövde, silah ve el feneri birlikte döner (asker gibi hedefe yönelme)
@@ -515,6 +517,50 @@ func _handle_local_input(delta: float) -> void:
 		_sync_timer = 0.0
 		if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0:
 			_broadcast_state.rpc(global_position, rotation.y, move_mode)
+
+
+## Çarpışma şekli: tscn'deki kutu (0.8×1.8×0.8) keskin alt kenarıyla 10 cm'lik zemin farkına bile takılıyordu
+## (içe aktarılan haritalar: yükseltilmiş zeminler 0.10-0.15 m, bordür/köprü 0.30-0.35 m). Kapsülün yuvarlak altı
+## küçük farkların üstünden kayar; büyükleri _try_step_up çıkar. Editör açık olduğu için tscn değil kod.
+const BODY_RADIUS := 0.35
+const BODY_HEIGHT := 1.8
+const STEP_HEIGHT := 0.42          # bu yüksekliğe kadar kenara otomatik basar (kütük 0.75 m, sandık vb. engel kalır)
+const STEP_PROBE := 0.3            # önde bu mesafede engel var mı (m)
+
+func _use_capsule_shape() -> void:
+	if collision_shape.shape is CapsuleShape3D:
+		return
+	var cap := CapsuleShape3D.new()
+	cap.radius = BODY_RADIUS
+	cap.height = BODY_HEIGHT
+	collision_shape.shape = cap
+	collision_shape.position = Vector3(0, BODY_HEIGHT * 0.5, 0)
+
+
+## Basamak çıkma: önde alçak bir kenar varsa (alt seviyede tıkalı, STEP_HEIGHT yukarıda boş) gövdeyi kenarın
+## üstüne kaldırır; ardından move_and_slide ileri taşır. Duvar (yukarıda da tıkalı) ve tavan kontrolü var.
+func _try_step_up(horizontal_velocity: Vector3) -> void:
+	if horizontal_velocity.length_squared() < 0.01 or not is_on_floor():
+		return
+	var probe := horizontal_velocity.normalized() * STEP_PROBE
+	var t := global_transform
+	if not test_move(t, probe):
+		return                                   # önü boş
+	var up := Vector3(0, STEP_HEIGHT, 0)
+	if test_move(t, up):
+		return                                   # tavan
+	var t_up := t.translated(up)
+	if test_move(t_up, probe):
+		return                                   # yukarıda da tıkalı → gerçek duvar
+	# Kenarın tam yüksekliği: yukarı + ileri konumdan aşağı in, nereye oturuyorsa o kadar kaldır
+	var col := KinematicCollision3D.new()
+	var t_fwd := t_up.translated(probe)
+	if not test_move(t_fwd, -up, col):
+		return                                   # önde zemin yok (çukur) — basamak değil
+	var rise := STEP_HEIGHT - col.get_travel().length()
+	if rise <= 0.02:
+		return
+	global_position.y += rise + 0.01
 
 
 ## Çömelme (Ctrl basılı, en fazla CROUCH_MAX_TIME) önceliklidir; sonra koşu (Shift + hareket, SPRINT_MAX_TIME).

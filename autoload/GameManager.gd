@@ -217,11 +217,40 @@ func _request_active_players() -> void:
 func _spawn_card_and_door() -> void:
 	# Aday noktalar haritada (Map.tscn → CardPoints / DoorPoints Marker3D'leri) — labirent duvarına denk gelmesin diye
 	# rastgele koordinat yerine editörde yerleştirilmiş noktalardan biri seçilir.
-	var card_points := _get_marker_positions("CardPoints")
-	var door_points := _get_marker_positions("DoorPoints")
+	# Adillik: bir takımın doğma noktasına çok yakın aday elenir (Çöl haritasında kapı sarı takımın dibinde çıkıyordu).
+	# Hiç aday kalmazsa en uzak olanlar kullanılır (haritada her zaman bir kart/kapı olsun).
+	var card_points := _fair_points(_get_marker_positions("CardPoints"), CARD_MIN_FROM_SPAWN)
+	var door_points := _fair_points(_get_marker_positions("DoorPoints"), DOOR_MIN_FROM_SPAWN)
 	var card_pos: Vector3 = card_points.pick_random() if not card_points.is_empty() else Vector3.ZERO
 	var door_pos: Vector3 = door_points.pick_random() if not door_points.is_empty() else Vector3(-44.5, 0.0, -34.5)
 	_spawn_objects_rpc.rpc(card_pos, door_pos)
+
+
+const DOOR_MIN_FROM_SPAWN := 25.0   # kapı: hiçbir takımın spawn'ına bundan yakın olmasın (m)
+const CARD_MIN_FROM_SPAWN := 15.0
+
+func _fair_points(points: Array[Vector3], min_dist: float) -> Array[Vector3]:
+	var spawns: Array[Vector3] = []
+	for t: int in TeamManager.spawn_points:
+		for p: Vector3 in TeamManager.spawn_points[t]:
+			spawns.append(p)
+	if spawns.is_empty() or points.is_empty():
+		return points
+	var out: Array[Vector3] = []
+	var best_d := -1.0
+	var best: Array[Vector3] = []
+	for p in points:
+		var d := INF
+		for s in spawns:
+			d = minf(d, Vector2(p.x - s.x, p.z - s.z).length())
+		if d >= min_dist:
+			out.append(p)
+		if d > best_d + 0.5:
+			best_d = d
+			best = [p]
+		elif absf(d - best_d) <= 0.5:
+			best.append(p)
+	return out if not out.is_empty() else best
 
 
 func _get_marker_positions(group_name: String) -> Array[Vector3]:

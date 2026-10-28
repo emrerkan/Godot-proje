@@ -124,6 +124,10 @@
     Harita 1/3'te kart kaidesi/kapı tabelası YOK (rehber var diyor), Pad_Team çarpışma almalı, 12 örnek kart modeli gizlenmeli.
     Bekleyen: haritalara özel ortam (glow ile neon parlaması, renk tonu), minimap kare haritalarda hafif basık (200×148 sabit).
 
+31. **Yerden hafif yüksek zemine çıkamama** (Elçilik, Yeraltı, Orman): oyuncu çarpışması kutuydu → kapsül + basamak çıkma
+    (0.42 m'ye kadar; 0.75 m kütük engel kalır). Test: 0.15/0.30/0.40 geçti, 0.75 durdu. **Çöl'de kapı sarı spawn dibinde**:
+    spawn'a 25 m'den yakın kapı adayları elenir → Çöl'de kenar ortaları (0,±50) (±58,0).
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).
