@@ -1,6 +1,6 @@
-# TacticalDark — 4 Özel Harita İçin Yapay Zeka (AI) Entegrasyon ve Teknik Rehberi
+# TacticalDark — 8 Özel Harita İçin Yapay Zeka (AI) Entegrasyon ve Teknik Rehberi
 
-Bu doküman, `haritalar` klasöründe bulunan **4 adet High-Poly `.glb` oyun haritasının** Godot 4.x (`Forward+` / `Compatibility`) projesine bir yapay zeka (AI ajan) veya geliştirici tarafından hatasız entegre edilmesi için hazırlanmıştır.
+Bu doküman, `haritalar` klasöründe bulunan **8 adet High-Poly `.glb` oyun haritasının** (`2v2v2v2`, `3v3v3v3`, `4v4v4v4`, `5v5v5v5`) Godot 4.x (`Forward+` / `Compatibility`) projesine bir yapay zeka (AI ajan) veya geliştirici tarafından hatasız entegre edilmesi için hazırlanmıştır.
 
 > **ÖNEMLİ KOORDİNAT SİSTEMİ NOTU:**
 > Tüm `.glb` dosyaları Blender'dan **glTF 2.0 (Godot Y-Up)** standardında dışa aktarılmıştır. Bu dokümandaki tüm `[X, Y, Z]` koordinatları doğrudan **Godot 3D Dünya Koordinatlarıdır** (`Y` ekseni yüksekliktir, `X` Doğu/Batı, `Z` Güney/Kuzey düzlemidir).
@@ -15,8 +15,12 @@ Bu doküman, `haritalar` klasöründe bulunan **4 adet High-Poly `.glb` oyun har
 | **2** | `Map2_Yeralti_Kuantum_Labirenti_5v5v5v5.glb` | `Quantum_Biotech_Labyrinth_HighPoly_Map` | **5v5v5v5** (Max 20 Kişi) | 12 Adet | 12 Adet | 171.028 |
 | **3** | `Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5.glb` | `Desert_Canyon_Crash_HighPoly_Map` | **5v5v5v5** (Max 20 Kişi) | 12 Adet | 12 Adet | 49.352 |
 | **4** | `Map4_Gece_Orman_Radar_Ussu_4v4v4v4.glb` | `Night_Forest_Radar_HighPoly_Map` | **4v4v4v4** (Max 16 Kişi) | 12 Adet | 12 Adet | 255.520 |
+| **5** | `Map5_Karantina_Hastanesi_2v2v2v2.glb` | `Quarantine_Hospital_HighPoly_Map` | **2v2v2v2** (Max 8 Kişi) | 10 Adet | 10 Adet | 27.176 |
+| **6** | `Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb` | `Underground_Subway_Station_HighPoly_Map` | **3v3v3v3** (Max 12 Kişi) | 12 Adet | 12 Adet | 51.296 |
+| **7** | `Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb` | `Logistics_Warehouse_HighPoly_Map` | **4v4v4v4** (Max 16 Kişi) | 12 Adet | 12 Adet | 59.164 |
+| **8** | `Map8_Gece_Konteyner_Limani_5v5v5v5.glb` | `Night_Container_Port_HighPoly_Map` | **5v5v5v5** (Max 20 Kişi) | 12 Adet | 12 Adet | 43.204 |
 
-*Not: Her 4 haritada da 4 takımın her biri için **5'er adet** doğma noktası (toplam 20 `Node3D`) hazırdır. Haritanın maksimum oyuncu sınırına göre (ör. Map 1'de takım başı ilk 3 nokta, Map 4'te ilk 4 nokta, Map 2 ve 3'te 5 noktanın tamamı) kullanılır.*
+*Not: Her 8 haritada da 4 takımın her biri için **5'er adet** doğma noktası (toplam 20 `Node3D`) hazırdır. Haritanın maksimum oyuncu sınırına göre (ör. Map 5'te takım başı ilk 2 nokta, Map 1 ve 6'da ilk 3 nokta, Map 4 ve 7'de ilk 4 nokta, Map 2, 3 ve 8'de 5 noktanın tamamı) kullanılır.*
 
 ---
 
@@ -48,11 +52,11 @@ Her `.glb` dosyası Godot'ya eklendiğinde kök düğümün (`Root Node`) altın
 ### ⚠️ KRİTİK KURAL 1: `.position` Yerine Mutlaka `.global_position` Kullanın!
 * **Neden?**
   * `Map1` ve `Map3`'te takım grup düğümleri (`Team0..Team3`) `[0, 0, 0]` merkezindedir ve dünya koordinatları alt düğümlerde (`Team0_Spawn_1..5`) tutulur.
-  * `Map2` ve `Map4`'te ise takım grup düğümleri (`Team1_Spawn..Team4_Spawn`) köşelerde (ör. `[-33, 0, -33]`) konumlandırılmıştır ve alt düğümler (`Team1_Spawn_P1..P5`) takım merkezine göre yerel ofset (`[-2.2, 0.25, -2.2]`) taşır.
-  * Bu nedenle oyuncuyu doğururken **`spawn_node.global_position`** kullanıldığında **4 haritanın tamamında %100 doğru dünya koordinatı** elde edilir.
+  * `Map2` ve `Map4..Map8`'de ise takım grup düğümleri (`Team1_Spawn..Team4_Spawn`) köşelerde (ör. `[-35, 0, -35]`) konumlandırılmıştır ve alt düğümler (`Team1_Spawn_P1..P5`) takım merkezine göre yerel ofset (`[-2.2, 0.25, -2.2]`) taşır.
+  * Bu nedenle oyuncuyu doğururken **`spawn_node.global_position`** kullanıldığında **8 haritanın tamamında %100 doğru dünya koordinatı** elde edilir.
 
 ### ⚠️ KRİTİK KURAL 2: Düğüm İsimlerini Hardcode Etmek Yerine `get_children()` İndeksi Kullanın!
-* `Map1` ve `Map3`'te takım düğümleri `Team0, Team1, Team2, Team3` olarak; `Map2` ve `Map4`'te ise `Team1_Spawn, Team2_Spawn, Team3_Spawn, Team4_Spawn` olarak adlandırılmıştır.
+* `Map1` ve `Map3`'te takım düğümleri `Team0, Team1, Team2, Team3` olarak; `Map2` ve `Map4..Map8`'de ise `Team1_Spawn, Team2_Spawn, Team3_Spawn, Team4_Spawn` olarak adlandırılmıştır.
 * Yapay zeka kod yazarken düğüm adına göre arama yapmak yerine doğrudan `SpawnPoints.get_children()[team_idx]` indekslemesini kullanmalıdır.
 
 ### Hazır GDScript — Evrensel Oyuncu Spawn Fonksiyonu:
@@ -164,22 +168,23 @@ func select_random_extraction_door(map_root: Node3D, extraction_area_scene: Pack
 
 ## 6. Çarpışma (`CollisionShape3D`) ve FPS Optimizasyonu Kuralları
 
-Bu 4 harita **High-Poly** olduğu için (`49.000` – `255.000` üçgen), Godot'da tüm mesh'lere körü körüne `create_trimesh_collision()` uygulamak gereksiz fizik (CPU) yükü oluşturur. Yapay zeka çarpışma oluştururken şu filtre kurallarını uygulamalıdır:
+Bu 8 harita **High-Poly** olduğu için (`27.000` – `255.000` üçgen), Godot'da tüm mesh'lere körü körüne `create_trimesh_collision()` uygulamak gereksiz fizik (CPU) yükü oluşturur. Yapay zeka çarpışma oluştururken şu filtre kurallarını uygulamalıdır:
 
 1. **Çarpışma EKLENMEMESİ Gereken Görsel/Dekoratif Mesh İsimleri (`No-Collision`):**
    * Ağaç yaprakları ve palmiye dalları: İsminde `Canopy`, `Needles`, `Frond` geçen mesh'ler (Ör: `OakTree_01_Canopy`, `PineTree_01_Needles`, `OasisPalm_1_Frond_0`). *Sadece ağaç gövdelerine (`_Trunk`) çarpışma verilmelidir!*
    * Su ve plazma havuzları: İsminde `Water`, `Pool`, `Basin` geçen mesh'ler.
-   * İnce ışık/neon şeritleri ve hologramlar: İsminde `Neon`, `LED`, `Holo`, `CardVisual`, `Beacon`, `GlowRing`, `Pad_Team` geçen mesh'ler.
+   * İnce ışık/neon şeritleri, hastane yer çizgileri ve hologramlar: İsminde `Neon`, `LED`, `Holo`, `CardVisual`, `Beacon`, `GlowRing`, `Pad_Team`, `HospitalRedCross`, `ER_RedGuideLine` geçen mesh'ler.
 2. **Çarpışma EKLENMESİ Gereken Mesh'ler (`Trimesh` veya `Convex` Collision):**
-   * Zemin/Arazi (`Terrain`, `Deck`, `Ground`, `Floor`, `Plaza`, `Driveway`, `Bridge`)
-   * Duvarlar ve Sığınaklar (`Wall`, `Bulkhead`, `Quonset`, `Bunker`, `Hedge`, `Fuselage`, `Wing`)
-   * Siper Objeleri ve Araçlar (`Column`, `CorinthianCol`, `Rock`, `Boulder`, `Mesa`, `Sandbag`, `Limousine`, `Humvee`, `SAM_Truck`, `BioPod`, `QuantumRack`, `Tokamak`, `FuelTank`, `Tree_.*_Trunk`)
+   * Zemin/Arazi (`Terrain`, `Deck`, `Ground`, `Floor`, `Plaza`, `Driveway`, `Bridge`, `Platform`, `Quay`, `Ramp`)
+   * Duvarlar ve Sığınaklar (`Wall`, `Bulkhead`, `Quonset`, `Bunker`, `Hedge`, `Fuselage`, `Wing`, `SubwayTrain`, `Container`)
+   * Siper Objeleri ve Araçlar (`Column`, `CorinthianCol`, `Rock`, `Boulder`, `Mesa`, `Sandbag`, `Limousine`, `Humvee`, `SAM_Truck`, `Ambulance`, `Forklift`, `SemiTruck`, `PalletRack`, `ICUBed`, `MRI_Scanner`, `BioPod`, `QuantumRack`, `Tokamak`, `FuelTank`, `Tree_.*_Trunk`)
 
 ### Hazır GDScript — Akıllı Otomatik Çarpışma Üretici:
 ```gdscript
 const NO_COLLISION_KEYWORDS: Array[String] = [
 	"Canopy", "Needles", "Frond", "Neon", "LED", "Holo",
-	"CardVisual", "Beacon", "GlowRing", "Pad_Team", "Horn", "Screen"
+	"CardVisual", "Beacon", "GlowRing", "Pad_Team", "Horn", "Screen",
+	"HospitalRedCross", "ER_RedGuideLine"
 ]
 
 func setup_smart_collisions(node: Node) -> void:
@@ -281,6 +286,79 @@ func setup_smart_collisions(node: Node) -> void:
 * **Çıkış Kapısı Noktaları (`DoorPoints` - 12 Adet `DoorPoint_01..12`):**
   * Orman Sınır Geçitleri: `[0, 0, -38]`, `[0, 0, 38]`, `[44, 0, 0]`, `[-44, 0, 0]`, `[-24, 0, -35]`, `[24, 0, -35]`, `[-24, 0, 35]`, `[24, 0, 35]`
   * Merkez Üs Zırhlı Kapıları: `[0, 0, -11.2]`, `[0, 0, 11.2]`, `[-13.2, 0, 0]`, `[13.2, 0, 0]`
+
+---
+
+### Harita 5: `Map5_Karantina_Hastanesi_2v2v2v2.glb`
+* **Kök Düğüm:** `Quarantine_Hospital_HighPoly_Map`
+* **Tavsiye Edilen Oyuncu Sayısı:** `2v2v2v2` (8 Kişi — Takım başı ilk 2 spawn noktası; yoğun CQB)
+* **Mimari Özellikler:** Klinik beyaz-gri koridor karoları, cerrahi yeşil ve yoğun bakım mavisi koğuş zeminleri, turkuaz hastane sedye-koruma bantlı duvarları, merkezde dev parlayan **Kırmızı Haç (`+`) Amblemli Triyaj Rotundası** ve 4 dış acil girişinde dev Kırmızı Haç yer işaretleri + kırmızı acil yönlendirme şeritleri (`ER_RedGuideLine_*`); Kuzey ve Güney acil servis girişlerinde tavanlarında Kırmızı Haç bulunan **4 adet Beyaz Paramedik Ambulansı (`Ambulance_1..4`)**; GB koğuşunda **6 adet Yoğun Bakım Hastane Yatağı (`ICUBed_1..6` — yastık, mavi battaniye, yeşil EKG kalp monitörü ve katlanır paravanlarla)** + koridorlarda **2 Acil Sedyesi**; KB'de **2 adet Beyaz Toroidal MR (MRI) Cihazı (`MRI_Scanner_1..2`)**; KD'de **3 Ameliyathane Masası & Çift Kubbeli Cerrahi Tavan Lambaları (`SurgicalSuite_1..3`)**; GD'de **Acil Bekleme Salonu Koltukları & Morg/Otopsi Bölümü**.
+* **Takım Doğma Köşeleri (`global_position`):**
+  * `Team1_Spawn` (Kuzeybatı): `[-35.0, 0.0, -35.0]` (Altında `Team1_Spawn_P1..P5`)
+  * `Team2_Spawn` (Kuzeydoğu): `[35.0, 0.0, -35.0]` (Altında `Team2_Spawn_P1..P5`)
+  * `Team3_Spawn` (Güneybatı): `[-35.0, 0.0, 35.0]` (Altında `Team3_Spawn_P1..P5`)
+  * `Team4_Spawn` (Güneydoğu): `[35.0, 0.0, 35.0]` (Altında `Team4_Spawn_P1..P5`)
+* **Kart Noktaları (`CardPoints` - 10 Adet `CardSpawn_01..10`):**
+  * Merkez Triyaj Rotundası: `[0, 1.15, -5.2]`, `[0, 1.15, 5.2]`
+  * 4 Uzmanlık Koğuşu İçi: `[-21, 1.15, -25]`, `[21, 1.15, -25]`, `[-21, 1.15, 21]`, `[21, 1.15, 25]`
+  * Acil Servis Ana Koridorları: `[0, 1.15, -26]`, `[0, 1.15, 26]`, `[-26, 1.15, 0]`, `[26, 1.15, 0]`
+* **Çıkış Kapısı Noktaları (`DoorPoints` - 10 Adet `DoorPoint_01..10`):**
+  * 4 Ana Acil Servis Kapısı: `[0, 0, -32]`, `[0, 0, 32]`, `[-32, 0, 0]`, `[32, 0, 0]`
+  * Koğuş Tahliye Kapıları: `[-21, 0, -30]`, `[21, 0, -30]`, `[-21, 0, 30]`, `[21, 0, 30]`, `[-30, 0, -21]`, `[30, 0, 21]`
+
+---
+
+### Harita 6: `Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb`
+* **Kök Düğüm:** `Underground_Subway_Station_HighPoly_Map`
+* **Tavsiye Edilen Oyuncu Sayısı:** `3v3v3v3` (12 Kişi — Takım başı ilk 3 spawn noktası)
+* **Mimari Özellikler:** İkiz çukur ray hattı (`Y = -0.85m`), **Merkezi Ada Peronu** ve **Kuzey/Güney Yan Bilet Holleri**; raylar üzerinde duran ve yan kapıları açık olan **2 adet içi gezilebilir Metro Tren Vagonu (`SubwayTrain_1..2`)**, 3 yaya üst/geçiş köprüsü, 4 sıra **paslanmaz çelik bilet turnikesi** ve **8 dijital tren varış tabelalı sütun**.
+* **Takım Doğma Köşeleri (`global_position`):**
+  * `Team1_Spawn` (Kuzeybatı Bilet Holü): `[-38.0, 0.0, -28.0]` (Altında `Team1_Spawn_P1..P5`)
+  * `Team2_Spawn` (Kuzeydoğu Bilet Holü): `[38.0, 0.0, -28.0]` (Altında `Team2_Spawn_P1..P5`)
+  * `Team3_Spawn` (Güneybatı Bilet Holü): `[-38.0, 0.0, 28.0]` (Altında `Team3_Spawn_P1..P5`)
+  * `Team4_Spawn` (Güneydoğu Bilet Holü): `[38.0, 0.0, 28.0]` (Altında `Team4_Spawn_P1..P5`)
+* **Kart Noktaları (`CardPoints` - 12 Adet `CardSpawn_01..12`):**
+  * Merkez Ada Peronu: `[0, 1.15, 0]`, `[-24, 1.15, 0]`, `[24, 1.15, 0]`
+  * 2 Metro Vagonu İçi: `[-12, 1.15, -9]`, `[12, 1.15, 9]`
+  * Turnike Holleri ve Bakım Odaları: `[0, 1.15, -17.5]`, `[0, 1.15, 17.5]`, `[-20, 1.15, -28]`, `[20, 1.15, -28]`, `[-20, 1.15, 28]`, `[20, 1.15, 28]`, `[0, 1.15, -28]`
+* **Çıkış Kapısı Noktaları (`DoorPoints` - 12 Adet `DoorPoint_01..12`):**
+  * İstasyon ve Tünel Çıkışları: `[0, 0, -34]`, `[0, 0, 34]`, `[-46, 0, 0]`, `[46, 0, 0]`, `[-26, 0, -34]`, `[26, 0, -34]`, `[-26, 0, 34]`, `[26, 0, 34]`, `[-46, 0, -18]`, `[46, 0, -18]`, `[-46, 0, 18]`, `[46, 0, 18]`
+
+---
+
+### Harita 7: `Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb`
+* **Kök Düğüm:** `Logistics_Warehouse_HighPoly_Map`
+* **Tavsiye Edilen Oyuncu Sayısı:** `4v4v4v4` (16 Kişi — Takım başı ilk 4 spawn noktası)
+* **Mimari Özellikler:** Endüstriyel lojistik deposu; merkezde **Sarı Köprülü Tavan Vinci (Bridge Gantry Crane)**, **Otomasyon Rulolu Konveyör Bant Hattı** ve **4 Lazer Barkod Tarayıcı Kemeri**; çevrede dar CQB koridorları oluşturan **16 adet 3 katlı ağır çelik palet rafı**, **4 adet Forklift** ve yükleme rampalarına yanaşmış **2 adet Tır (Semi-Trailer)**.
+* **Takım Doğma Köşeleri (`global_position`):**
+  * `Team1_Spawn` (Kuzeybatı Sevkiyat Ofisi): `[-36.0, 0.0, -27.0]` (Altında `Team1_Spawn_P1..P5`)
+  * `Team2_Spawn` (Kuzeydoğu Sevkiyat Ofisi): `[36.0, 0.0, -27.0]` (Altında `Team2_Spawn_P1..P5`)
+  * `Team3_Spawn` (Güneybatı Sevkiyat Ofisi): `[-36.0, 0.0, 27.0]` (Altında `Team3_Spawn_P1..P5`)
+  * `Team4_Spawn` (Güneydoğu Sevkiyat Ofisi): `[36.0, 0.0, 27.0]` (Altında `Team4_Spawn_P1..P5`)
+* **Kart Noktaları (`CardPoints` - 12 Adet `CardSpawn_01..12`):**
+  * Merkez Konveyör ve Vinç Arenası: `[0, 1.15, 0]`, `[-11, 1.15, 0]`, `[11, 1.15, 0]`, `[0, 1.15, -11.5]`, `[0, 1.15, 11.5]`
+  * Doğu & Batı Raf Koridorları: `[-32, 1.15, -4]`, `[-32, 1.15, 4]`, `[32, 1.15, -4]`, `[32, 1.15, 4]`
+  * Yükleme Rampası Bölgeleri: `[-18, 1.15, -23]`, `[18, 1.15, 23]`, `[0, 1.15, -27.5]`
+* **Çıkış Kapısı Noktaları (`DoorPoints` - 12 Adet `DoorPoint_01..12`):**
+  * Yükleme Kapıları: `[-21.5, 0, -33]`, `[21.5, 0, -33]`, `[-21.5, 0, 33]`, `[21.5, 0, 33]`, `[-43, 0, 0]`, `[43, 0, 0]`, `[-43, 0, -14]`, `[43, 0, -14]`, `[-43, 0, 14]`, `[43, 0, 14]`, `[0, 0, -33]`, `[0, 0, 33]`
+
+---
+
+### Harita 8: `Map8_Gece_Konteyner_Limani_5v5v5v5.glb`
+* **Kök Düğüm:** `Night_Container_Port_HighPoly_Map`
+* **Tavsiye Edilen Oyuncu Sayısı:** `5v5v5v5` (20 Kişi)
+* **Mimari Özellikler:** Derin deniz liman havzasını (`Harbor_DeepWater_Basin`) çevreleyen **U-Planlı Beton Rıhtım**; güney-merkez havzada rıhtıma **4 çelik bordalama rampasıyla (`ShipGangwayRamp_1..4`)** bağlı **Demirli Kargo Gemisi Güvertesi (`CargoFreighter_Hull`)**; rıhtım üzerinde gemiye uzanan **2 Dev Kırmızı Liman Konteyner Vinci (STS Gantry Crane)** ve **18 adet Oluklu Çelik Konteyner** (4 tanesi içi açık geçiş tüneli).
+* **Takım Doğma Köşeleri (`global_position`):**
+  * `Team1_Spawn` (Kuzeybatı Rıhtımı): `[-42.0, 0.0, -34.0]` (Altında `Team1_Spawn_P1..P5`)
+  * `Team2_Spawn` (Kuzeydoğu Rıhtımı): `[42.0, 0.0, -34.0]` (Altında `Team2_Spawn_P1..P5`)
+  * `Team3_Spawn` (Güneybatı İskele Kolu): `[-42.0, 0.0, 34.0]` (Altında `Team3_Spawn_P1..P5`)
+  * `Team4_Spawn` (Güneydoğu İskele Kolu): `[42.0, 0.0, 34.0]` (Altında `Team4_Spawn_P1..P5`)
+* **Kart Noktaları (`CardPoints` - 12 Adet `CardSpawn_01..12`):**
+  * Kargo Gemisi Güvertesi Üzeri: `[0, 1.15, 23.5]`, `[-9, 1.15, 19.5]`, `[9, 1.15, 27.5]`
+  * 4 Açık Konteyner Tüneli İçi: `[0, 1.15, -12]`, `[-22, 1.15, -16]`, `[22, 1.15, -16]`, `[0, 1.15, -28]`
+  * Dev Liman Vinçleri Altı & İskele Kolları: `[-15, 1.15, 1.5]`, `[15, 1.15, 1.5]`, `[-34, 1.15, 22]`, `[34, 1.15, 22]`, `[0, 1.15, -20]`
+* **Çıkış Kapısı Noktaları (`DoorPoints` - 12 Adet `DoorPoint_01..12`):**
+  * Gümrük Kapıları & Gemi Tahliye Noktası: `[-24, 0, -40]`, `[24, 0, -40]`, `[0, 0, -40]`, `[-48, 0, 0]`, `[48, 0, 0]`, `[-38, 0, 40]`, `[38, 0, 40]`, `[-48, 0, -20]`, `[48, 0, -20]`, `[-48, 0, 20]`, `[48, 0, 20]`, `[0, 0, 31.2]`
 
 ---
 
