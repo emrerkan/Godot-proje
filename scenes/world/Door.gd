@@ -30,7 +30,19 @@ func _init() -> void:
 	add_child(zone)
 
 
+## Görünürlük: yaklaşınca belirir (eski 16 → 7 m) ve SADECE kartı taşıyan görür.
+## DOOR_CARRIER_ONLY false yapılırsa herkes yaklaşınca görür (kullanıcı: "sonra değiştirebiliriz").
+const REVEAL_FAR := 10.0
+const REVEAL_NEAR := 4.0
+const DOOR_CARRIER_ONLY := true
+
+
 func _ready() -> void:
+	var pr := get_node_or_null("ProximityReveal")
+	if pr:
+		pr.reveal_far = REVEAL_FAR
+		pr.reveal_near = REVEAL_NEAR
+		pr.carrier_only = DOOR_CARRIER_ONLY
 	_label = get_node_or_null("Label3D")
 	_light = get_node_or_null("OmniLight3D")
 	GameManager.door_unlock_changed.connect(_on_unlock_changed)

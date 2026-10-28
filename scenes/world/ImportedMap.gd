@@ -48,6 +48,7 @@ var _grid_h := 0
 var _wall := PackedByteArray()
 var _canopies: Array[GeometryInstance3D] = []
 var _canopy_xz: Array[Vector2] = []
+var _lamp_scale := 1.0
 var _spawn_list: Array[Vector3] = []
 var _card_list: Array[Vector3] = []
 
@@ -66,6 +67,8 @@ func _ready() -> void:
 	move_child(_model, 0)
 
 	_hide_card_visuals(_model)
+	_scale_emission(_model, float(info.get("emission_scale", 1.0)))
+	_lamp_scale = float(info.get("lamp_scale", 1.0))
 	_bounds = _compute_bounds(_model)
 	_build_collisions(_model)
 	_build_bounds_walls()
@@ -103,6 +106,26 @@ func _hide_card_visuals(n: Node) -> void:
 		(n as Node3D).visible = false
 	for c in n.get_children():
 		_hide_card_visuals(c)
+
+
+## Haritaya özel parlaklık (MAPS "emission_scale"): Yeraltı Kuantum'da 156 neon şerit + plazma (enerji 4-6.5) fazla aydınlıktı.
+## Malzemeler içe aktarılan sahneyle PAYLAŞILIYOR → kopyalanıp surface override olarak verilir (yoksa her yüklemede tekrar kısılırdı).
+func _scale_emission(n: Node, scale: float) -> void:
+	if is_equal_approx(scale, 1.0):
+		return
+	var dup := {}
+	for mi: MeshInstance3D in n.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var mat := mi.mesh.surface_get_material(s) as StandardMaterial3D
+			if mat == null or not mat.emission_enabled:
+				continue
+			if not dup.has(mat):
+				var c := mat.duplicate() as StandardMaterial3D
+				c.emission_energy_multiplier = mat.emission_energy_multiplier * scale
+				dup[mat] = c
+			mi.set_surface_override_material(s, dup[mat])
 
 
 func _has_keyword(node_name: String, words: Array[String]) -> bool:
@@ -324,7 +347,7 @@ func _place_lamps(space: PhysicsDirectSpaceState3D, seed_base: int) -> void:
 		var t := order[i]
 		order[i] = order[j]
 		order[j] = t
-	var max_count := mini(LAMP_MAX, int(_bounds.size.x * _bounds.size.z * LAMP_PER_M2))
+	var max_count := mini(LAMP_MAX, int(_bounds.size.x * _bounds.size.z * LAMP_PER_M2 * _lamp_scale))
 	var placed: Array[Vector3] = []
 	for i in order:
 		if placed.size() >= max_count:

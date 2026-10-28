@@ -128,6 +128,12 @@
     (0.42 m'ye kadar; 0.75 m kütük engel kalır). Test: 0.15/0.30/0.40 geçti, 0.75 durdu. **Çöl'de kapı sarı spawn dibinde**:
     spawn'a 25 m'den yakın kapı adayları elenir → Çöl'de kenar ortaları (0,±50) (±58,0).
 
+32. **Kart/kapı görünürlüğü:** daha yakında belirir — kart 8→3 m (eski 12→5), kapı 10→4 m (eski 16→7); **kapıyı SADECE kart
+    taşıyan görür** (`Door.DOOR_CARRIER_ONLY` — kullanıcı: "not et, sonra değiştirebiliriz"; false = herkes yaklaşınca görür).
+    Test 7 yine gösterir. Sağlık efekti belirginleşti (yeşil vinyet 0.7, ~1.5 sn + yükselen yeşil ✚ işaretleri).
+    Yeraltı Kuantum: haritanın kendi neon/plazma malzemeleri `emission_scale` 0.35, otomatik lamba `lamp_scale` 0.4
+    (bloom/glow değildi — ortamda glow kapalı; parlaklık emissive malzemelerden geliyordu).
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).

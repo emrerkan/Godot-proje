@@ -320,7 +320,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   Tip lamba sırasına göre seed'li RNG ile (her client'ta aynı): STEADY %55 sodyum, FLICKER %30 floresan patlamalı,
   DYING %15 çoğunlukla sönük. Tamamen yerel görsel, ağ yok.
 - `ProximityReveal.gd` (Card.tscn + Door.tscn + Powerup child Node; alt ağacın tümünü tarar): parent'ın OmniLight3D/Label3D/MeshInstance3D'lerini SADECE
-  yerel oyuncu yaklaşınca açar (`reveal_far`→`reveal_near` smoothstep + fade). Kart 12→5 m, kapı 16→7 m.
+  yerel oyuncu yaklaşınca açar (`reveal_far`→`reveal_near` smoothstep + fade). Kart 8→3 m (Card.gd), kapı 10→4 m (Door.gd) ve
+  kapı `carrier_only` (`Door.DOOR_CARRIER_ONLY`): SADECE kart taşıyan görür. MAPS `emission_scale`/`lamp_scale` (Kuantum 0.35/0.4):
+  ImportedMap `_scale_emission` malzemeyi kopyalayıp surface override verir (paylaşılan kaynak tekrar kısılmasın).
   Tamamen yerel görsel, ağ/mantık yok; Area3D çarpışması etkilenmez.
 - `CameraController.gd`: Player'ın child'ı DEĞİL, Map.tscn'de bağımsız Camera3D. `GameManager.local_player_spawned`
   sinyaline bağlanır. Exponential lerp (`1-exp(-7*delta)`), OFFSET `(0,14,12)`, PITCH -50°.

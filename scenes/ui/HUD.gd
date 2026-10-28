@@ -159,7 +159,7 @@ func _process(delta: float) -> void:
 			low = (0.35 - ratio) / 0.35 * (0.75 + 0.25 * sin(Time.get_ticks_msec() / 180.0))
 	_vignette.modulate.a = clampf(maxf(low, _hit_flash), 0.0, 1.0)
 	# Sağlık gücü → yeşil vinyet
-	_heal_flash = maxf(_heal_flash - delta * 1.2, 0.0)
+	_heal_flash = maxf(_heal_flash - delta * 0.65, 0.0)   # ~1.5 sn
 	_heal_vignette.modulate.a = _heal_flash
 
 	# Flaş körlüğü: tam beyaz bekler, sonra söner
@@ -203,7 +203,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _setup_vignette() -> void:
 	_vignette = _make_vignette(UITheme.DANGER, 0.55)                # hasar / düşük can
-	_heal_vignette = _make_vignette(Color(0.3, 1.0, 0.45), 0.42)    # sağlık gücü
+	_heal_vignette = _make_vignette(Color(0.3, 1.0, 0.45), 0.7)     # sağlık gücü (0.42 fark edilmiyordu)
 
 
 func _make_vignette(color: Color, edge_alpha: float) -> TextureRect:
@@ -857,6 +857,34 @@ func _on_healed(amount: float) -> void:
 	_show_banner("✚ +%d CAN" % int(amount), Color(0.35, 0.95, 0.5))
 	_hp_value.modulate = Color(0.6, 1.8, 0.8)
 	create_tween().tween_property(_hp_value, "modulate", Color.WHITE, 0.8)
+	_spawn_heal_crosses()
+
+
+## Ekranda aşağıdan yükselip sönen yeşil ✚ işaretleri (kan efektinin iyileşme karşılığı)
+const HEAL_CROSS_COUNT := 14
+const HEAL_COLOR := Color(0.35, 1.0, 0.5)
+
+func _spawn_heal_crosses() -> void:
+	var rect := _root.get_rect()
+	for i in HEAL_CROSS_COUNT:
+		var l := UITheme.label("✚", randi_range(18, 40), HEAL_COLOR, UITheme.font_bold)
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		l.add_theme_color_override("font_outline_color", Color(0.0, 0.25, 0.08, 0.8))
+		l.add_theme_constant_override("outline_size", 6)
+		# Kenarlara yakın (vinyetle birlikte), ortadaki aksiyonu kapatmadan
+		var side := randf() < 0.5
+		var x := randf_range(0.02, 0.22) if side else randf_range(0.78, 0.98)
+		l.position = Vector2(rect.size.x * x, rect.size.y * randf_range(0.55, 0.95))
+		l.modulate.a = 0.0
+		_root.add_child(l)
+		var rise := randf_range(90.0, 190.0)
+		var dur := randf_range(0.9, 1.5)
+		var delay := randf_range(0.0, 0.35)
+		var tw := l.create_tween().set_parallel(true)
+		tw.tween_property(l, "position:y", l.position.y - rise, dur).set_delay(delay).set_ease(Tween.EASE_OUT)
+		tw.tween_property(l, "modulate:a", 0.95, 0.15).set_delay(delay)
+		tw.tween_property(l, "modulate:a", 0.0, dur * 0.6).set_delay(delay + dur * 0.4)
+		tw.chain().tween_callback(l.queue_free)
 
 
 func _on_ammo_changed(current: int, total: int, reloading: bool) -> void:

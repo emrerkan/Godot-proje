@@ -28,8 +28,10 @@ const MAPS: Array[Dictionary] = [
 	{"id": "maze", "name": "Labirent", "scene": "res://scenes/world/Map.tscn", "max_team": 5},
 	{"id": "embassy", "name": "Elçilik Kompleksi", "scene": IMPORTED_MAP_SCENE, "max_team": 3,
 		"glb": "res://asset model/haritalar/Map1_Elcilik_Kompleksi_3v3v3v3.glb"},
+	# emission_scale: haritanın parlayan malzemeleri (neon/plazma) çarpanı · lamp_scale: otomatik duvar lambası yoğunluğu
 	{"id": "quantum", "name": "Yeraltı Kuantum Labirenti", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
-		"glb": "res://asset model/haritalar/Map2_Yeralti_Kuantum_Labirenti_5v5v5v5.glb"},
+		"glb": "res://asset model/haritalar/Map2_Yeralti_Kuantum_Labirenti_5v5v5v5.glb",
+		"emission_scale": 0.35, "lamp_scale": 0.4},
 	{"id": "desert", "name": "Çöl Kargo Uçağı Enkazı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
 		"glb": "res://asset model/haritalar/Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5.glb"},
 	{"id": "forest", "name": "Gece Orman Radar Üssü", "scene": IMPORTED_MAP_SCENE, "max_team": 4,

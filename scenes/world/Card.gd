@@ -4,6 +4,17 @@
 
 extends Area3D
 
+## Görünür olmaya başladığı / tam belirdiği mesafe (m) — kullanıcı: "biraz daha yaklaşınca belirginleşsin" (eski 12 → 5)
+const REVEAL_FAR := 8.0
+const REVEAL_NEAR := 3.0
+
+
+func _ready() -> void:
+	var pr := get_node_or_null("ProximityReveal")
+	if pr:
+		pr.reveal_far = REVEAL_FAR
+		pr.reveal_near = REVEAL_NEAR
+
 
 func _on_body_entered(body: Node) -> void:
 	if not visible:

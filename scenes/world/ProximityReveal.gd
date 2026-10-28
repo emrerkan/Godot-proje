@@ -13,6 +13,8 @@ extends Node
 @export var reveal_near: float = 5.0
 @export var mesh_hidden_when_far: bool = true
 @export var fade_speed: float = 6.0
+## true: sadece kartı taşıyan yerel oyuncu görür (kapı — Door.gd açar). Test 7 (kart/kapı göster) yine gösterir.
+var carrier_only := false
 
 var _target: Node3D
 var _lights: Array[Light3D] = []
@@ -42,7 +44,9 @@ func _process(delta: float) -> void:
 	var target := 0.0
 	var player := _get_local_player()
 	if player and _target.is_visible_in_tree() and _test_reveal():
-		target = 1.0  # test modu F7: mesafeye bakmadan göster
+		target = 1.0  # test modu (7): mesafeye bakmadan göster
+	elif carrier_only and player and not bool(player.get("has_card")):
+		target = 0.0  # kartı olmayan kapıyı göremez
 	elif player and _target.is_visible_in_tree():
 		var d := player.global_position.distance_to(_target.global_position)
 		target = clampf((reveal_far - d) / maxf(reveal_far - reveal_near, 0.01), 0.0, 1.0)
