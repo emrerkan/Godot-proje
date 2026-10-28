@@ -134,6 +134,11 @@
     Yeraltı Kuantum: haritanın kendi neon/plazma malzemeleri `emission_scale` 0.35, otomatik lamba `lamp_scale` 0.4
     (bloom/glow değildi — ortamda glow kapalı; parlaklık emissive malzemelerden geliyordu).
 
+33. Kuantum ışıkları ikinci kez kısıldı (emission 0.18, lamba sayısı 0.2, lamba gücü 0.6 — "fenere ihtiyaç yok gibi").
+    **Mermiler duvardan geçiyordu** (tunneling: karede 0.5–1.3 m, duvar 0.2–0.3 m) → ışın taraması; **Sniper duvar deler**
+    (kullanıcı: "sniper dışında"). **Görüş engeli:** karakteri kameradan saklayan duvar/bina/ağaç saydamlaşır — sadece
+    saklarken (kullanıcı: "karakter gözükmüyorsa olsun, ağaçta da aynı mantık"). Labirent'te yok (tek mesh).
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).

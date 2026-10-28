@@ -242,6 +242,8 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   3. Diğer: SADECE atan oyuncunun client'ı hasar bildirir (`NetworkManager.get_local_id()==shooter_peer_id`) —
      host ise direkt `take_damage()`, değilse `take_damage.rpc_id(1,...)`. Çift hasar böyle önlenir.
 - `Weapon.configure(config)`: karakter silah ayarlarını uygular, `ammo_changed` sinyali emit eder.
+- **Duvar:** `Bullet._physics_process` eski→yeni konum ışın taraması (ince duvarı atlama/tunneling yoktu önce): ilk duvarda durur,
+  oyuncuda `_on_body_entered`; atan/çömelmiş hariç tutulur; `_done` çift hasarı önler. `pierce_walls` (sadece Sniper, WEAPON_CONFIGS) duvardan geçer.
 
 ---
 
@@ -262,8 +264,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   `Pad_Team` rehberin aksine çarpışmalı), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
   `TeamManager.register_spawn_points` (SpawnPoints çocukları SIRAYLA takım 0-3), 1 m yükseklik taraması → `_wall` maskesi →
   `minimap_texture/min/max` (Minimap `_check_map_source`), güç noktaları (`PowerupManager.set_points`), otomatik duvar lambaları
-  (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). Orman/Çöl:
-  `Canopy/Needles/Frond` yerel oyuncuya 6 m içindeyse `transparency` 0.78. Bitince `map_ready` → GameManager `_wait_map_ready()`
+  (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). **Görüş engeli:**
+  `_physics_process` kameradan yerel oyuncuya (0.35/1.1/1.8 m) ışın → araya giren mesh (trimesh body'nin ebeveyni, zemin/arazi
+  hariç) + doğruyu kesen ağaç tepesi AABB'si `transparency` 0.72 — SADECE saklarken (kullanıcı kuralı). Labirent tek mesh → yok. Bitince `map_ready` → GameManager `_wait_map_ready()`
   (oyuncu/kart/kapı doğmadan önce; Labirent'te sinyal yok → beklemez). Kurulum 0.8-2.9 s. `_get_marker_positions` artık Node3D +
   `find_child` kabul eder. Player nişan düzlemi = oyuncu y + 0.9 (engebeli arazi).
   **Basamak:** Player tscn'deki BoxShape (keskin alt kenar 10 cm'ye takılıyordu) `_use_capsule_shape()` ile runtime'da kapsül

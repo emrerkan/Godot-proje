@@ -15,6 +15,8 @@ signal fired
 @export var spread_degrees: float = 2.0
 @export var is_semi_auto: bool = false
 @export var max_distance: float = 60.0
+## true: mermi duvarlardan geçer (sadece Sniper — Player.WEAPON_CONFIGS "pierce_walls")
+var pierce_walls := false
 
 @onready var muzzle: Marker3D = $Muzzle
 @onready var fire_timer: Timer = $FireTimer
@@ -80,6 +82,7 @@ func _spawn_bullet(
 	get_tree().current_scene.add_child(bullet)
 	bullet.global_position = spawn_pos
 	bullet.initialize(direction, bullet_speed, damage, shooter_peer_id, shooter_team_id, p_max_distance)
+	bullet.pierce_walls = pierce_walls
 	fired.emit()
 
 
@@ -96,6 +99,7 @@ func configure(config: Dictionary) -> void:
 	spread_degrees = config.get("spread_degrees", spread_degrees)
 	is_semi_auto   = config.get("is_semi_auto",   is_semi_auto)
 	max_distance   = config.get("max_distance",   max_distance)
+	pierce_walls   = config.get("pierce_walls",   false)
 	current_ammo   = max_ammo
 	fire_timer.wait_time   = fire_rate
 	reload_timer.wait_time = reload_time

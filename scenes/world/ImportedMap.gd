@@ -8,7 +8,7 @@
 ##  3. Fizik hazır olunca: spawn / kart / kapı noktaları zemine (kart: kaidenin üstüne) ışınla oturtulur
 ##  4. Yükseklik taraması (1 m ızgara) → minimap duvar maskesi + güç noktaları + otomatik duvar lambaları
 ##     (rehberdeki WallLamps / PowerupPoints grupları GLB'lerde BOŞ — o yüzden üretiliyor; tohumlu RNG, her peer'da aynı)
-##  5. Orman: yerel oyuncuya yakın ağaç tepeleri saydamlaşır (üstten kamera altındakini görsün)
+##  5. Görüş engeli: yerel oyuncuyu kameradan SAKLAYAN duvar/bina parçası ve ağaç tepesi saydamlaşır (_physics_process)
 
 extends Node3D
 
@@ -22,8 +22,6 @@ const NO_COLLISION_KEYWORDS: Array[String] = [
 	"Water", "Pool", "Basin", "Screen", "Glass", "Light", "Lamp",
 ]
 const CANOPY_KEYWORDS: Array[String] = ["Canopy", "Needles", "Frond"]
-const CANOPY_FADE_RADIUS := 6.0        # bu yakınlıktaki ağaç tepesi saydamlaşır (yerel oyuncu)
-const CANOPY_FADE_ALPHA := 0.78        # GeometryInstance3D.transparency (1 = görünmez)
 
 const GRID_STEP := 1.0                 # tarama çözünürlüğü (m) — minimap 1 px = 1 m
 const WALL_STEP_HEIGHT := 1.2          # komşusundan bu kadar yüksek hücre = duvar/engel
@@ -47,7 +45,7 @@ var _grid_w := 0
 var _grid_h := 0
 var _wall := PackedByteArray()
 var _canopies: Array[GeometryInstance3D] = []
-var _canopy_xz: Array[Vector2] = []
+var _canopy_aabb: Array[AABB] = []
 var _lamp_scale := 1.0
 var _spawn_list: Array[Vector3] = []
 var _card_list: Array[Vector3] = []
@@ -324,6 +322,7 @@ func _place_lamps(space: PhysicsDirectSpaceState3D, seed_base: int) -> void:
 	var lamps := get_node_or_null("WallLamps")
 	if lamps == null:
 		return
+	lamps.set("energy_scale", float(NetworkManager.get_map_info().get("lamp_energy", 1.0)))
 	var cands: Array[Vector3] = []
 	var dirs: Array[Vector3] = []
 	for z in range(1, _grid_h - 1):
@@ -384,20 +383,65 @@ func _collect_canopies(n: Node) -> void:
 	for gi: GeometryInstance3D in n.find_children("*", "GeometryInstance3D", true, false):
 		if _has_keyword(String(gi.name), CANOPY_KEYWORDS):
 			_canopies.append(gi)
-			var c: Vector3 = (gi.global_transform * gi.get_aabb()).get_center()
-			_canopy_xz.append(Vector2(c.x, c.z))
+			_canopy_aabb.append((gi.global_transform * gi.get_aabb()).grow(0.3))
+
+
+## ── Görüş engeli saydamlaştırma (sadece yerel, kullanıcı kuralı: "karakter kameradan GÖRÜNMÜYORSA") ──
+## Fizik karesinde kameradan yerel oyuncunun ayak/bel/baş hizasına ışınlar: araya giren duvar/bina mesh'i (trimesh
+## StaticBody'sinin ebeveyni) saydamlaşır. Ağaç tepelerinin çarpışması yok → kamera–oyuncu doğrusu AABB'lerini kesiyorsa.
+## Zemin/arazi saydamlaşmaz. Karakter açığa çıkınca nesne yavaşça eski haline döner.
+const OCCLUDE_ALPHA := 0.72
+const OCCLUDE_HEIGHTS: Array[float] = [0.35, 1.1, 1.8]
+const NO_FADE_KEYWORDS: Array[String] = ["Terrain", "Floor", "Ground", "Deck", "Plaza", "Driveway", "Bridge"]
+var _occluders: Dictionary = {}   # GeometryInstance3D → true (bu kare kapatanlar)
+var _faded: Dictionary = {}       # şu an saydam/geri dönen nesneler
+
+
+func _physics_process(_delta: float) -> void:
+	if not is_map_ready:
+		return
+	var me: Variant = GameManager.active_players.get(NetworkManager.get_local_id())
+	var cam := get_viewport().get_camera_3d()
+	_occluders.clear()
+	if me == null or not is_instance_valid(me) or cam == null or me.is_dead:
+		return
+	var space := get_world_3d().direct_space_state
+	var cpos := cam.global_position
+	var players_rids: Array[RID] = []
+	for p in GameManager.active_players.values():
+		if is_instance_valid(p):
+			players_rids.append((p as CollisionObject3D).get_rid())
+	var base: Vector3 = (me as Node3D).global_position
+	for h in OCCLUDE_HEIGHTS:
+		var target := base + Vector3(0, h, 0)
+		var exclude := players_rids.duplicate()
+		var q := PhysicsRayQueryParameters3D.create(cpos, target)
+		for _i in 4:
+			q.exclude = exclude
+			var hit := space.intersect_ray(q)
+			if hit.is_empty():
+				break
+			exclude.append(hit["rid"])
+			var gi := (hit["collider"] as Node).get_parent() as GeometryInstance3D
+			if gi and not _has_keyword(String(gi.name), NO_FADE_KEYWORDS):
+				_occluders[gi] = true
+		for i in _canopies.size():
+			if _canopy_aabb[i].intersects_segment(cpos, target):
+				_occluders[_canopies[i]] = true
 
 
 func _process(delta: float) -> void:
-	if _canopies.is_empty():
+	if _occluders.is_empty() and _faded.is_empty():
 		return
-	var me: Variant = GameManager.active_players.get(NetworkManager.get_local_id())
-	if me == null or not is_instance_valid(me):
-		return
-	var pp: Vector3 = (me as Node3D).global_position
-	var p2 := Vector2(pp.x, pp.z)
-	var k := 1.0 - exp(-8.0 * delta)
-	for i in _canopies.size():
-		var near := _canopy_xz[i].distance_to(p2) < CANOPY_FADE_RADIUS
-		var gi := _canopies[i]
-		gi.transparency = lerpf(gi.transparency, CANOPY_FADE_ALPHA if near else 0.0, k)
+	for gi in _occluders:
+		_faded[gi] = true
+	var k := 1.0 - exp(-10.0 * delta)
+	for gi: GeometryInstance3D in _faded.keys():
+		if not is_instance_valid(gi):
+			_faded.erase(gi)
+			continue
+		var want := OCCLUDE_ALPHA if _occluders.has(gi) else 0.0
+		gi.transparency = lerpf(gi.transparency, want, k)
+		if want == 0.0 and gi.transparency < 0.01:
+			gi.transparency = 0.0
+			_faded.erase(gi)

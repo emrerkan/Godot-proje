@@ -23,7 +23,9 @@ const LIGHT_OFFSET := 0.55   # ışık kaynağı duvar yüzünden koridora doğr
 const SHAFT_INTENSITY := 0.16  # huzmenin tam parlaklıktaki yoğunluğu (LightShaft.gdshader)
 const SHAFT_SHADER := preload("res://scenes/world/LightShaft.gdshader")
 
-var _lamps: Array[Dictionary] = []   # {light, bulb_mat, shaft_mat, kind, rng, level, timer, state}
+var _lamps: Array[Dictionary] = []
+## Harita bazlı lamba gücü çarpanı (ImportedMap: MAPS "lamp_energy")
+var energy_scale := 1.0   # {light, bulb_mat, shaft_mat, kind, rng, level, timer, state}
 
 
 func _ready() -> void:
@@ -159,6 +161,6 @@ func _process(delta: float) -> void:
 		var smooth := 1.0 if L["kind"] == Kind.FLICKER else 1.0 - exp(-25.0 * delta)
 		L["level"] = lerpf(L["level"], clampf(level, 0.0, 1.0), smooth)
 		var lv: float = L["level"]
-		(L["light"] as OmniLight3D).light_energy = ENERGY * lv
-		(L["bulb_mat"] as StandardMaterial3D).emission_energy_multiplier = 0.2 + 3.0 * lv
-		(L["shaft_mat"] as ShaderMaterial).set_shader_parameter("intensity", SHAFT_INTENSITY * lv)
+		(L["light"] as OmniLight3D).light_energy = ENERGY * lv * energy_scale
+		(L["bulb_mat"] as StandardMaterial3D).emission_energy_multiplier = (0.2 + 3.0 * lv) * energy_scale
+		(L["shaft_mat"] as ShaderMaterial).set_shader_parameter("intensity", SHAFT_INTENSITY * lv * energy_scale)

@@ -31,7 +31,7 @@ const MAPS: Array[Dictionary] = [
 	# emission_scale: haritanın parlayan malzemeleri (neon/plazma) çarpanı · lamp_scale: otomatik duvar lambası yoğunluğu
 	{"id": "quantum", "name": "Yeraltı Kuantum Labirenti", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
 		"glb": "res://asset model/haritalar/Map2_Yeralti_Kuantum_Labirenti_5v5v5v5.glb",
-		"emission_scale": 0.35, "lamp_scale": 0.4},
+		"emission_scale": 0.18, "lamp_scale": 0.2, "lamp_energy": 0.6},   # kullanıcı: "fenere ihtiyaç yok gibi" → iki kez kısıldı
 	{"id": "desert", "name": "Çöl Kargo Uçağı Enkazı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
 		"glb": "res://asset model/haritalar/Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5.glb"},
 	{"id": "forest", "name": "Gece Orman Radar Üssü", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
