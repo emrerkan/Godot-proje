@@ -258,16 +258,20 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   Ayak izi x ±62, z ±46; koridor ~4 m, duvar ~2 m kalın. Zemin 126×94, `Bounds` görünmez sınır (üst girişler dışarı açılmasın).
   `Maze_minimap.png` (1 px = 1 m duvar maskesi) → Minimap `MAP_MIN/MAX` ile birebir.
 - **İçe aktarılan haritalar** (`asset model/haritalar/*.glb`, rehber `HARITALAR_TEKNIK_REHBERI_AI.md` — dosyalarla doğrulandı):
-  `NetworkManager.MAPS` id embassy/quantum/desert/forest → hepsi `scenes/world/ImportedMap.tscn` (+ `glb` yolu, `max_team`
-  3/5/5/4 — `get_map_max_team`, `set_map` takım boyutunu kırpar, Lobby format seçeneklerini kapatır). `ImportedMap.gd`:
+  `NetworkManager.MAPS` id embassy/quantum/desert/forest/hospital/subway/warehouse/port → hepsi `scenes/world/ImportedMap.tscn`
+  (+ `glb` yolu, `max_team` 3/5/5/4/2/3/4/5 — `get_map_max_team`, `set_map` takım boyutunu kırpar, Lobby format seçeneklerini kapatır). `ImportedMap.gd`:
   GLB'yi örnekler (`MapModel`), `CardVisual_*` gizler, mesh başına trimesh çarpışma (`NO_COLLISION_KEYWORDS`: yaprak/su/neon/holo;
   `Pad_Team` rehberin aksine çarpışmalı), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
-  `TeamManager.register_spawn_points` (SpawnPoints çocukları SIRAYLA takım 0-3), 1 m yükseklik taraması → `_wall` maskesi →
+  `TeamManager.register_spawn_points` (SpawnPoints çocukları SIRAYLA takım 0-3), 1 m yükseklik taraması (hücre boyu kutu
+  `cast_motion` = hücrenin EN YÜKSEK yüzeyi; tek ışın 0.4 m ince duvarları kaçırıyordu) → `_wall` maskesi. Zemini olmayan hücre
+  (Liman su havuzu, çarpışmasız) → `_build_void_walls` görünmez kutu, `VOID_WALL_LAYER` 16: sadece oyuncu çarpar (Player maskesine
+  eklenir), mermi/bomba/lamba/görüş ışınları maske 1 → geçer. MAPS `water_emission` (Liman 0.15), `pit_climb` [y, basamak]
+  (Metro [-0.4, 0.95]: ray çukurundayken perona tırmanır, kullanıcı isteği) →
   `minimap_texture/min/max` (Minimap `_check_map_source`), güç noktaları (`PowerupManager.set_points`), otomatik duvar lambaları
   (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). **Görüş engeli:**
   `_physics_process` kameradan yerel oyuncuya (0.35/1.1/1.8 m) ışın → araya giren mesh (trimesh body'nin ebeveyni, zemin/arazi
   hariç) + doğruyu kesen ağaç tepesi AABB'si `transparency` 0.72 — SADECE saklarken (kullanıcı kuralı). Labirent tek mesh → yok. Bitince `map_ready` → GameManager `_wait_map_ready()`
-  (oyuncu/kart/kapı doğmadan önce; Labirent'te sinyal yok → beklemez). Kurulum 0.8-2.9 s. `_get_marker_positions` artık Node3D +
+  (oyuncu/kart/kapı doğmadan önce; Labirent'te sinyal yok → beklemez). Kurulum 1.2-3.6 s. `_get_marker_positions` artık Node3D +
   `find_child` kabul eder. Player nişan düzlemi = oyuncu y + 0.9 (engebeli arazi).
   **Basamak:** Player tscn'deki BoxShape (keskin alt kenar 10 cm'ye takılıyordu) `_use_capsule_shape()` ile runtime'da kapsül
   (r 0.35, h 1.8); `_try_step_up` (move_and_slide öncesi, `test_move` ile) `STEP_HEIGHT` 0.42 m'ye kadar kenara çıkarır.

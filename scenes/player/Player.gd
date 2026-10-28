@@ -153,6 +153,10 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	is_local = (p_peer_id == NetworkManager.get_local_id())
 	floor_snap_length = 0.3  # Zemin tespitini güvenilir yapar, hız dalgalanmasını engeller
 	_use_capsule_shape()
+	collision_mask |= VOID_WALL_LAYER   # ImportedMap su kenarı engeli (sadece oyuncuyu durdurur, mermi/bomba geçer)
+	var climb: Array = NetworkManager.get_map_info().get("pit_climb", [])
+	if climb.size() == 2:
+		_pit_climb = Vector2(float(climb[0]), float(climb[1]))
 	health = max_health
 
 	# FBX karakter mesh'ini bul
@@ -526,6 +530,9 @@ const BODY_RADIUS := 0.35
 const BODY_HEIGHT := 1.8
 const STEP_HEIGHT := 0.42          # bu yüksekliğe kadar kenara otomatik basar (kütük 0.75 m, sandık vb. engel kalır)
 const STEP_PROBE := 0.3            # önde bu mesafede engel var mı (m)
+const VOID_WALL_LAYER := 16        # ImportedMap._build_void_walls (layer 5)
+## MAPS "pit_climb": (y eşiği, basamak) — Metro ray çukuru 0.85 m: çukurdayken perona tırmanılır; yukarıda normal basamak
+var _pit_climb := Vector2(-INF, 0.0)
 
 func _use_capsule_shape() -> void:
 	if collision_shape.shape is CapsuleShape3D:
@@ -546,7 +553,8 @@ func _try_step_up(horizontal_velocity: Vector3) -> void:
 	var t := global_transform
 	if not test_move(t, probe):
 		return                                   # önü boş
-	var up := Vector3(0, STEP_HEIGHT, 0)
+	var step := _pit_climb.y if global_position.y < _pit_climb.x else STEP_HEIGHT
+	var up := Vector3(0, step, 0)
 	if test_move(t, up):
 		return                                   # tavan
 	var t_up := t.translated(up)
@@ -557,7 +565,7 @@ func _try_step_up(horizontal_velocity: Vector3) -> void:
 	var t_fwd := t_up.translated(probe)
 	if not test_move(t_fwd, -up, col):
 		return                                   # önde zemin yok (çukur) — basamak değil
-	var rise := STEP_HEIGHT - col.get_travel().length()
+	var rise := step - col.get_travel().length()
 	if rise <= 0.02:
 		return
 	global_position.y += rise + 0.01

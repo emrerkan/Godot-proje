@@ -457,7 +457,7 @@ func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool
 	var target := Vector3(from.x + flat.x, 0.15, from.z + flat.z)
 	# Duvara çarparsa duvarın önüne düşer
 	var space := player.get_world_3d().direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(from, Vector3(target.x, from.y, target.z))
+	var q := PhysicsRayQueryParameters3D.create(from, Vector3(target.x, from.y, target.z), 1)   # 1: sadece dünya (su kenarı engeli hariç)
 	q.exclude = _player_rids()
 	var hit := space.intersect_ray(q)
 	if not hit.is_empty():
@@ -487,7 +487,7 @@ func _detonate_later(peer: int, team: int, pos: Vector3) -> void:
 		if d > BOMB_RADIUS:
 			continue
 		# Duvar arkası korunur (oyuncuları yok say, sadece duvar/zemin)
-		var q := PhysicsRayQueryParameters3D.create(center, target_pos)
+		var q := PhysicsRayQueryParameters3D.create(center, target_pos, 1)
 		q.exclude = _player_rids()
 		if not space.intersect_ray(q).is_empty():
 			continue
@@ -545,7 +545,7 @@ func _on_bomb_exploded(pos: Vector3, flash: bool) -> void:
 	# Duvar arkasındaysa etkilenmez
 	var eye := my_pos + Vector3(0, 1.5, 0)
 	var src := pos + Vector3(0, 0.5, 0)
-	var q := PhysicsRayQueryParameters3D.create(src, eye)
+	var q := PhysicsRayQueryParameters3D.create(src, eye, 1)
 	q.exclude = _player_rids()
 	if not (me as Node3D).get_world_3d().direct_space_state.intersect_ray(q).is_empty():
 		return

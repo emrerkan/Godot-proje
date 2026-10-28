@@ -139,6 +139,14 @@
     (kullanıcı: "sniper dışında"). **Görüş engeli:** karakteri kameradan saklayan duvar/bina/ağaç saydamlaşır — sadece
     saklarken (kullanıcı: "karakter gözükmüyorsa olsun, ağaçta da aynı mantık"). Labirent'te yok (tek mesh).
 
+34. **4 yeni harita daha** (rehber güncellendi): Karantina Hastanesi 2v2, Yeraltı Metro İstasyonu 3v3, Lojistik Depo Labirenti 4v4,
+    Gece Konteyner Limanı 5v5 — yapı rehberle aynı, genel ImportedMap kurulumu yetti. Kullanıcı kararları: **Metro ray çukuruna
+    (0.85 m) inilebilir, tırmanılabilir** (`pit_climb`); **Liman suyuna girilmez** (rıhtım kenarı görünmez duvar, mermi geçer).
+    Bulunan hata: yükseklik taraması hücre merkezine tek ışın atıyordu → ince duvarlar (tam sayı koordinatta) minimapte/lamba
+    yerleşiminde YOKTU → kutu süpürme (kurulum ~2× uzadı, 1.2-3.6 s). Liman suyunun emission'ı gece haritasını aydınlatıyordu → 0.15.
+    Rehberin "kart noktalarına ışık ekle" önerisi UYGULANMADI (kartın yerini ele verir, yakınlıkla görünme kuralına aykırı).
+    Spawn platformları (`Pad_Team*`, parlak takım rengi disk) tüm yeni haritalarda var, dokunulmadı.
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).

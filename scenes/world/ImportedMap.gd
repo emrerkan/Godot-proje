@@ -19,7 +19,7 @@ signal map_ready
 ## (yoksa Yeraltı haritasında oyuncular platformun 0.27 m içine gömülüyordu).
 const NO_COLLISION_KEYWORDS: Array[String] = [
 	"Canopy", "Needles", "Frond", "Neon", "LED", "Holo", "CardVisual", "Beacon", "GlowRing",
-	"Water", "Pool", "Basin", "Screen", "Glass", "Light", "Lamp",
+	"Water", "Pool", "Basin", "Screen", "Glass", "Light", "Lamp", "Horn", "HospitalRedCross", "ER_RedGuideLine",
 ]
 const CANOPY_KEYWORDS: Array[String] = ["Canopy", "Needles", "Frond"]
 
@@ -32,6 +32,10 @@ const LAMP_MAX := 40
 const POWERUP_SPACING := 9.0
 const POWERUP_MAX := 32
 const POWERUP_MIN_FROM_SPAWN := 7.0
+## Zemini olmayan hücreler (Liman: çarpışmasız su havuzu) → görünmez duvar. Ayrı katman: sadece oyuncu çarpar
+## (Player.VOID_WALL_LAYER), mermi/bomba/ışınlar (maske 1) suyun üstünden geçer.
+const VOID_WALL_LAYER := 16
+const VOID_WALL_HEIGHT := 3.0          # minimap/lamba için hücre yüksekliği (zemin üstü)
 
 var is_map_ready := false
 var minimap_min := Vector2(-62, -46)
@@ -66,6 +70,7 @@ func _ready() -> void:
 
 	_hide_card_visuals(_model)
 	_scale_emission(_model, float(info.get("emission_scale", 1.0)))
+	_scale_emission(_model, float(info.get("water_emission", 1.0)), ["Water", "Basin"])
 	_lamp_scale = float(info.get("lamp_scale", 1.0))
 	_bounds = _compute_bounds(_model)
 	_build_collisions(_model)
@@ -108,15 +113,16 @@ func _hide_card_visuals(n: Node) -> void:
 
 ## Haritaya özel parlaklık (MAPS "emission_scale"): Yeraltı Kuantum'da 156 neon şerit + plazma (enerji 4-6.5) fazla aydınlıktı.
 ## Malzemeler içe aktarılan sahneyle PAYLAŞILIYOR → kopyalanıp surface override olarak verilir (yoksa her yüklemede tekrar kısılırdı).
-func _scale_emission(n: Node, scale: float) -> void:
+## only_names doluysa sadece adı bunları içeren mesh'ler (MAPS "water_emission": Liman suyu tüm haritayı camgöbeği aydınlatıyordu).
+func _scale_emission(n: Node, scale: float, only_names: Array[String] = []) -> void:
 	if is_equal_approx(scale, 1.0):
 		return
 	var dup := {}
 	for mi: MeshInstance3D in n.find_children("*", "MeshInstance3D", true, false):
-		if mi.mesh == null:
+		if mi.mesh == null or (not only_names.is_empty() and not _has_keyword(String(mi.name), only_names)):
 			continue
 		for s in mi.mesh.get_surface_count():
-			var mat := mi.mesh.surface_get_material(s) as StandardMaterial3D
+			var mat := (mi.get_surface_override_material(s) if mi.get_surface_override_material(s) else mi.mesh.surface_get_material(s)) as StandardMaterial3D
 			if mat == null or not mat.emission_enabled:
 				continue
 			if not dup.has(mat):
@@ -224,12 +230,21 @@ func _scan_heights(space: PhysicsDirectSpaceState3D) -> void:
 	_heights.resize(_grid_w * _grid_h)
 	var top := _bounds.end.y + 2.0
 	var bottom := _bounds.position.y - 2.0
+	# Hücre büyüklüğünde ince kutu aşağı süpürülür → hücredeki EN YÜKSEK yüzey. Tek merkez ışını 0.4 m'lik ince
+	# duvarları (Hastane/Metro: tam sayı koordinatta, hücre merkezlerinin arasında) kaçırıyordu.
+	var box := BoxShape3D.new()
+	box.size = Vector3(GRID_STEP, 0.05, GRID_STEP)
+	var sq := PhysicsShapeQueryParameters3D.new()
+	sq.shape = box
+	sq.collision_mask = 1
+	sq.motion = Vector3(0, bottom - top, 0)
 	for z in _grid_h:
 		for x in _grid_w:
 			var p := _cell_center(x, z)
-			var q := PhysicsRayQueryParameters3D.create(Vector3(p.x, top, p.z), Vector3(p.x, bottom, p.z))
-			var hit := space.intersect_ray(q)
-			_heights[z * _grid_w + x] = (hit["position"] as Vector3).y if not hit.is_empty() else bottom
+			sq.transform = Transform3D(Basis(), Vector3(p.x, top, p.z))
+			var frac: PackedFloat32Array = space.cast_motion(sq)
+			_heights[z * _grid_w + x] = top + (bottom - top) * frac[0] - 0.025 if frac[0] < 1.0 else NAN
+	_build_void_walls()
 	# Duvar/engel: 3×3 komşuluğunun en alçağından belirgin yüksek hücre (yumuşak tepeler duvar sayılmaz)
 	_wall.resize(_grid_w * _grid_h)
 	for z in _grid_h:
@@ -241,7 +256,37 @@ func _scan_heights(space: PhysicsDirectSpaceState3D) -> void:
 					var nx := clampi(x + dx, 0, _grid_w - 1)
 					var nz := clampi(z + dz, 0, _grid_h - 1)
 					low = minf(low, _heights[nz * _grid_w + nx])
-			_wall[z * _grid_w + x] = 1 if h - low > WALL_STEP_HEIGHT else 0
+			_wall[z * _grid_w + x] = 1 if h - low > WALL_STEP_HEIGHT or h == VOID_WALL_HEIGHT else 0
+
+
+## Işın hiçbir şeye çarpmayan (NAN) hücreleri satır satır birleştirip kutu çarpışma olarak kapatır; hücre yüksekliği
+## duvar sayılır (minimap'te dolu, lamba/güç noktası kenarına yerleşmez — lamba ışını maske 1 olduğundan engele asılmaz).
+func _build_void_walls() -> void:
+	var body: StaticBody3D = null
+	var y0 := _bounds.position.y - 2.0
+	for z in _grid_h:
+		var x := 0
+		while x < _grid_w:
+			if not is_nan(_heights[z * _grid_w + x]):
+				x += 1
+				continue
+			var start := x
+			while x < _grid_w and is_nan(_heights[z * _grid_w + x]):
+				_heights[z * _grid_w + x] = VOID_WALL_HEIGHT
+				x += 1
+			if body == null:
+				body = StaticBody3D.new()
+				body.name = "VoidWalls"
+				body.collision_layer = VOID_WALL_LAYER
+				body.collision_mask = 0
+				add_child(body)
+			var cs := CollisionShape3D.new()
+			var box := BoxShape3D.new()
+			box.size = Vector3((x - start) * GRID_STEP, 10.0, GRID_STEP)
+			cs.shape = box
+			var c0 := _cell_center(start, z)
+			cs.position = Vector3(c0.x + (x - start - 1) * GRID_STEP * 0.5, y0 + 5.0, c0.z)
+			body.add_child(cs)
 
 
 func _cell_center(x: int, z: int) -> Vector3:
@@ -355,7 +400,7 @@ func _place_lamps(space: PhysicsDirectSpaceState3D, seed_base: int) -> void:
 		if _near_any(floor_p, placed, LAMP_SPACING):
 			continue
 		var from := floor_p + Vector3(0, 2.0, 0)
-		var q := PhysicsRayQueryParameters3D.create(from, from + dirs[i] * 2.5)
+		var q := PhysicsRayQueryParameters3D.create(from, from + dirs[i] * 2.5, 1)
 		var hit := space.intersect_ray(q)
 		if hit.is_empty():
 			continue
@@ -415,7 +460,7 @@ func _physics_process(_delta: float) -> void:
 	for h in OCCLUDE_HEIGHTS:
 		var target := base + Vector3(0, h, 0)
 		var exclude := players_rids.duplicate()
-		var q := PhysicsRayQueryParameters3D.create(cpos, target)
+		var q := PhysicsRayQueryParameters3D.create(cpos, target, 1)
 		for _i in 4:
 			q.exclude = exclude
 			var hit := space.intersect_ray(q)

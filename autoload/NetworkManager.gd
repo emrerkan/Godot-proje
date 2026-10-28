@@ -36,6 +36,15 @@ const MAPS: Array[Dictionary] = [
 		"glb": "res://asset model/haritalar/Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5.glb"},
 	{"id": "forest", "name": "Gece Orman Radar Üssü", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
 		"glb": "res://asset model/haritalar/Map4_Gece_Orman_Radar_Ussu_4v4v4v4.glb"},
+	{"id": "hospital", "name": "Karantina Hastanesi", "scene": IMPORTED_MAP_SCENE, "max_team": 2,
+		"glb": "res://asset model/haritalar/Map5_Karantina_Hastanesi_2v2v2v2.glb"},
+	# pit_climb [y, yükseklik]: oyuncu bu y'nin altındaysa (ray çukuru) basamak sınırı yükselir → perona tırmanır (kullanıcı isteği)
+	{"id": "subway", "name": "Yeraltı Metro İstasyonu", "scene": IMPORTED_MAP_SCENE, "max_team": 3,
+		"glb": "res://asset model/haritalar/Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb", "pit_climb": [-0.4, 0.95]},
+	{"id": "warehouse", "name": "Lojistik Depo Labirenti", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
+		"glb": "res://asset model/haritalar/Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb"},
+	{"id": "port", "name": "Gece Konteyner Limanı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
+		"glb": "res://asset model/haritalar/Map8_Gece_Konteyner_Limani_5v5v5v5.glb", "water_emission": 0.15},
 ]
 
 ## Oda ayarları — host değiştirir, _sync_room_settings ile herkese gider (yeni katılana da)
