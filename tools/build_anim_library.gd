@@ -29,6 +29,8 @@ const MIXAMO_CLIPS := {
 	"res://anims/Basic Shooter Pack/toss grenade.fbx": ["Toss", false],
 	"res://anims/Basic Shooter Pack/hit reaction.fbx": ["HitReact", false],
 	"res://anims/Dying.fbx": ["Dying", false],
+	# Kullanıcının eklediği Mixamo koşarak zıplama (1 sn; havada ~0.07-0.67 sn) — 3. eleman: in_place (kök hareketi atılır)
+	"res://anims/Jump.fbx": ["JumpRun", false, true],
 }
 
 
@@ -83,7 +85,7 @@ func _run() -> void:
 		if not ResourceLoader.exists(path):
 			print("YOK: ", path)
 			continue
-		var anim: Animation = retarget.retarget(path, get_root(), model)
+		var anim: Animation = retarget.retarget(path, get_root(), model, MIXAMO_CLIPS[path].size() > 2 and MIXAMO_CLIPS[path][2])
 		anim.loop_mode = Animation.LOOP_LINEAR if MIXAMO_CLIPS[path][1] else Animation.LOOP_NONE
 		lib.add_animation(StringName(MIXAMO_CLIPS[path][0]), anim)
 		print("%-34s → %-10s len=%.2f tracks=%d (Mixamo → UE)" % [path.get_file(), MIXAMO_CLIPS[path][0], anim.length, anim.get_track_count()])

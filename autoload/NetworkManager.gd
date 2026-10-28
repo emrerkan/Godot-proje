@@ -44,7 +44,8 @@ const MAPS: Array[Dictionary] = [
 	{"id": "warehouse", "name": "Lojistik Depo Labirenti", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
 		"glb": "res://asset model/haritalar/Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb"},
 	{"id": "port", "name": "Gece Konteyner Limanı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
-		"glb": "res://asset model/haritalar/Map8_Gece_Konteyner_Limani_5v5v5v5.glb", "water_emission": 0.15},
+		"glb": "res://asset model/haritalar/Map8_Gece_Konteyner_Limani_5v5v5v5.glb", "water_emission": 0.15,
+		"water_floor": true, "pit_climb": [-0.5, 1.05]},   # suya sızan düşmez, rıhtıma (0.94 m) tırmanır
 ]
 
 ## Oda ayarları — host değiştirir, _sync_room_settings ile herkese gider (yeni katılana da)

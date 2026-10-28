@@ -89,6 +89,19 @@ var crouch_locked := false
 var _sprint_delay := 0.0
 var _crouch_delay := 0.0
 
+## Zıplama (Space, tüm karakterler): ~1.15 m tepe — sandık/kütük/turnike gibi alçak engellerin üstüne çıkar, 3 m duvarlar
+## aşılmaz. Koşu dayanıklılığından JUMP_STAMINA yer (kilitliyken / yetmezse zıplanmaz). Havadayken çömelme (bağışıklık) yok.
+## Uzaklara _broadcast_state modunun AIR_FLAG biti → havada JumpRun animasyonu (Mixamo, kök hareketi atılmış).
+const JUMP_VELOCITY := 4.75         # v²/2g ≈ 1.15 m, havada ~0.97 sn
+const JUMP_STAMINA := 0.2
+const JUMP_COOLDOWN := 0.35         # yere indikten sonra
+const AIR_FLAG := 8
+const ANIM_JUMP := &"JumpRun"
+const JUMP_ANIM_SPEED := 0.7        # klipte havada kalma 0.07-0.67 sn → ~0.95 sn'lik fizik uçuşuna yayılır
+var _jump_cooldown := 0.0
+var _airborne := false              # local: zıpladı ve henüz inmedi · uzak: AIR_FLAG
+var _air_anim_played := false
+
 ## Bacak yönü / omurga dönüşü (bkz _update_leg_facing)
 const MAX_SPINE_TWIST := 1.92  # ~110°
 const LEG_TURN_SPEED := 10.0
@@ -313,6 +326,15 @@ func _update_animation(delta: float) -> void:
 	var moving := _move_speed > ANIM_MOVE_THRESHOLD
 	_update_leg_facing(step, moving, delta)
 
+	# Havada: zıplama klibi bir kez baştan (bitince son karede kalır), inişte normal klibe harmanlanır
+	if _airborne and _anim_player.has_animation(ANIM_JUMP):
+		if not _air_anim_played:
+			_air_anim_played = true
+			_anim_player.play(ANIM_JUMP, 0.08)
+			_anim_player.speed_scale = JUMP_ANIM_SPEED
+		return
+	_air_anim_played = false
+
 	var clip: StringName = MOVE_ANIMS[move_mode]
 	if not _anim_player.has_animation(clip):
 		clip = ANIM_RUN
@@ -488,11 +510,23 @@ func _handle_local_input(delta: float) -> void:
 	velocity.x = dir.x * move_speed
 	velocity.z = dir.z * move_speed
 
-	# Yerçekimi
+	# Yerçekimi + zıplama
+	_jump_cooldown = maxf(_jump_cooldown - delta, 0.0)
 	if is_on_floor():
+		if _airborne and velocity.y <= 0.0:
+			_airborne = false
+			_jump_cooldown = JUMP_COOLDOWN
 		velocity.y = 0.0
+		if not typing and Input.is_physical_key_pressed(KEY_SPACE) and _jump_cooldown <= 0.0 \
+				and move_mode != MoveMode.CROUCH and not sprint_locked and sprint_stamina >= JUMP_STAMINA:
+			velocity.y = JUMP_VELOCITY
+			_airborne = true
+			sprint_stamina -= JUMP_STAMINA
+			_sprint_delay = STAMINA_REGEN_DELAY
 	else:
 		velocity.y -= GRAVITY * delta
+		if is_on_ceiling() and velocity.y > 0.0:
+			velocity.y = 0.0
 
 	_try_step_up(Vector3(velocity.x, 0.0, velocity.z))
 	move_and_slide()
@@ -520,7 +554,7 @@ func _handle_local_input(delta: float) -> void:
 	if _sync_timer >= SYNC_RATE:
 		_sync_timer = 0.0
 		if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0:
-			_broadcast_state.rpc(global_position, rotation.y, move_mode)
+			_broadcast_state.rpc(global_position, rotation.y, move_mode | (AIR_FLAG if _airborne else 0))
 
 
 ## Çarpışma şekli: tscn'deki kutu (0.8×1.8×0.8) keskin alt kenarıyla 10 cm'lik zemin farkına bile takılıyordu
@@ -547,7 +581,8 @@ func _use_capsule_shape() -> void:
 ## Basamak çıkma: önde alçak bir kenar varsa (alt seviyede tıkalı, STEP_HEIGHT yukarıda boş) gövdeyi kenarın
 ## üstüne kaldırır; ardından move_and_slide ileri taşır. Duvar (yukarıda da tıkalı) ve tavan kontrolü var.
 func _try_step_up(horizontal_velocity: Vector3) -> void:
-	if horizontal_velocity.length_squared() < 0.01 or not is_on_floor():
+	# Zıplarken de çalışır (kenara tutunma): tepeye tam yetişmeyen zıplama, kenar STEP_HEIGHT içindeyse üstüne çıkar
+	if horizontal_velocity.length_squared() < 0.01 or not (is_on_floor() or _airborne):
 		return
 	var probe := horizontal_velocity.normalized() * STEP_PROBE
 	var t := global_transform
@@ -575,7 +610,7 @@ func _try_step_up(horizontal_velocity: Vector3) -> void:
 ## Tükenen dayanıklılık kilitlenir, *_UNLOCK seviyesine dolana kadar o mod kullanılamaz. Bırakınca
 ## STAMINA_REGEN_DELAY sonra dolar. Çömelmesi biten oyuncu otomatik kalkar.
 func _update_move_mode(dir: Vector3, typing: bool, delta: float) -> void:
-	var want_crouch := not typing and Input.is_physical_key_pressed(KEY_CTRL)
+	var want_crouch := not typing and Input.is_physical_key_pressed(KEY_CTRL) and not _airborne
 	var want_sprint := not typing and Input.is_physical_key_pressed(KEY_SHIFT) and dir != Vector3.ZERO
 	move_mode = MoveMode.WALK
 
@@ -612,6 +647,8 @@ func _reset_stamina() -> void:
 	sprint_locked = false
 	crouch_locked = false
 	move_mode = MoveMode.WALK
+	_airborne = false
+	_jump_cooldown = 0.0
 
 
 ## Çömelmiş (ve canlı) oyuncunun üstünden mermi geçer — Bullet.gd ve host take_damage kullanır
@@ -646,7 +683,8 @@ func _broadcast_state(pos: Vector3, aim_y: float, mode: int = MoveMode.WALK) -> 
 		return
 	_target_position = pos
 	_target_aim_y = aim_y
-	move_mode = clampi(mode, MoveMode.RUN, MoveMode.CROUCH)
+	_airborne = (mode & AIR_FLAG) != 0
+	move_mode = clampi(mode & ~AIR_FLAG, MoveMode.RUN, MoveMode.CROUCH)
 
 
 # ─────────────────────────────────────────────

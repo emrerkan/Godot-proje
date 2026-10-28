@@ -147,6 +147,13 @@
     Rehberin "kart noktalarına ışık ekle" önerisi UYGULANMADI (kartın yerini ele verir, yakınlıkla görünme kuralına aykırı).
     Spawn platformları (`Pad_Team*`, parlak takım rengi disk) tüm yeni haritalarda var, dokunulmadı.
 
+35. **Liman suyundan dünyanın dışına düşme** (kullanıcı oyunda yaşadı): bordalama rampalarının yanındaki kısmi hücreler "zemin var"
+    sayılıyordu → 0.5 m alt hücre kapatma + su güvenlik zemini + düşen oyuncu spawn'a ışınlanır (504 kenar testinde 50 → 0 sızıntı).
+    **Zıplama** (kullanıcı `anims/Jump.fbx` ekledi, "normal özelliklerden biri olsun, yüksek yerlerde kullanırız"): Space, tüm
+    karakterler, ~1.15 m + kenara tutunma, koşu dayanıklılığından %20. Kararlar benim (sorulmadı): tepe yüksekliği, dayanıklılık
+    bedeli, havadan ateş serbest (namlu yükseldiği için alçak hedefin üstünden geçebilir), havada çömelme bağışıklığı yok.
+    Duran oyuncu da koşarak-zıplama klibini oynatır (UE kütüphanesindeki yerinde "Jump" kalkış öncesi çömelmeli, fiziğe uymuyordu).
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).

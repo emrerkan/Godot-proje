@@ -22,6 +22,7 @@ const NO_COLLISION_KEYWORDS: Array[String] = [
 	"Water", "Pool", "Basin", "Screen", "Glass", "Light", "Lamp", "Horn", "HospitalRedCross", "ER_RedGuideLine",
 ]
 const CANOPY_KEYWORDS: Array[String] = ["Canopy", "Needles", "Frond"]
+const WATER_KEYWORDS: Array[String] = ["Water", "Basin"]
 
 const GRID_STEP := 1.0                 # tarama çözünürlüğü (m) — minimap 1 px = 1 m
 const WALL_STEP_HEIGHT := 1.2          # komşusundan bu kadar yüksek hücre = duvar/engel
@@ -51,6 +52,7 @@ var _wall := PackedByteArray()
 var _canopies: Array[GeometryInstance3D] = []
 var _canopy_aabb: Array[AABB] = []
 var _lamp_scale := 1.0
+var _water_floor := false
 var _spawn_list: Array[Vector3] = []
 var _card_list: Array[Vector3] = []
 
@@ -73,6 +75,7 @@ func _ready() -> void:
 	_scale_emission(_model, float(info.get("water_emission", 1.0)), ["Water", "Basin"])
 	_lamp_scale = float(info.get("lamp_scale", 1.0))
 	_bounds = _compute_bounds(_model)
+	_water_floor = bool(info.get("water_floor", false))
 	_build_collisions(_model)
 	_build_bounds_walls()
 
@@ -142,6 +145,14 @@ func _has_keyword(node_name: String, words: Array[String]) -> bool:
 func _build_collisions(n: Node) -> void:
 	if n is MeshInstance3D and (n as MeshInstance3D).mesh and not _has_keyword(String(n.name), NO_COLLISION_KEYWORDS):
 		(n as MeshInstance3D).create_trimesh_collision()   # StaticBody3D çocuğu, layer 1 (oyuncu + mermi)
+	elif _water_floor and n is MeshInstance3D and (n as MeshInstance3D).mesh and _has_keyword(String(n.name), WATER_KEYWORDS):
+		# Güvenlik zemini (MAPS "water_floor"): kenar duvarının kısmi hücrelerden (gemi gövdesi/rampa yanı) sızan oyuncu
+		# sonsuza düşmesin, suya basar ve pit_climb ile rıhtıma tırmanır. Sadece oyuncu katmanı — tarama/mermi görmez.
+		(n as MeshInstance3D).create_trimesh_collision()
+		for b in n.get_children():
+			if b is StaticBody3D:
+				(b as StaticBody3D).collision_layer = VOID_WALL_LAYER
+				(b as StaticBody3D).collision_mask = 0
 	for c in n.get_children():
 		if not (c is StaticBody3D):
 			_build_collisions(c)
@@ -244,7 +255,7 @@ func _scan_heights(space: PhysicsDirectSpaceState3D) -> void:
 			sq.transform = Transform3D(Basis(), Vector3(p.x, top, p.z))
 			var frac: PackedFloat32Array = space.cast_motion(sq)
 			_heights[z * _grid_w + x] = top + (bottom - top) * frac[0] - 0.025 if frac[0] < 1.0 else NAN
-	_build_void_walls()
+	_build_void_walls(space)
 	# Duvar/engel: 3×3 komşuluğunun en alçağından belirgin yüksek hücre (yumuşak tepeler duvar sayılmaz)
 	_wall.resize(_grid_w * _grid_h)
 	for z in _grid_h:
@@ -261,9 +272,45 @@ func _scan_heights(space: PhysicsDirectSpaceState3D) -> void:
 
 ## Işın hiçbir şeye çarpmayan (NAN) hücreleri satır satır birleştirip kutu çarpışma olarak kapatır; hücre yüksekliği
 ## duvar sayılır (minimap'te dolu, lamba/güç noktası kenarına yerleşmez — lamba ışını maske 1 olduğundan engele asılmaz).
-func _build_void_walls() -> void:
+## Kısmi hücreler (Liman: bordalama rampası/gemi gövdesi hücrenin bir kısmını kaplıyor, kutu tarama "zemin var" der ama
+## yanından suya düşülüyordu): boşluğa komşu hücreler 0.5 m'lik 4 alt hücreye bölünür, merkez ışını (maske 1) bir şeye
+## çarpmayan alt hücre de kapatılır.
+func _build_void_walls(space: PhysicsDirectSpaceState3D) -> void:
 	var body: StaticBody3D = null
 	var y0 := _bounds.position.y - 2.0
+	var top := _bounds.end.y + 2.0
+	var edge: Array[Vector2i] = []
+	for z in _grid_h:
+		for x in _grid_w:
+			if is_nan(_heights[z * _grid_w + x]):
+				continue
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var nx := x + d.x
+				var nz := z + d.y
+				if nx >= 0 and nz >= 0 and nx < _grid_w and nz < _grid_h and is_nan(_heights[nz * _grid_w + nx]):
+					edge.append(Vector2i(x, z))
+					break
+	if not edge.is_empty():
+		body = StaticBody3D.new()
+		body.name = "VoidWalls"
+		body.collision_layer = VOID_WALL_LAYER
+		body.collision_mask = 0
+		add_child(body)
+	var half := GRID_STEP * 0.5
+	for e in edge:
+		var c := _cell_center(e.x, e.y)
+		for o: Vector2 in [Vector2(-0.25, -0.25), Vector2(0.25, -0.25), Vector2(-0.25, 0.25), Vector2(0.25, 0.25)]:
+			var sx := c.x + o.x * GRID_STEP
+			var sz := c.z + o.y * GRID_STEP
+			var q := PhysicsRayQueryParameters3D.create(Vector3(sx, top, sz), Vector3(sx, y0, sz), 1)
+			if not space.intersect_ray(q).is_empty():
+				continue
+			var cs0 := CollisionShape3D.new()
+			var b0 := BoxShape3D.new()
+			b0.size = Vector3(half, 10.0, half)
+			cs0.shape = b0
+			cs0.position = Vector3(sx, y0 + 5.0, sz)
+			body.add_child(cs0)
 	for z in _grid_h:
 		var x := 0
 		while x < _grid_w:
@@ -435,6 +482,7 @@ func _collect_canopies(n: Node) -> void:
 ## Fizik karesinde kameradan yerel oyuncunun ayak/bel/baş hizasına ışınlar: araya giren duvar/bina mesh'i (trimesh
 ## StaticBody'sinin ebeveyni) saydamlaşır. Ağaç tepelerinin çarpışması yok → kamera–oyuncu doğrusu AABB'lerini kesiyorsa.
 ## Zemin/arazi saydamlaşmaz. Karakter açığa çıkınca nesne yavaşça eski haline döner.
+const FALL_RESCUE_DEPTH := 4.0
 const OCCLUDE_ALPHA := 0.72
 const OCCLUDE_HEIGHTS: Array[float] = [0.35, 1.1, 1.8]
 const NO_FADE_KEYWORDS: Array[String] = ["Terrain", "Floor", "Ground", "Deck", "Plaza", "Driveway", "Bridge"]
@@ -449,6 +497,12 @@ func _physics_process(_delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	_occluders.clear()
 	if me == null or not is_instance_valid(me) or cam == null or me.is_dead:
+		return
+	# Son güvenlik: haritanın altına düşen yerel oyuncu kendi takım spawn'ına döner (konum local otoriteli)
+	if (me as Node3D).global_position.y < _bounds.position.y - FALL_RESCUE_DEPTH:
+		(me as CharacterBody3D).velocity = Vector3.ZERO
+		(me as Node3D).global_position = TeamManager.get_spawn_position(int(me.team_id))
+		(me as Node3D).reset_physics_interpolation()
 		return
 	var space := get_world_3d().direct_space_state
 	var cpos := cam.global_position

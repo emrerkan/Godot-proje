@@ -166,7 +166,11 @@ Player.gd modifier'ı `preload` ile yükler (global class cache'e bağımlı de�
 t=0 karesinden üretir). Dayanıklılık (sadece local, HUD okur):
 `sprint_stamina` (`SPRINT_MAX_TIME=4s`, dolum 5s) ve `crouch_stamina` (`CROUCH_MAX_TIME=3s`, dolum 4s); bırakınca
 `STAMINA_REGEN_DELAY` sonra dolar; tükenirse `*_locked` → `SPRINT_UNLOCK=0.4` / `CROUCH_UNLOCK=0.5`'e dolana kadar kullanılamaz
-(çömelmesi biten otomatik kalkar). Respawn'da `_reset_stamina()`. `Input.is_physical_key_pressed` — project.godot'ya eklenmedi.
+(çömelmesi biten otomatik kalkar). Respawn'da `_reset_stamina()`.
+**Zıplama** (Space, herkes): `JUMP_VELOCITY` 4.75 (~1.15 m tepe, ~0.97 s), koşu dayanıklılığından `JUMP_STAMINA` 0.2, inişte
+`JUMP_COOLDOWN`; havada çömelme yok; `_airborne` iken `_try_step_up` de çalışır (kenara tutunma). Uzaklara `_broadcast_state` mod
+değerinin `AIR_FLAG` (8) biti → `JumpRun` (kullanıcının `anims/Jump.fbx` Mixamo klibi, `build_anim_library` MIXAMO_CLIPS 3. eleman
+`in_place` = kök hareketi atılır) `JUMP_ANIM_SPEED` 0.7 ile bir kez oynar. HUD etiketi "KOŞU · ZIPLA". `Input.is_physical_key_pressed` — project.godot'ya eklenmedi.
 **Çömelme bağışıklığı:** `is_crouching()` → `Bullet._on_body_entered` mermiyi yok etmeden geçirir; host
 `take_damage(amount, shooter, source)` `source==DAMAGE_BULLET` ise çömelmiş hedefe işlemez (host, `_broadcast_state` modunu kullanır).
 Bomba `DAMAGE_EXPLOSION` (1) gönderir → çömelme korumaz.
@@ -265,7 +269,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   `TeamManager.register_spawn_points` (SpawnPoints çocukları SIRAYLA takım 0-3), 1 m yükseklik taraması (hücre boyu kutu
   `cast_motion` = hücrenin EN YÜKSEK yüzeyi; tek ışın 0.4 m ince duvarları kaçırıyordu) → `_wall` maskesi. Zemini olmayan hücre
   (Liman su havuzu, çarpışmasız) → `_build_void_walls` görünmez kutu, `VOID_WALL_LAYER` 16: sadece oyuncu çarpar (Player maskesine
-  eklenir), mermi/bomba/lamba/görüş ışınları maske 1 → geçer. MAPS `water_emission` (Liman 0.15), `pit_climb` [y, basamak]
+  eklenir), mermi/bomba/lamba/görüş ışınları maske 1 → geçer; boşluğa komşu hücreler 0.5 m alt hücre ışınıyla ayrıca kapatılır
+  (rampa/gövde kısmi hücreleri). `water_floor` (Liman): su mesh'i aynı katmanda güvenlik zemini. Haritanın 4 m altına düşen
+  yerel oyuncu kendi spawn'ına ışınlanır (`FALL_RESCUE_DEPTH`). MAPS `water_emission` (Liman 0.15), `pit_climb` [y, basamak]
   (Metro [-0.4, 0.95]: ray çukurundayken perona tırmanır, kullanıcı isteği) →
   `minimap_texture/min/max` (Minimap `_check_map_source`), güç noktaları (`PowerupManager.set_points`), otomatik duvar lambaları
   (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). **Görüş engeli:**

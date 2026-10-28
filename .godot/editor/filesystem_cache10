@@ -1,6 +1,6 @@
 78098b89c88a74ebe8c20117b8754620
-::res://::1793204284
-CLAUDE.md::TextFile::-1::1793204284::0::1::::<><><>0<>0<><>::
+::res://::1793206773
+CLAUDE.md::TextFile::-1::1793206773::0::1::::<><><>0<>0<><>::
 default_env.tres::Environment::6696662647191849165::1793112389::0::1::::<><><>0<>0<><>::
 DOKUMANTASYON.md::TextFile::-1::1793201239::0::1::::<><><>0<>0<><>::
 icon.svg::CompressedTexture2D::3864269300686135935::1791462691::1791898819::1::::<><><>0<>0<>e6b9b2ed665b320379262aa861e8dd4f<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
@@ -26,9 +26,10 @@ tesst.txt::TextFile::-1::1792259053::0::1::::<><><>0<>0<><>::
 ::res://addons/godot_mcp/Runtime/Tools/::1791898624
 ::res://addons/godot_mcp/tools/::1791898627
 ::res://addons/godot_mcp/ui/::1791898627
-::res://anims/::1792099253
+::res://anims/::1793207483
 Breathing Idle.fbx::PackedScene::6540072514156262424::1791454023::1791898819::1::::<><><>0<>0<>2a113c6b45ac1bff9ee730219903fb24<>res://.godot/imported/Breathing Idle.fbx-00ee10aea8c4798d7675b9b9b440ad62.scn::
 Dying.fbx::PackedScene::6100011304237600514::1792097320::1792098638::1::::<><><>0<>0<>d9f95c0613572ad08a35bf726e500698<>res://.godot/imported/Dying.fbx-eb1c0876693d705bef67ae941daa16fb.scn::
+Jump.fbx::PackedScene::7086107214584459454::1793207483::1793207921::1::::<><><>0<>0<>78cba85c9b804da055cec7a9adde2567<>res://.godot/imported/Jump.fbx-2d3a066dfa4434b1cdec859a2d4965fd.scn::
 NotWalkFire.fbx::PackedScene::8746671239341168877::1792097912::1792098637::1::::<><><>0<>0<>bf8b6457ff694acef80eed72af85e325<>res://.godot/imported/NotWalkFire.fbx-43ab0e7b70aacc1a7a6e8de28ddc6372.scn::
 Reloading.fbx::PackedScene::5511805981034815183::1792097557::1792098637::1::::<><><>0<>0<>a6439b6a2ed0065677aed09d738b4f45<>res://.godot/imported/Reloading.fbx-e1895fd799c4058520c2b90f59a5bef3.scn::
 survivalist_anims.res::AnimationLibrary::2734330269725378276::1792099253::0::1::::<><><>0<>0<><>::
@@ -74,7 +75,7 @@ PowerUp_Satellite.fbx::PackedScene::5015184760988362771::1792402151::1792933143:
 R6_Tablet.fbx::PackedScene::3761156081022604364::1792402151::1792933142::1::::<><><>0<>0<>70c81359183a26d936fa3960d7cafbe5<>res://.godot/imported/R6_Tablet.fbx-f0c15b31976763cdc3e5f3db9c3df29f.scn::
 tactical_compound_map.fbx::PackedScene::966549985829067538::1792251787::1792933143::1::::<><><>0<>0<>bfe144311f9e71b281f9362feeafb776<>res://.godot/imported/tactical_compound_map.fbx-13a26ba8955348d3c702d3422d0df80a.scn::
 tactical_compound_map.glb::PackedScene::3909879105333120864::1792251787::1792933144::1::::<><><>0<>0<>ee674c1d6e6fe67414251451170695e1<>res://.godot/imported/tactical_compound_map.glb-1f550417733fdbeb92567772780acd6f.scn::
-::res://asset model/haritalar/::1793205676
+::res://asset model/haritalar/::1793206162
 HARITALAR_TEKNIK_REHBERI_AI.md::TextFile::-1::1793205676::0::1::::<><><>0<>0<><>::
 Map1_Elcilik_Kompleksi_3v3v3v3.glb::PackedScene::1457408572582880752::1793199761::1793201060::1::::<><><>0<>0<>4c8f06d5ed8b63712f539637540e4bc0<>res://.godot/imported/Map1_Elcilik_Kompleksi_3v3v3v3.glb-694dddc87bb2811035ad6bb7bbbd80ef.scn::
 Map2_Yeralti_Kuantum_Labirenti_5v5v5v5.glb::PackedScene::5241839825033693972::1793199761::1793201062::1::::<><><>0<>0<>bd52ae45f62eab600cfb76afc2b8c3f5<>res://.godot/imported/Map2_Yeralti_Kuantum_Labirenti_5v5v5v5.glb-a99ce959f1703375448f75abd74a99d5.scn::
@@ -84,7 +85,7 @@ Map5_Karantina_Hastanesi_2v2v2v2.glb::PackedScene::2576567553824089561::17932056
 Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb::PackedScene::3871555488984360543::1793205676::1793206161::1::::<><><>0<>0<>9f3e31c19c6a681e7a25858949d4245f<>res://.godot/imported/Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb-16229e11608f3d8d2f3328cfd8497e57.scn::
 Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb::PackedScene::7966518955327682667::1793205676::1793206162::1::::<><><>0<>0<>68d6e8321455be1c28e1964367327217<>res://.godot/imported/Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb-149aa18ad81271b247e41f8e250fa27e.scn::
 Map8_Gece_Konteyner_Limani_5v5v5v5.glb::PackedScene::8746370478870061456::1793205676::1793206162::1::::<><><>0<>0<>e8dbb77de0a68a791b6ea78b1f38454a<>res://.godot/imported/Map8_Gece_Konteyner_Limani_5v5v5v5.glb-b3d216fa97c397c08053170a865fc85b.scn::
-::res://asset model/otomasyon_modelleri/::1793205676
+::res://asset model/otomasyon_modelleri/::1793206165
 Map5_Karantina_Hastanesi_2v2v2v2.glb::PackedScene::5345587209281302393::1793205676::1793206163::1::::<><><>0<>0<>48b5b7ae98ce35f2c16f87a831559eac<>res://.godot/imported/Map5_Karantina_Hastanesi_2v2v2v2.glb-9a83792cc5a51891867bd1c5dfe39c2b.scn::
 Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb::PackedScene::709175496619554250::1793205676::1793206164::1::::<><><>0<>0<>151a5285173a0e971f56311cf95c6ce4<>res://.godot/imported/Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb-dca2a0dc7a42cd467ec162edfb4c30ae.scn::
 Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb::PackedScene::2925161422094803389::1793205676::1793206164::1::::<><><>0<>0<>61d628ffdf1b90a5912cf05f23c22389<>res://.godot/imported/Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb-bb17db43ab633a566ab6aac061a4dda1.scn::
@@ -182,13 +183,13 @@ ui_slot_flashbang.png::CompressedTexture2D::106219927278499033::1792402151::1792
 ui_slot_grenade.png::CompressedTexture2D::8085469720964910056::1792402151::1792933138::1::::<><><>0<>0<>81e6747997d383ff8db2fd6c0b05151b<>res://.godot/imported/ui_slot_grenade.png-c0768091b7766deca6f40eb6236ce8eb.ctex::
 ui_slot_satellite.png::CompressedTexture2D::7890781048922458653::1792402151::1792933138::1::::<><><>0<>0<>c722cf1d852c42b26bae761c1342373d<>res://.godot/imported/ui_slot_satellite.png-f78d47fa748737b707dfee4e4764fecd.ctex::
 ui_slot_stim.png::CompressedTexture2D::4073999442459016117::1792402151::1792933138::1::::<><><>0<>0<>f42aa39036373a1bf0a883fe946b442d<>res://.godot/imported/ui_slot_stim.png-5a746b2381e751c053678258134a453d.ctex::
-::res://autoload/::1793204154
+::res://autoload/::1793206723
 GameManager.gd::GDScript::7747858757678665870::1793201952::0::1::::<>Node<><>0<>0<><>::
-NetworkManager.gd::GDScript::9209667055640192206::1793204154::0::1::::<>Node<><>0<>0<><>::
+NetworkManager.gd::GDScript::9209667055640192206::1793206723::0::1::::<>Node<><>0<>0<><>::
 RoomManager.gd::GDScript::5147526031797872081::1792937033::0::1::::<>Node<><>0<>0<><>::
 TeamManager.gd::GDScript::5085910100125812743::1792001809::0::1::::<>Node<><>0<>0<><>::
-::res://docs/::1793204265
-PROJE_GECMISI.md::TextFile::-1::1793204265::0::1::::<><><>0<>0<><>::
+::res://docs/::1793206774
+PROJE_GECMISI.md::TextFile::-1::1793206774::0::1::::<><><>0<>0<><>::
 SANAT_KITABI.md::TextFile::-1::1793106306::0::1::::<><><>0<>0<><>::
 ::res://docs/claude_turkce/::1792934414
 README.md::TextFile::-1::1792934414::0::1::::<><><>0<>0<><>::
@@ -536,9 +537,9 @@ StreetLamp.tscn::PackedScene::-1::1791462691::0::1::::<><><>0<>0<><>::res://scen
 ::res://scenes/main/::1791960654
 Main.gd::GDScript::2990680006655880912::1791901407::0::1::::<>Node<><>0<>0<><>::
 Main.tscn::PackedScene::18548884408::1791960654::0::1::::<><><>0<>0<><>::uid://biuyces7g711u::::res://scenes/main/Main.gd
-::res://scenes/player/::1793204111
+::res://scenes/player/::1793206390
 HandRifle.gd::GDScript::8654881765119272815::1792161977::0::1::::<>SkeletonModifier3D<><>0<>0<><>::
-Player.gd::GDScript::7086428762684814405::1793204111::0::1::::<>CharacterBody3D<><>0<>0<><>::
+Player.gd::GDScript::7086428762684814405::1793206390::0::1::::<>CharacterBody3D<><>0<>0<><>::
 Player.tscn::PackedScene::2036310118231742133::1792099253::0::1::::<><><>0<>0<><>::uid://c77ypgatj76cv::::res://scenes/player/Player.gd<>uid://csenp2rgquxtx::::res://scenes/player/SurvivalistModel.tscn
 SelfVisibility.gdshader::Shader::1226009312003211618::1791462695::0::1::::<><><>0<>0<><>::
 SpineTwistModifier.gd::GDScript::8410650104438760143::1792007269::0::1::::SpineTwistModifier<>SkeletonModifier3D<><>0<>0<><>::
@@ -576,20 +577,20 @@ Bullet.gd::GDScript::604230341112233499::1793204136::0::1::::<>Area3D<><>0<>0<><
 Bullet.tscn::PackedScene::-1::1791462691::0::1::::<><><>0<>0<><>::res://scenes/weapons/Bullet.gd
 Weapon.gd::GDScript::7535938827061385862::1793204110::0::1::::<>Node3D<><>0<>0<><>::
 Weapon.tscn::PackedScene::-1::1791462691::0::1::::<><><>0<>0<><>::res://scenes/weapons/Weapon.gd
-::res://scenes/world/::1793204227
+::res://scenes/world/::1793206722
 Bomb.gd::GDScript::3073748922878818649::1793106020::0::1::::<>Node3D<><>0<>0<><>::
 CameraController.gd::GDScript::845686837757443432::1793110130::0::1::::<>Camera3D<><>0<>0<><>::
 Card.gd::GDScript::9150526131268287527::1793202646::0::1::::<>Area3D<><>0<>0<><>::
 Card.tscn::PackedScene::-1::1792002175::0::1::::<><><>0<>0<><>::res://scenes/world/Card.gd<>res://scenes/world/ProximityReveal.gd
 Door.gd::GDScript::4147028726566523735::1793202647::0::1::::<>Area3D<><>0<>0<><>::
 Door.tscn::PackedScene::-1::1792002177::0::1::::<><><>0<>0<><>::res://scenes/world/Door.gd<>res://scenes/world/ProximityReveal.gd
-ImportedMap.gd::GDScript::3768604527234721082::1793204227::0::1::::<>Node3D<><>0<>0<><>::
+ImportedMap.gd::GDScript::3768604527234721082::1793206722::0::1::::<>Node3D<><>0<>0<><>::
 ImportedMap.tscn::PackedScene::-1::1793201019::0::1::::<><><>0<>0<><>::res://scenes/world/ImportedMap.gd<>res://default_env.tres<>res://scenes/ui/HUD.tscn<>res://scenes/world/CameraController.gd<>res://scenes/world/PowerupManager.gd<>res://scenes/world/WallLamps.gd
 LightShaft.gdshader::Shader::1065006354266005747::1792076810::0::1::::<><><>0<>0<><>::
 Map.gd::GDScript::1360093020774556044::1792001810::0::1::::<>Node3D<><>0<>0<><>::
 Map.tscn::PackedScene::563665040004979031::1792076698::0::1::::<><><>0<>0<><>::uid://tm3sesnswm8k::::res://scenes/world/Map.gd<>uid://c2n6b5bvfe8sv::::res://default_env.tres<>uid://hud001::::res://scenes/ui/HUD.tscn<>uid://mbwlrq0rtfam::::res://scenes/world/CameraController.gd<>res://asset model/Maze_walls.obj<>res://scenes/world/PowerupManager.gd<>res://scenes/world/WallLamps.gd
 Powerup.gd::GDScript::9092547252677725295::1793106099::0::1::::<>Area3D<><>0<>0<><>::
-PowerupManager.gd::GDScript::7824874032987097163::1793200891::0::1::::<>Node<><>0<>0<><>::
+PowerupManager.gd::GDScript::7824874032987097163::1793206373::0::1::::<>Node<><>0<>0<><>::
 ProximityReveal.gd::GDScript::4701791085338037522::1793202645::0::1::::<>Node<><>0<>0<><>::
 SmokeCloud.gd::GDScript::8618150523978425076::1793107548::0::1::::<>Node3D<><>0<>0<><>::
 spatial_door_zone.gdshader::Shader::7387160539093715792::1792936561::0::1::::<><><>0<>0<><>::

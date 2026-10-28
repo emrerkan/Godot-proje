@@ -427,7 +427,7 @@ func _setup_player_card() -> void:
 	var stamina_row := HBoxContainer.new()
 	stamina_row.add_theme_constant_override("separation", 18)
 	box.add_child(stamina_row)
-	var sprint := _make_stamina_meter("KOŞU  ·  SHIFT", UITheme.SUCCESS)
+	var sprint := _make_stamina_meter("KOŞU  ·  ZIPLA", UITheme.SUCCESS)   # Shift koşu, Space zıplama — ikisi de bu dayanıklılıktan yer (uzun etiket kartı genişletip GÜÇ slotuna biniyordu)
 	stamina_row.add_child(sprint[0])
 	_sprint_bar = sprint[1]
 	_sprint_fill = sprint[2]
