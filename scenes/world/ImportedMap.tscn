@@ -1,0 +1,27 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/world/ImportedMap.gd" id="1_map"]
+[ext_resource type="Environment" path="res://default_env.tres" id="2_env"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="3_hud"]
+[ext_resource type="Script" path="res://scenes/world/CameraController.gd" id="4_cam"]
+[ext_resource type="Script" path="res://scenes/world/PowerupManager.gd" id="5_powerup"]
+[ext_resource type="Script" path="res://scenes/world/WallLamps.gd" id="6_lamps"]
+
+[node name="ImportedMap" type="Node3D"]
+script = ExtResource("1_map")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = ExtResource("2_env")
+
+[node name="PowerupManager" type="Node" parent="."]
+script = ExtResource("5_powerup")
+
+[node name="PowerupPoints" type="Node3D" parent="."]
+
+[node name="WallLamps" type="Node3D" parent="."]
+script = ExtResource("6_lamps")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+script = ExtResource("4_cam")
+
+[node name="HUD" parent="." instance=ExtResource("3_hud")]

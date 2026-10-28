@@ -27,10 +27,16 @@ var _lamps: Array[Dictionary] = []   # {light, bulb_mat, shaft_mat, kind, rng, l
 
 
 func _ready() -> void:
+	rebuild()
+
+
+## Marker3D çocuklarından lambaları kurar. İçe aktarılan haritalar (ImportedMap) marker'ları sonradan ekleyip tekrar çağırır.
+func rebuild() -> void:
 	var idx := 0
 	for child in get_children():
 		if child is Marker3D:
-			_build_lamp(child as Marker3D, idx)
+			if child.get_child_count() == 0:   # zaten kurulmuşsa tekrar kurma
+				_build_lamp(child as Marker3D, idx)
 			idx += 1
 
 

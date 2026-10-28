@@ -575,7 +575,8 @@ func _get_aim_target() -> Vector3:
 	var dir   := cam.project_ray_normal(mouse)
 	if absf(dir.y) < 0.001:
 		return global_position
-	var t := (0.9 - from.y) / dir.y
+	# Nişan düzlemi oyuncunun bel hizası (engebeli haritalarda — kum tepesi, arazi — sabit 0.9 sapıyordu)
+	var t := (global_position.y + 0.9 - from.y) / dir.y
 	return from + dir * t
 
 

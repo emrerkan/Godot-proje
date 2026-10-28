@@ -15,6 +15,10 @@ const WALLS_TEXTURE := "res://asset model/Maze_minimap.png"
 const SHOW_WALLS := true
 
 var _walls_tex: Texture2D = null
+## Haritaya göre (ImportedMap `minimap_min/max/texture` sağlar; yoksa labirent sabitleri)
+var _map_min := MAP_MIN
+var _map_max := MAP_MAX
+var _map_checked := false
 var _powerups: Node = null  # Map/PowerupManager (uydu açığa çıkarmaları)
 
 ## Kart alert (düşman kart aldığında 3 sn gösterilen son bilinen konum)
@@ -33,7 +37,24 @@ func _ready() -> void:
 	GameManager.card_picked_up.connect(_on_card_picked_up)
 
 
+## İçe aktarılan harita hazır olunca kendi sınırlarını ve üretilmiş duvar maskesini verir
+func _check_map_source() -> void:
+	if _map_checked:
+		return
+	var scene := get_tree().current_scene
+	if scene == null or not scene.has_signal("map_ready"):
+		_map_checked = true
+		return
+	if not bool(scene.get("is_map_ready")):
+		return
+	_map_checked = true
+	_map_min = scene.get("minimap_min")
+	_map_max = scene.get("minimap_max")
+	_walls_tex = scene.get("minimap_texture")
+
+
 func _process(delta: float) -> void:
+	_check_map_source()
 	if _alert_timer > 0.0:
 		_alert_timer -= delta
 	queue_redraw()
@@ -171,7 +192,7 @@ func _draw_satellite_reveals(local_team: int) -> void:
 
 ## 3D dünya konumunu (X/Z) minimap koordinatına çevirir
 func _w2m(world_pos: Vector3) -> Vector2:
-	var t := (Vector2(world_pos.x, world_pos.z) - MAP_MIN) / (MAP_MAX - MAP_MIN)
+	var t := (Vector2(world_pos.x, world_pos.z) - _map_min) / (_map_max - _map_min)
 	var inner_size := SIZE - Vector2(PAD, PAD) * 2.0
 	# Harita dışına taşan noktalar panelin kenarında kalsın
 	return (Vector2(PAD, PAD) + t * inner_size).clamp(Vector2(PAD, PAD), SIZE - Vector2(PAD, PAD))

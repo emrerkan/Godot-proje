@@ -91,7 +91,7 @@ func _ready() -> void:
 		for c in root.get_children():
 			if c is Marker3D:
 				_points.append((c as Marker3D).global_position)
-	if _points.is_empty():
+	if _points.is_empty() and not get_parent().has_signal("map_ready"):  # ImportedMap noktaları sonra verir (set_points)
 		push_warning("PowerupPoints bulunamadı — güç spawn edilmeyecek")
 	_spawn_timer = FIRST_SPAWN_DELAY
 	GameManager.kill_happened.connect(_on_kill_happened)
@@ -103,6 +103,11 @@ func _ready() -> void:
 		await get_tree().create_timer(1.5).timeout
 		if is_instance_valid(self) and multiplayer.has_multiplayer_peer() and not NetworkManager.is_host():
 			_request_sync.rpc_id(1)
+
+
+## İçe aktarılan haritalar (ImportedMap) güç noktalarını haritayı tarayıp sonradan üretir
+func set_points(points: Array[Vector3]) -> void:
+	_points = points.duplicate()
 
 
 func _process(delta: float) -> void:

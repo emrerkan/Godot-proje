@@ -370,7 +370,7 @@ Farklı iskelette retarget araçları uyarlanmalıdır. Detaylı teknik şartlar
 | Alan | Durum |
 |---|---|
 | Karakter modelleri | Tek temel model + kıyafet varyantları. **Karaktere özel model tasarımı planlanıyor.** |
-| Haritalar | Sadece "Labirent". **Yeni harita tasarımları planlanıyor** (oda ayarlarında harita seçimi hazır). |
+| Haritalar | 5 harita: Labirent (5v5), Elçilik Kompleksi (en fazla 3v3), Yeraltı Kuantum Labirenti (5v5), Çöl Kargo Uçağı Enkazı (5v5), Gece Orman Radar Üssü (en fazla 4v4). Yeni GLB haritaları `ImportedMap.gd` ile otomatik kurulur (çarpışma, lamba, güç noktası, minimap). |
 | Silah görselleri | Prosedürel basit tüfek; karaktere özel silah modelleri yok |
 | Ses | Ateş, adım, ortam, UI sesleri yok |
 | Karakter yetenekleri | Karakterler şimdilik sadece stat/silahla ayrışır (ör. Medic'in iyileştirme yeteneği yok) |

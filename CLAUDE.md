@@ -255,6 +255,17 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   — orijinali değiştirme, script'le yeniden üret).
   Ayak izi x ±62, z ±46; koridor ~4 m, duvar ~2 m kalın. Zemin 126×94, `Bounds` görünmez sınır (üst girişler dışarı açılmasın).
   `Maze_minimap.png` (1 px = 1 m duvar maskesi) → Minimap `MAP_MIN/MAX` ile birebir.
+- **İçe aktarılan haritalar** (`asset model/haritalar/*.glb`, rehber `HARITALAR_TEKNIK_REHBERI_AI.md` — dosyalarla doğrulandı):
+  `NetworkManager.MAPS` id embassy/quantum/desert/forest → hepsi `scenes/world/ImportedMap.tscn` (+ `glb` yolu, `max_team`
+  3/5/5/4 — `get_map_max_team`, `set_map` takım boyutunu kırpar, Lobby format seçeneklerini kapatır). `ImportedMap.gd`:
+  GLB'yi örnekler (`MapModel`), `CardVisual_*` gizler, mesh başına trimesh çarpışma (`NO_COLLISION_KEYWORDS`: yaprak/su/neon/holo;
+  `Pad_Team` rehberin aksine çarpışmalı), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
+  `TeamManager.register_spawn_points` (SpawnPoints çocukları SIRAYLA takım 0-3), 1 m yükseklik taraması → `_wall` maskesi →
+  `minimap_texture/min/max` (Minimap `_check_map_source`), güç noktaları (`PowerupManager.set_points`), otomatik duvar lambaları
+  (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). Orman/Çöl:
+  `Canopy/Needles/Frond` yerel oyuncuya 6 m içindeyse `transparency` 0.78. Bitince `map_ready` → GameManager `_wait_map_ready()`
+  (oyuncu/kart/kapı doğmadan önce; Labirent'te sinyal yok → beklemez). Kurulum 0.8-2.9 s. `_get_marker_positions` artık Node3D +
+  `find_child` kabul eder. Player nişan düzlemi = oyuncu y + 0.9 (engebeli arazi). Kapı tabelaları dekor (hepsi aynı, ipucu vermez).
 - `CardPoints` / `DoorPoints` (Map.tscn Marker3D'leri): `GameManager._spawn_card_and_door()` → `_get_marker_positions()`
   rastgele birini seçer (eski sabit koordinatlar duvara denk geliyordu). `TeamManager.get_spawn_position` ofseti ±0.6 m.
 - `Card.gd` (Area3D): `_on_body_entered` — sadece local oyuncu + ölü değil + kart yok + pickup-blocked değilse →

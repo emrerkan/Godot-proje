@@ -118,6 +118,12 @@
     çalışır, ekran sarsıntısı, tuş listesi), SES (4 kanal; oyunda henüz ses yok), OYUN (FPS göster). Ana menü + ESC menüsü.
     Bekleyen: tuş atama, renk körü modu, ses dosyaları.
 
+30. **4 yeni harita** (Elçilik Kompleksi 3v3, Yeraltı Kuantum Labirenti 5v5, Çöl Kargo Uçağı Enkazı 5v5, Gece Orman Radar Üssü 4v4)
+    — `ImportedMap.gd`. Kullanıcı kararları: takım boyutu haritanın ÜST SINIRI; otomatik duvar lambaları; yakındaki ağaç
+    saydamlaşır; kapı tabelaları hepsi aynı (ipucu vermez). Rehberle farklar: WallLamps/PowerupPoints boş (üretiliyor),
+    Harita 1/3'te kart kaidesi/kapı tabelası YOK (rehber var diyor), Pad_Team çarpışma almalı, 12 örnek kart modeli gizlenmeli.
+    Bekleyen: haritalara özel ortam (glow ile neon parlaması, renk tonu), minimap kare haritalarda hafif basık (200×148 sabit).
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).

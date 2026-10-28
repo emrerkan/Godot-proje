@@ -1,9 +1,0 @@
-res://default_env.tres
-res://autoload/NetworkManager.gd
-res://scenes/player/Player.gd
-res://scenes/ui/Crosshair.gd
-res://scenes/ui/HUD.gd
-res://scenes/ui/MainMenu.gd
-res://scenes/ui/MenuBackground3D.gd
-res://scenes/ui/UITheme.gd
-res://scenes/world/CameraController.gd

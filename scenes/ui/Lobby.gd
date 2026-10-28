@@ -405,7 +405,8 @@ func _build_settings_panel() -> Control:
 	# Harita
 	_map_option = OptionButton.new()
 	for m: Dictionary in NetworkManager.MAPS:
-		_map_option.add_item(m["name"])
+		var mx := NetworkManager.get_map_max_team(m["id"])
+		_map_option.add_item(m["name"] if mx >= NetworkManager.TEAM_SIZE_MAX else "%s  (en fazla %s)" % [m["name"], NetworkManager.get_format_text(mx)])
 	_map_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
 	box.add_child(_setting_row("HARİTA", _map_option))
 
@@ -509,6 +510,12 @@ func _update_draft_ui() -> void:
 	_pw_remove.disabled = not has_pw
 	var changes: PackedStringArray = []
 	var new_map: Dictionary = NetworkManager.MAPS[_map_option.selected]
+	# Haritanın kaldırmadığı formatlar seçilemez; seçili format sınırı aşıyorsa sınıra çekilir
+	var map_max := NetworkManager.get_map_max_team(new_map["id"])
+	for i in _size_option.item_count:
+		_size_option.set_item_disabled(i, NetworkManager.TEAM_SIZE_MIN + i > map_max)
+	if NetworkManager.TEAM_SIZE_MIN + _size_option.selected > map_max:
+		_size_option.select(map_max - NetworkManager.TEAM_SIZE_MIN)
 	if new_map["id"] != NetworkManager.get_map_info()["id"]:
 		changes.append("harita → %s" % new_map["name"])
 	var new_size := NetworkManager.TEAM_SIZE_MIN + _size_option.selected

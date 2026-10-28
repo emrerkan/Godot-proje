@@ -123,6 +123,7 @@ func _begin_actual_game_rpc() -> void:
 	get_tree().change_scene_to_packed(_get_map_scene())
 	await get_tree().process_frame
 	await get_tree().process_frame
+	await _wait_map_ready()
 	_spawn_local_player()
 	# Maç başı karaktere özel tek seferlik güç — HER PEER kendi hesaplar (bekleme/RPC yok, oyun başlar başlamaz).
 	# Migration/respawn'da verilmez — sadece bu yoldan.
@@ -132,6 +133,14 @@ func _begin_actual_game_rpc() -> void:
 	if NetworkManager.is_host():
 		_spawn_card_and_door()
 	emit_signal("game_started")
+
+
+## İçe aktarılan haritalar (ImportedMap) çarpışma + zemine oturtma için birkaç fizik karesi ister — spawn noktaları,
+## kart/kapı ve oyuncu doğmadan önce `map_ready` beklenir. Labirent (Map.gd) bu sinyali taşımaz → beklemeden geçer.
+func _wait_map_ready() -> void:
+	var scene := get_tree().current_scene
+	if scene and scene.has_signal("map_ready") and not bool(scene.get("is_map_ready")):
+		await scene.map_ready
 
 
 ## Oda ayarlarında seçili harita (NetworkManager.MAPS) — yüklenemezse varsayılan Map.tscn
@@ -217,13 +226,18 @@ func _spawn_card_and_door() -> void:
 
 func _get_marker_positions(group_name: String) -> Array[Vector3]:
 	var out: Array[Vector3] = []
-	var root := get_tree().current_scene.get_node_or_null(group_name)
+	var scene := get_tree().current_scene
+	var root := scene.get_node_or_null(group_name)
+	if root == null:
+		# İçe aktarılan haritalar (ImportedMap): grup GLB'nin alt düğümünde
+		root = scene.find_child(group_name, true, false)
 	if root == null:
 		push_warning("Haritada %s bulunamadı" % group_name)
 		return out
 	for child in root.get_children():
-		if child is Marker3D:
-			out.append((child as Marker3D).global_position)
+		# Labirent: Marker3D · GLB haritaları: düz Node3D (rehber: global_position kullan)
+		if child is Node3D:
+			out.append((child as Node3D).global_position)
 	return out
 
 
@@ -571,6 +585,7 @@ func restore_from_migration(mig: Dictionary) -> void:
 	get_tree().change_scene_to_packed(_get_map_scene())
 	await get_tree().process_frame
 	await get_tree().process_frame
+	await _wait_map_ready()
 	_spawn_local_player()
 	if NetworkManager.is_host():
 		# Kart ve kapıyı kaydedilen pozisyona spawn et

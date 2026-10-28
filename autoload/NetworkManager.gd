@@ -21,8 +21,19 @@ const TEAM_SIZE_MAX := 5   # 5v5v5v5
 const MAX_PLAYERS := TEAM_COUNT * TEAM_SIZE_MAX  # ENet üst sınırı; gerçek kapasite get_max_players()
 
 ## Seçilebilir haritalar (Lobby ayarları, GameManager sahne yükleme, oda listesi)
+## max_team: haritanın kaldırabildiği en büyük takım boyutu (oda formatı bunu aşamaz — set_map/set_team_size kırpar).
+## glb: ImportedMap.tscn'in yüklediği harita modeli (asset model/haritalar, rehber: HARITALAR_TEKNIK_REHBERI_AI.md).
+const IMPORTED_MAP_SCENE := "res://scenes/world/ImportedMap.tscn"
 const MAPS: Array[Dictionary] = [
-	{"id": "maze", "name": "Labirent", "scene": "res://scenes/world/Map.tscn"},
+	{"id": "maze", "name": "Labirent", "scene": "res://scenes/world/Map.tscn", "max_team": 5},
+	{"id": "embassy", "name": "Elçilik Kompleksi", "scene": IMPORTED_MAP_SCENE, "max_team": 3,
+		"glb": "res://asset model/haritalar/Map1_Elcilik_Kompleksi_3v3v3v3.glb"},
+	{"id": "quantum", "name": "Yeraltı Kuantum Labirenti", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
+		"glb": "res://asset model/haritalar/Map2_Yeralti_Kuantum_Labirenti_5v5v5v5.glb"},
+	{"id": "desert", "name": "Çöl Kargo Uçağı Enkazı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
+		"glb": "res://asset model/haritalar/Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5.glb"},
+	{"id": "forest", "name": "Gece Orman Radar Üssü", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
+		"glb": "res://asset model/haritalar/Map4_Gece_Orman_Radar_Ussu_4v4v4v4.glb"},
 ]
 
 ## Oda ayarları — host değiştirir, _sync_room_settings ile herkese gider (yeni katılana da)
@@ -569,7 +580,12 @@ static func _default_settings() -> Dictionary:
 
 
 func get_team_size() -> int:
-	return clampi(int(room_settings.get("team_size", TEAM_SIZE_MAX)), TEAM_SIZE_MIN, TEAM_SIZE_MAX)
+	return clampi(int(room_settings.get("team_size", TEAM_SIZE_MAX)), TEAM_SIZE_MIN, get_map_max_team())
+
+
+## Seçili (veya verilen) haritanın izin verdiği en büyük takım boyutu
+func get_map_max_team(map_id: String = "") -> int:
+	return clampi(int(get_map_info(map_id).get("max_team", TEAM_SIZE_MAX)), TEAM_SIZE_MIN, TEAM_SIZE_MAX)
 
 
 func get_max_players() -> int:
@@ -616,7 +632,7 @@ func get_room_status() -> Dictionary:
 func set_team_size(size: int) -> void:
 	if not is_host() or is_game_running():
 		return
-	room_settings["team_size"] = clampi(size, TEAM_SIZE_MIN, TEAM_SIZE_MAX)
+	room_settings["team_size"] = clampi(size, TEAM_SIZE_MIN, get_map_max_team())
 	_enforce_team_size()
 	_push_settings()
 
@@ -625,6 +641,11 @@ func set_map(map_id: String) -> void:
 	if not is_host() or is_game_running():
 		return
 	room_settings["map"] = get_map_info(map_id)["id"]
+	# Harita daha küçük formatı kaldırıyorsa takım boyutu kırpılır (ör. Elçilik en fazla 3v3v3v3)
+	var max_team := get_map_max_team()
+	if int(room_settings.get("team_size", TEAM_SIZE_MAX)) > max_team:
+		room_settings["team_size"] = max_team
+		_enforce_team_size()
 	_push_settings()
 
 
