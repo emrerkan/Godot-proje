@@ -189,7 +189,7 @@ func _build_header(team_id: int) -> Control:
 	chip_row.add_theme_constant_override("separation", 8)
 	chip.add_child(chip_row)
 
-	chip_row.add_child(_make_label("%s TAKIM" % UITheme.team_tag(team_id), 12, _team_color, _font_caps))
+	chip_row.add_child(_make_label(tr("%s TAKIM") % UITheme.team_tag(team_id), 12, _team_color, _font_caps))
 
 	var chip_wrap := CenterContainer.new()
 	chip_wrap.add_child(chip)
@@ -351,7 +351,7 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	accent.custom_minimum_size = Vector2(18, 2)
 	accent.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	role_row.add_child(accent)
-	role_row.add_child(_make_label((char_data["role"] as String).to_upper(), 10, char_color, _font_caps))
+	role_row.add_child(_make_label(tr(char_data["role"] as String).to_upper(), 10, char_color, _font_caps))
 
 	# Seviye ilerlemesi: "SEVİYE 3 / 25" + ince çubuk
 	var lv_row := HBoxContainer.new()
@@ -384,7 +384,7 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 
 		var label_row := HBoxContainer.new()
 		stat_col.add_child(label_row)
-		var name_lbl := _make_label(stat_name.to_upper(), 9, COL_TEXT_DIM, _font_caps)
+		var name_lbl := _make_label(tr(stat_name).to_upper(), 9, COL_TEXT_DIM, _font_caps)
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label_row.add_child(name_lbl)
 		#label_row.add_child(_make_label("%g" % value, 10, COL_TEXT, _font_bold))
@@ -558,7 +558,7 @@ func _refresh() -> void:
 			selected_count += 1
 	var total: int = NetworkManager.players.size()
 
-	_status_lbl.text = "%d / %d OYUNCU HAZIR" % [selected_count, total]
+	_status_lbl.text = tr("%d / %d OYUNCU HAZIR") % [selected_count, total]
 	_progress.value = float(selected_count) / float(maxi(total, 1))
 	_refresh_roster()
 	_update_card_visuals()
@@ -607,8 +607,10 @@ func _refresh_roster() -> void:
 
 		var player_name: String = pdata.get("name", "???")
 		if pid == local_id:
-			player_name += " (Sen)"
-		row.add_child(_make_label(player_name, 12, COL_TEXT))
+			player_name = tr("%s (Sen)") % player_name
+		var pname_lbl := _make_label(player_name, 12, COL_TEXT)
+		pname_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı çevrilmesin
+		row.add_child(pname_lbl)
 		if ch.is_empty():
 			row.add_child(_make_label("seçiyor…", 11, COL_TEXT_DIM))
 		else:
@@ -618,7 +620,7 @@ func _refresh_roster() -> void:
 			var ups: Dictionary = pdata.get("upgrades", {})
 			for s: String in ups:
 				lv += int(ups[s])
-			row.add_child(_make_label("SV %d" % lv, 10, UITheme.ACCENT if lv > 0 else COL_TEXT_DIM, _font_caps))
+			row.add_child(_make_label(tr("SV %d") % lv, 10, UITheme.ACCENT if lv > 0 else COL_TEXT_DIM, _font_caps))
 		_roster_row.add_child(chip)
 
 
@@ -698,7 +700,7 @@ func _update_card_visuals() -> void:
 		_confirm_btn.disabled = true
 	else:
 		_confirm_btn.disabled = _local_selected.is_empty()
-		_confirm_btn.text = "ONAYLA" if _local_selected.is_empty() else "%s İLE ONAYLA" % _local_selected.to_upper()
+		_confirm_btn.text = "ONAYLA" if _local_selected.is_empty() else tr("%s İLE ONAYLA") % _local_selected.to_upper()
 	_style_confirm_button(_get_char_color(_local_selected) if not _local_selected.is_empty() else Color(0.42, 0.45, 0.42))
 
 

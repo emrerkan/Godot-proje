@@ -25,6 +25,11 @@ var _door_sync_timer := 0.0
 ## Her peer KENDİ XP'sini, zaten herkese yayılan olaylardan yerelde hesaplar (kill/kart RPC'leri, maç sonu).
 ## Profil yerel olduğu için ek ağ trafiği yok. Steam sürümünde sunucu doğrulaması gerekecek (bkz docs/PROJE_GECMISI.md).
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+## Yükleme perdesi (açılış Main.gd, karakter seçimi, harita/migration). Perde, sahnenin ilk ağır kareleri
+## (gölgelendirici derleme, SubViewport önizlemeleri) geçene kadar bu kadar kare daha açık kalır.
+const LOADING := preload("res://scenes/ui/LoadingScreen.gd")
+const CHAR_SELECT_SETTLE_FRAMES := 6
+const MAP_SETTLE_FRAMES := 6
 const XP_KILL := 100
 const XP_CARRIER_KILL_BONUS := 150    # kart taşıyıcısını öldürmek
 const XP_CARD_PICKUP := 150
@@ -95,7 +100,12 @@ func _start_game_rpc() -> void:
 	card_instance = null
 	door_instance = null
 	player_stats.clear()
+	# Yükleme perdesi: CharacterSelect _ready'de 5 önizleme modeli kurar (ana iş parçacığı birkaç kare kilitlenir)
+	LOADING.open(get_tree(), "YÜKLENİYOR", "Operatörler hazırlanıyor")
+	await get_tree().process_frame   # perde çizilsin
+	await get_tree().process_frame
 	get_tree().change_scene_to_packed(char_select_scene)
+	LOADING.close(get_tree(), CHAR_SELECT_SETTLE_FRAMES)
 
 
 ## Tüm oyuncular karakter seçimini tamamladığında host tarafından çağrılır
@@ -120,11 +130,15 @@ func _begin_actual_game_rpc() -> void:
 	_xp_carry_timer = 0.0
 	_match_xp_closed = false
 	door_unlock = 0.0
+	# Sahne HEMEN değişir (geç kalan peer başkalarının spawn RPC'sini eski sahnede kaçırmasın); ağır GLB'yi
+	# ImportedMap iş parçacığında yükler, perde map_ready + kendi oyuncumuz doğana kadar açık kalır.
+	LOADING.open(get_tree(), "YÜKLENİYOR", "Harita hazırlanıyor")
 	get_tree().change_scene_to_packed(_get_map_scene())
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await _wait_map_ready()
 	_spawn_local_player()
+	LOADING.close(get_tree(), MAP_SETTLE_FRAMES)
 	# Maç başı karaktere özel tek seferlik güç — HER PEER kendi hesaplar (bekleme/RPC yok, oyun başlar başlamaz).
 	# Migration/respawn'da verilmez — sadece bu yoldan.
 	var powerups := get_tree().current_scene.get_node_or_null("PowerupManager")
@@ -611,11 +625,13 @@ func restore_from_migration(mig: Dictionary) -> void:
 			p.queue_free()
 	active_players.clear()
 	# Haritayı yeniden yükle
+	LOADING.open(get_tree(), "YÜKLENİYOR", "Harita hazırlanıyor")
 	get_tree().change_scene_to_packed(_get_map_scene())
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await _wait_map_ready()
 	_spawn_local_player()
+	LOADING.close(get_tree(), MAP_SETTLE_FRAMES)
 	if NetworkManager.is_host():
 		# Kart ve kapıyı kaydedilen pozisyona spawn et
 		_spawn_objects_rpc.rpc(_pending_card_pos, _pending_door_pos)

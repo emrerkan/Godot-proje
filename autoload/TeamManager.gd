@@ -59,10 +59,11 @@ func get_color(team_id: int) -> Color:
 	return TEAM_COLORS[team_id]
 
 
+## Görüntülenen (çevrilmiş) takım adı — sadece UI için, mantık TEAM_NAMES/id kullanır
 func get_team_name(team_id: int) -> String:
 	if team_id < 0 or team_id >= TEAM_NAMES.size():
-		return "Bilinmiyor"
-	return TEAM_NAMES[team_id]
+		return tr("Bilinmiyor")
+	return tr(TEAM_NAMES[team_id])
 
 
 func register_spawn_points(team_id: int, points: Array) -> void:

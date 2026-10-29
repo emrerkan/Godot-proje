@@ -73,6 +73,14 @@ func _ready() -> void:
 	_show_tab("browse")
 
 
+## Dil değişince (AYARLAR → OYUN → Dil) kodla biçimlenmiş metinleri yeniden yaz — sabit metinleri Control'ler kendisi çevirir
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_TRANSLATION_CHANGED or _room_list == null:
+		return
+	_refresh_profile_summary()
+	_refresh_room_list()
+
+
 func _process(_delta: float) -> void:
 	# "Taranıyor" göstergesi nabız gibi yanıp söner
 	if _scan_dot and _current_tab == "browse":
@@ -214,7 +222,7 @@ func _close_profile() -> void:
 
 func _refresh_profile_summary() -> void:
 	if _profile_xp_lbl:
-		_profile_level_lbl.text = "PROFİL SEVİYESİ %d" % PROFILE.profile_level()
+		_profile_level_lbl.text = tr("PROFİL SEVİYESİ %d") % PROFILE.profile_level()
 		_profile_xp_lbl.text = "◆ %d XP" % PROFILE.get_xp()
 
 
@@ -460,7 +468,7 @@ func _build_create_page() -> Control:
 	_room_name_input.max_length = 32
 	_room_name_input.text_submitted.connect(func(_t: String) -> void: _on_host_pressed())
 	_room_name_input.focus_entered.connect(func() -> void:
-		_room_name_input.placeholder_text = "%s'nin Odası" % _get_player_name("Oyuncu"))
+		_room_name_input.placeholder_text = tr("%s'nin Odası") % _get_player_name(tr("Oyuncu")))
 	page.add_child(_field("ODA ADI", _room_name_input))
 
 	_password_input = LineEdit.new()
@@ -547,6 +555,7 @@ func _build_password_modal() -> void:
 	card.add_child(box)
 	box.add_child(UITheme.label("🔒  ŞİFRELİ ODA", 12, UITheme.ACCENT, UITheme.font_caps))
 	_modal_room_lbl = UITheme.label("", 20, UITheme.TEXT, UITheme.font_bold)
+	_modal_room_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oda adı kullanıcı metni
 	box.add_child(_modal_room_lbl)
 
 	_modal_pw_input = LineEdit.new()
@@ -612,10 +621,9 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 	h.add_child(info)
 	var name_lbl := UITheme.label(room_name, 16, UITheme.TEXT, UITheme.font_bold)
 	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oda adı kullanıcı metni
 	info.add_child(name_lbl)
-	var sub := "KOD  %s" % code
-	if has_pw:
-		sub += "  ·  ŞİFRELİ"
+	var sub := (tr("KOD  %s  ·  ŞİFRELİ") if has_pw else tr("KOD  %s")) % code
 	info.add_child(UITheme.label(sub, 10, UITheme.TEXT_DIM, UITheme.font_caps))
 	# Özellik çipleri: durum · format · harita
 	var chips := HBoxContainer.new()
@@ -623,7 +631,7 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 	info.add_child(chips)
 	chips.add_child(_room_chip("● OYUNDA" if in_game else "● BEKLEMEDE", UITheme.DANGER if in_game else UITheme.SUCCESS))
 	chips.add_child(_room_chip(NetworkManager.get_format_text(team_size), UITheme.ACCENT))
-	chips.add_child(_room_chip(map_name.to_upper(), UITheme.TEXT_DIM))
+	chips.add_child(_room_chip(tr(map_name).to_upper(), UITheme.TEXT_DIM))
 
 	# Doluluk
 	var cap_box := VBoxContainer.new()
@@ -799,7 +807,7 @@ func _refresh_room_list() -> void:
 	if not RoomManager.is_listening():
 		_room_count_lbl.text = "DİNLEME PORTU MEŞGUL · TEKRAR DENENİYOR..."
 	else:
-		_room_count_lbl.text = "TARANIYOR..." if rooms.is_empty() else "%d ODA BULUNDU" % rooms.size()
+		_room_count_lbl.text = tr("TARANIYOR...") if rooms.is_empty() else tr("%d ODA BULUNDU") % rooms.size()
 	for code: String in rooms:
 		_room_list.add_child(_build_room_row(code, rooms[code]))
 
@@ -817,7 +825,7 @@ func _on_room_join_btn(room_code: String, room_name: String, room_ip: String, ha
 		_modal_pw_input.grab_focus()
 	else:
 		_save_name(player_name)
-		_set_status("Bağlanıyor: %s ..." % room_name, "busy")
+		_set_status(tr("Bağlanıyor: %s ...") % room_name, "busy")
 		NetworkManager.join_server(room_ip, player_name, "")
 
 
@@ -846,7 +854,7 @@ func _on_host_pressed() -> void:
 		return
 	var r_name := _room_name_input.text.strip_edges()
 	if r_name.is_empty():
-		r_name = player_name + "'nin Odası"
+		r_name = tr("%s'nin Odası") % player_name
 	_save_name(player_name)
 	_set_busy(true)
 	_set_status("Sunucu oluşturuluyor...", "busy")

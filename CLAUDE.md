@@ -29,6 +29,23 @@ pencereli testi bozulmasın), vsync, `Engine.max_fps`, root `scaling_3d_scale` (
 MenuBackground3D `menu_background` false → asker yok. SettingsWindow: TASLAK + UYGULA/KAPAT/VARSAYILAN, sekmeler GRAFİK/KONTROLLER/SES/OYUN;
 MainMenu sol alt "⚙ AYARLAR" (kapanınca arka plan ayarı değiştiyse yeniden kurar), HUD ESC menüsü "AYARLAR".
 
+## Dil (TR/EN) — `scenes/settings/Lang.gd` + `LangEN.gd` (statik, `preload`)
+Kaynak dil TÜRKÇE; `LangEN.STRINGS` = {"<Türkçe metin birebir>": "English"} (~340 anahtar). `Lang.apply(setting)` (GameSettings.apply_all)
+Translation'ları KODLA kurar (CSV import editör ister) + Türkçe birebir tablo (yoksa Godot eksik anahtarı yedek dil "en"e düşürürdü).
+Ayar `"language"`: "" = sistem dili (`OS.get_locale_language()=="tr"` → tr, değilse en), "tr", "en" — SettingsWindow OYUN sekmesi "Dil".
+Label/Button/OptionButton/Label3D metinleri OTOMATİK çevrilir; içine sayı/isim giren metin `tr("… %s …") % x` (anahtar = biçim dizgisi).
+Kullanıcı içeriği gösteren etiketlerde (oyuncu/oda adı, sohbet) `auto_translate_mode = DISABLED`. Sistem sohbeti: NetworkManager
+`_chat_system(text, args)` anahtar + args yollar, ChatBox gösterirken `tr(text) % args`. **Yeni UI metni → LangEN'e de ekle.**
+
+## Yükleme perdesi — `scenes/ui/LoadingScreen.gd` (statik API, `preload`; root'a ertelenmiş eklenen CanvasLayer, layer 120)
+`open(tree, başlık, alt)` / `set_progress(tree, 0..1)` (<0 belirsiz şerit) / `close(tree, settle_frames)` (en az 0.6 sn, söner),
+görünüm: arka planda tarayan el feneri konisi ızgara + tozu açığa çıkarır (`canvas_ui_loading_beam.gdshader`) +
+MenuOverlay (ince duman `OVERLAY_FOG` 0.08), ortada TACTICAL/DARK logosu, "YÜKLENİYOR..." (nokta animasyonu, `tr()` ile) + yüzde +
+kehribar çizgi, altta braketli cam panelde `TIPS` her `TIP_INTERVAL` 5.5 sn'de söner-değişir. Kullananlar: `Main.gd` (MainMenu.tscn iş parçacığında yüklenir), `GameManager._start_game_rpc`
+(perde 2 kare çizilir, sonra CharacterSelect), `_begin_actual_game_rpc` / `restore_from_migration` (sahne HEMEN değişir — spawn RPC
+sırası bozulmasın; perde map_ready + yerel spawn + 6 kare sonra kapanır). ImportedMap GLB'yi `load_threaded_request` ile yükler,
+yükseklik taramasını `SCAN_ROWS_PER_FRAME` satırda bir fizik karesine böler → çubuk akar (GLB %55, tarama %45).
+
 ## Autoload sırası (project.godot) — bozulursa parse hatası
 `GameManager` → `TeamManager` → `RoomManager` → `NetworkManager` (RoomManager, NetworkManager'dan ÖNCE)
 
@@ -167,10 +184,11 @@ t=0 karesinden üretir). Dayanıklılık (sadece local, HUD okur):
 `sprint_stamina` (`SPRINT_MAX_TIME=4s`, dolum 5s) ve `crouch_stamina` (`CROUCH_MAX_TIME=3s`, dolum 4s); bırakınca
 `STAMINA_REGEN_DELAY` sonra dolar; tükenirse `*_locked` → `SPRINT_UNLOCK=0.4` / `CROUCH_UNLOCK=0.5`'e dolana kadar kullanılamaz
 (çömelmesi biten otomatik kalkar). Respawn'da `_reset_stamina()`.
-**Zıplama** (Space, herkes): `JUMP_VELOCITY` 4.75 (~1.15 m tepe, ~0.97 s), koşu dayanıklılığından `JUMP_STAMINA` 0.2, inişte
+**Zıplama** (Space, herkes): `JUMP_VELOCITY` 7.4 + havada `AIR_GRAVITY` 24 (~1.14 m tepe, ~0.6 s; 9.8 "ağır çekim" gibiydi), koşu dayanıklılığından `JUMP_STAMINA` 0.2, inişte
 `JUMP_COOLDOWN`; havada çömelme yok; `_airborne` iken `_try_step_up` de çalışır (kenara tutunma). Uzaklara `_broadcast_state` mod
 değerinin `AIR_FLAG` (8) biti → `JumpRun` (kullanıcının `anims/Jump.fbx` Mixamo klibi, `build_anim_library` MIXAMO_CLIPS 3. eleman
-`in_place` = kök hareketi atılır) `JUMP_ANIM_SPEED` 0.7 ile bir kez oynar. HUD etiketi "KOŞU · ZIPLA". `Input.is_physical_key_pressed` — project.godot'ya eklenmedi.
+`in_place` = kök hareketi atılır) `JUMP_ANIM_SPEED` 1.0 ile bir kez oynar. Otomatik basamak sadece `STEP_HEIGHT` 0.42 —
+daha yüksek kenarlar (Metro çukuru 0.85, Liman rıhtımı 0.94) SADECE zıplayarak (kullanıcı isteği; eski `pit_climb` kaldırıldı). HUD etiketi "KOŞU · ZIPLA". `Input.is_physical_key_pressed` — project.godot'ya eklenmedi.
 **Çömelme bağışıklığı:** `is_crouching()` → `Bullet._on_body_entered` mermiyi yok etmeden geçirir; host
 `take_damage(amount, shooter, source)` `source==DAMAGE_BULLET` ise çömelmiş hedefe işlemez (host, `_broadcast_state` modunu kullanır).
 Bomba `DAMAGE_EXPLOSION` (1) gönderir → çömelme korumaz.
@@ -264,15 +282,14 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 - **İçe aktarılan haritalar** (`asset model/haritalar/*.glb`, rehber `HARITALAR_TEKNIK_REHBERI_AI.md` — dosyalarla doğrulandı):
   `NetworkManager.MAPS` id embassy/quantum/desert/forest/hospital/subway/warehouse/port → hepsi `scenes/world/ImportedMap.tscn`
   (+ `glb` yolu, `max_team` 3/5/5/4/2/3/4/5 — `get_map_max_team`, `set_map` takım boyutunu kırpar, Lobby format seçeneklerini kapatır). `ImportedMap.gd`:
-  GLB'yi örnekler (`MapModel`), `CardVisual_*` gizler, mesh başına trimesh çarpışma (`NO_COLLISION_KEYWORDS`: yaprak/su/neon/holo;
-  `Pad_Team` rehberin aksine çarpışmalı), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
+  GLB'yi örnekler (`MapModel`), `HIDDEN_KEYWORDS` gizler (`CardVisual_*` + **takım spawn platformları `Pad_Team*`** — kullanıcı:
+  takım bölgeleri işaretli olmasın; çarpışmaları da yok), mesh başına trimesh çarpışma (`NO_COLLISION_KEYWORDS`: yaprak/su/neon/holo/Pad_Team), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
   `TeamManager.register_spawn_points` (SpawnPoints çocukları SIRAYLA takım 0-3), 1 m yükseklik taraması (hücre boyu kutu
   `cast_motion` = hücrenin EN YÜKSEK yüzeyi; tek ışın 0.4 m ince duvarları kaçırıyordu) → `_wall` maskesi. Zemini olmayan hücre
   (Liman su havuzu, çarpışmasız) → `_build_void_walls` görünmez kutu, `VOID_WALL_LAYER` 16: sadece oyuncu çarpar (Player maskesine
   eklenir), mermi/bomba/lamba/görüş ışınları maske 1 → geçer; boşluğa komşu hücreler 0.5 m alt hücre ışınıyla ayrıca kapatılır
   (rampa/gövde kısmi hücreleri). `water_floor` (Liman): su mesh'i aynı katmanda güvenlik zemini. Haritanın 4 m altına düşen
-  yerel oyuncu kendi spawn'ına ışınlanır (`FALL_RESCUE_DEPTH`). MAPS `water_emission` (Liman 0.15), `pit_climb` [y, basamak]
-  (Metro [-0.4, 0.95]: ray çukurundayken perona tırmanır, kullanıcı isteği) →
+  yerel oyuncu kendi spawn'ına ışınlanır (`FALL_RESCUE_DEPTH`). MAPS `water_emission` (Liman 0.15) →
   `minimap_texture/min/max` (Minimap `_check_map_source`), güç noktaları (`PowerupManager.set_points`), otomatik duvar lambaları
   (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). **Görüş engeli:**
   `_physics_process` kameradan yerel oyuncuya (0.35/1.1/1.8 m) ışın → araya giren mesh (trimesh body'nin ebeveyni, zemin/arazi
@@ -290,9 +307,11 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 - **Kapı KİLİDİ (anında teslim YOK):** host `GameManager._process` → `_update_door_unlock`: kart taşıyıcısı kapıya XZ
   ≤ `DOOR_UNLOCK_RADIUS` (3 m) ise `door_unlock += delta/DOOR_UNLOCK_TIME` (5 s), dışarı çıkar/ölür/kart düşerse **0'a sıfırlanır**;
   1.0 → `handle_card_delivered` (state IN_GAME guard). `_door_unlock_rpc` (başlangıç/sıfırlanma anında + 10 Hz) → `door_unlock_changed`
-  sinyali → `Door.gd` (görsel: `_init`'te eklenen yer çemberi `spatial_door_zone.gdshader` progress/active, etiket "KİLİT AÇILIYOR %",
-  ışık kehribara döner; ProximityReveal çemberi de yakınlıkla gösterir) + HUD `_unlock_panel` (taşıyıcı KAPIDA KAL / takım KORU /
-  rakip DURDUR + kalan sn). `request_card_delivery` RPC bilerek etkisiz (client kilidi atlayamasın); Door `_on_body_entered` boş
+  sinyali → `Door.gd` (görsel: `_init`'te eklenen yer çemberi **TAHLİYE NOKTASI** görünümü (kapı modeli yok — tscn BoxMesh `mesh = null`,
+  düğüm ProximityReveal listesinde): `spatial_door_zone.gdshader` ince kesintisiz çember ("O") + ortada sırayla yanan 3 yukarı ok,
+  `spatial_door_beam.gdshader` 7 m ışık sütunu (additive, yukarı kayan bantlar), etiket "▲ ÇIKIŞ" (72 px, kontur); boşta fosfor
+  yeşili, kilit açılırken kehribar + hızlanma (`active`). İlerleme yayı yok, etiket "KİLİT AÇILIYOR %", ışık kehribara döner) + HUD: taşıyıcıya
+  `_carrier_bar` (karakterin başı üstünde, `unproject_position` ile takip eder, kalan sn) / takım KORU / rakip DURDUR → üst `_unlock_panel`. `request_card_delivery` RPC bilerek etkisiz (client kilidi atlayamasın); Door `_on_body_entered` boş
   (tscn bağlantısı duruyor). Başlangıç güçleri bildirimsiz (`_set_item_rpc(..., silent=true)`).
 - **`PowerupManager.gd`** (Map.tscn → `PowerupManager` Node; RPC'ler bu node path'iyle, tüm peer'larda aynı):
   host `_process` → `SPAWN_INTERVAL` (8-15s) aralıkla `PowerupPoints/Point*` (33 köşe, `tools/maze_corners.py`)

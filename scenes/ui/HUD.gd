@@ -130,6 +130,17 @@ func _ready() -> void:
 	_update_objective()
 
 
+## Dil değişince (ESC → AYARLAR) kodla biçimlenmiş metinleri yeniden yaz — sabit metinleri Control'ler kendisi çevirir
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_TRANSLATION_CHANGED or _objective_lbl == null:
+		return
+	for i in range(_score_rows.size()):
+		(_score_rows[i]["name"] as Label).text = UITheme.team_tag(i)
+	if _local_player and is_instance_valid(_local_player):
+		_team_chip_lbl.text = tr("%s TAKIM") % UITheme.team_tag(_local_player.team_id)
+	_update_objective()
+
+
 func _process(delta: float) -> void:
 	# Menü/oyun sonu açıkken sohbet Enter ile açılmasın
 	_chat.enabled = not _pause_panel.visible and not _end_overlay.visible
@@ -143,6 +154,8 @@ func _process(delta: float) -> void:
 		_scoreboard_panel.visible = tab
 		if tab:
 			_refresh_scoreboard()
+
+	_update_carrier_bar_position()
 
 	# Koşu / çömelme dayanıklılığı
 	if _local_player and is_instance_valid(_local_player) and _sprint_bar:
@@ -274,7 +287,7 @@ func _setup_scores() -> void:
 		row.add_child(name_lbl)
 		var value := UITheme.label("0", 15, UITheme.TEXT, UITheme.font_bold)
 		row.add_child(value)
-		_score_rows.append({"panel": row_panel, "value": value})
+		_score_rows.append({"panel": row_panel, "value": value, "name": name_lbl})
 	_ignore_mouse_recursive(panel)
 
 
@@ -320,6 +333,7 @@ func _setup_objective() -> void:
 	_unlock_bar.add_theme_stylebox_override("fill", _unlock_fill)
 	_unlock_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.08), 3))
 	ubox.add_child(_unlock_bar)
+	_build_carrier_bar()
 	GameManager.door_unlock_changed.connect(_on_door_unlock_changed)
 
 	var alert_wrap := CenterContainer.new()
@@ -784,7 +798,8 @@ func _vspace(h: float) -> Control:
 	return c
 
 
-func _score_columns_row(a: String, b: String, c: String, d: String, color: Color, font: Font, font_size: int) -> HBoxContainer:
+## translate_first false: ilk sütun oyuncu adı — otomatik çeviri kapalı (adı bir anahtara denk gelmesin)
+func _score_columns_row(a: String, b: String, c: String, d: String, color: Color, font: Font, font_size: int, translate_first := true) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	var widths := [0.0, 130.0, 50.0, 50.0]
@@ -794,6 +809,8 @@ func _score_columns_row(a: String, b: String, c: String, d: String, color: Color
 		if i == 0:
 			lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			if not translate_first:
+				lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		else:
 			lbl.custom_minimum_size = Vector2(widths[i], 0)
 			lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if i > 1 else HORIZONTAL_ALIGNMENT_LEFT
@@ -829,7 +846,7 @@ func _on_local_player_spawned(player: Node) -> void:
 	var team_id: int = player.team_id
 	_char_lbl.text = String(player.character_type).to_upper()
 	_char_lbl.add_theme_color_override("font_color", TeamManager.get_color(team_id))
-	_team_chip_lbl.text = "%s TAKIM" % UITheme.team_tag(team_id)
+	_team_chip_lbl.text = tr("%s TAKIM") % UITheme.team_tag(team_id)
 	_refresh_scores()
 	_update_objective()
 
@@ -854,7 +871,7 @@ func _on_health_changed(new_health: float) -> void:
 func _on_healed(amount: float) -> void:
 	_heal_flash = 1.0
 	_hit_flash = 0.0  # kırmızı flaş yeşili bastırmasın
-	_show_banner("✚ +%d CAN" % int(amount), Color(0.35, 0.95, 0.5))
+	_show_banner(tr("✚ +%d CAN") % int(amount), Color(0.35, 0.95, 0.5))
 	_hp_value.modulate = Color(0.6, 1.8, 0.8)
 	create_tween().tween_property(_hp_value, "modulate", Color.WHITE, 0.8)
 	_spawn_heal_crosses()
@@ -974,7 +991,7 @@ func _refresh_scoreboard() -> void:
 		var tname := UITheme.label(UITheme.team_tag(tid), 13, team_color, UITheme.font_caps)
 		tname.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		hrow.add_child(tname)
-		hrow.add_child(UITheme.label("%d KILL" % TeamManager.scores.get(tid, 0), 12, UITheme.TEXT, UITheme.font_caps))
+		hrow.add_child(UITheme.label(tr("%d KILL") % TeamManager.scores.get(tid, 0), 12, UITheme.TEXT, UITheme.font_caps))
 
 		# Oyuncuları kill'e göre sırala
 		team_peers.sort_custom(func(a: int, b: int) -> bool:
@@ -992,13 +1009,13 @@ func _refresh_scoreboard() -> void:
 			if pid == _carrier_peer and tid == local_team:
 				player_name = "◆ " + player_name
 			if is_me:
-				player_name += "  (Sen)"
+				player_name = tr("%s  (Sen)") % player_name
 			var row_panel := PanelContainer.new()
 			row_panel.add_theme_stylebox_override("panel",
 				UITheme.style(Color(1, 1, 1, 0.05) if is_me else Color.TRANSPARENT, 6, Color.TRANSPARENT, 0, 10, 4))
 			row_panel.add_child(_score_columns_row(player_name, String(data.get("character", "—")),
 				str(stats.get("kills", 0)), str(stats.get("deaths", 0)),
-				UITheme.TEXT if is_me else Color(UITheme.TEXT, 0.85), UITheme.font_bold if is_me else null, 13))
+				UITheme.TEXT if is_me else Color(UITheme.TEXT, 0.85), UITheme.font_bold if is_me else null, 13, false))
 			group.add_child(row_panel)
 	_ignore_mouse_recursive(_scoreboard_content)
 
@@ -1013,17 +1030,17 @@ func _update_objective() -> void:
 	var text := ""
 	var col := UITheme.ACCENT
 	if _carrier_peer == -1:
-		text = "◆  KART YERDE  ·  BUL VE AL"
+		text = tr("◆  KART YERDE  ·  BUL VE AL")
 	elif _carrier_peer == local_id:
-		text = "◆  KART SENDE  ·  KAPININ ÇEMBERİNDE %d SN KAL" % int(GameManager.DOOR_UNLOCK_TIME)
+		text = tr("◆  KART SENDE  ·  KAPININ ÇEMBERİNDE %d SN KAL") % int(GameManager.DOOR_UNLOCK_TIME)
 		col = UITheme.SUCCESS
 	else:
 		var tid: int = NetworkManager.players.get(_carrier_peer, {}).get("team_id", -1)
 		if tid == local_team:
-			text = "◆  KART TAKIMINDA  ·  TAŞIYICIYI KORU"
+			text = tr("◆  KART TAKIMINDA  ·  TAŞIYICIYI KORU")
 			col = TeamManager.get_color(tid)
 		else:
-			text = "◆  KART %s TAKIMINDA  ·  DURDUR!" % TeamManager.get_team_name(tid).to_upper()
+			text = tr("◆  KART %s TAKIMINDA  ·  DURDUR!") % TeamManager.get_team_name(tid).to_upper()
 			col = TeamManager.get_color(tid)
 	_objective_lbl.text = text
 	_objective_lbl.add_theme_color_override("font_color", col)
@@ -1055,13 +1072,54 @@ func _on_card_picked_up(carrier_peer_id: int, _carrier_pos: Vector3, carrier_tea
 	if carrier_peer_id == NetworkManager.get_local_id():
 		_show_banner("KARTI ALDIN!  KAPIYA KOŞ", UITheme.SUCCESS)
 	else:
-		_show_banner("⚠  %s TAKIM KARTI ALDI!" % team_name, TeamManager.get_color(carrier_team_id))
+		_show_banner(tr("⚠  %s TAKIM KARTI ALDI!") % team_name, TeamManager.get_color(carrier_team_id))
 
 
-## Kapı kilidi: taşıyıcıya "KAPIDA KAL", takımına "KORU", rakiplere "DURDUR" + kalan süre
+## Taşıyıcının kendi kilit barı: karakterin başının üstünde onu takip eder (yerdeki dolan yay kaldırıldı — kullanıcı:
+## "yerde durmasın, karakterin ekranında dolan bir bar olsun"). Takım/rakipler üstteki _unlock_panel'i görür.
+const CARRIER_BAR_HEAD := 2.3       # bar bu yüksekliğin ekran izdüşümünde (m)
+var _carrier_bar: PanelContainer
+var _carrier_bar_fill: ProgressBar
+var _carrier_bar_lbl: Label
+
+func _build_carrier_bar() -> void:
+	_carrier_bar = PanelContainer.new()
+	_carrier_bar.visible = false
+	_carrier_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_carrier_bar.custom_minimum_size = Vector2(170, 0)
+	_carrier_bar.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.7), 4, Color(UITheme.SUCCESS, 0.7), 1, 8, 5))
+	_root.add_child(_carrier_bar)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	_carrier_bar.add_child(box)
+	_carrier_bar_lbl = UITheme.label("", 11, UITheme.SUCCESS, UITheme.font_caps)
+	_carrier_bar_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_carrier_bar_lbl)
+	_carrier_bar_fill = ProgressBar.new()
+	_carrier_bar_fill.show_percentage = false
+	_carrier_bar_fill.max_value = 1.0
+	_carrier_bar_fill.custom_minimum_size = Vector2(0, 9)
+	_carrier_bar_fill.add_theme_stylebox_override("fill", UITheme.style(UITheme.SUCCESS, 2))
+	_carrier_bar_fill.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.1), 2))
+	box.add_child(_carrier_bar_fill)
+
+
+func _update_carrier_bar_position() -> void:
+	if _carrier_bar == null or not _carrier_bar.visible or _local_player == null or not is_instance_valid(_local_player):
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var head: Vector3 = (_local_player as Node3D).global_position + Vector3(0, CARRIER_BAR_HEAD, 0)
+	var sp := cam.unproject_position(head)
+	_carrier_bar.position = (sp - Vector2(_carrier_bar.size.x * 0.5, _carrier_bar.size.y)).round()
+
+
+## Kapı kilidi: taşıyıcıya karakter üstü bar, takımına "KORU", rakiplere "DURDUR" + kalan süre (üst panel)
 func _on_door_unlock_changed(ratio: float, carrier_peer_id: int) -> void:
 	var was := _last_unlock
 	_last_unlock = ratio
+	_carrier_bar.visible = false
 	if ratio <= 0.0 or ratio >= 1.0:
 		_unlock_panel.visible = false
 		# Taşıyıcı çemberden çıktıysa (hâlâ kart sendeyse) uyar
@@ -1072,17 +1130,21 @@ func _on_door_unlock_changed(ratio: float, carrier_peer_id: int) -> void:
 	var col := UITheme.ACCENT
 	var text := ""
 	if carrier_peer_id == NetworkManager.get_local_id():
-		text = "◇  KİLİT AÇILIYOR  ·  KAPIDA KAL"
-		col = UITheme.SUCCESS
+		_carrier_bar_lbl.text = tr("KİLİT AÇILIYOR  ·  %.1f sn") % ((1.0 - ratio) * GameManager.DOOR_UNLOCK_TIME)
+		_carrier_bar_fill.value = ratio
+		_carrier_bar.visible = true
+		_unlock_panel.visible = false
+		_update_carrier_bar_position()
+		return
 	elif tid == _get_local_team():
-		text = "◇  %s KAPIYI AÇIYOR  ·  KORU" % UITheme.team_tag(tid)
+		text = tr("◇  %s KAPIYI AÇIYOR  ·  KORU") % UITheme.team_tag(tid)
 		col = TeamManager.get_color(tid)
 	else:
-		text = "⚠  %s KAPIYI AÇIYOR  ·  DURDUR!" % UITheme.team_tag(tid)
+		text = tr("⚠  %s KAPIYI AÇIYOR  ·  DURDUR!") % UITheme.team_tag(tid)
 		col = UITheme.DANGER
 	_unlock_lbl.text = text
 	_unlock_lbl.add_theme_color_override("font_color", col)
-	_unlock_time_lbl.text = "%.1f sn" % ((1.0 - ratio) * GameManager.DOOR_UNLOCK_TIME)
+	_unlock_time_lbl.text = tr("%.1f sn") % ((1.0 - ratio) * GameManager.DOOR_UNLOCK_TIME)
 	_unlock_time_lbl.add_theme_color_override("font_color", col)
 	_unlock_fill.bg_color = col
 	_unlock_bar.value = ratio
@@ -1094,7 +1156,7 @@ func _on_card_dropped(_drop_pos: Vector3, carrier_team_id: int) -> void:
 	_carrier_peer = -1
 	_update_objective()
 	var team_name := TeamManager.get_team_name(carrier_team_id).to_upper()
-	_show_banner("◆  %s TAKIM KARTI DÜŞÜRDÜ!" % team_name, TeamManager.get_color(carrier_team_id))
+	_show_banner(tr("◆  %s TAKIM KARTI DÜŞÜRDÜ!") % team_name, TeamManager.get_color(carrier_team_id))
 
 
 # ─────────────────────────────────────────────
@@ -1119,7 +1181,7 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int) -> void:
 		border = Color(UITheme.ACCENT, 0.8)
 	elif victim_peer_id == local_id:
 		border = Color(UITheme.DANGER, 0.8)
-		_death_killer.text = "Seni vuran: %s" % kname
+		_death_killer.text = tr("Seni vuran: %s") % kname
 
 	var row := PanelContainer.new()
 	row.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -1127,9 +1189,13 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int) -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	row.add_child(h)
-	h.add_child(UITheme.label(kname, 13, kcol, UITheme.font_bold))
+	var k_lbl := UITheme.label(kname, 13, kcol, UITheme.font_bold)
+	k_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adları çevrilmesin
+	h.add_child(k_lbl)
 	h.add_child(UITheme.label("▸", 12, UITheme.TEXT_DIM))
-	h.add_child(UITheme.label(vname, 13, vcol, UITheme.font_bold))
+	var v_lbl := UITheme.label(vname, 13, vcol, UITheme.font_bold)
+	v_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	h.add_child(v_lbl)
 	_ignore_mouse_recursive(row)
 	_kill_feed_root.add_child(row)
 
@@ -1165,10 +1231,10 @@ func _on_game_ended(winning_team: int) -> void:
 	var team_color := TeamManager.get_color(winning_team)
 	_end_title.text = "ZAFER" if won else "YENİLGİ"
 	_end_title.add_theme_color_override("font_color", team_color if won else UITheme.DANGER)
-	_end_sub.text = "%s TAKIMI KAZANDI" % TeamManager.get_team_name(winning_team).to_upper()
+	_end_sub.text = tr("%s TAKIMI KAZANDI") % TeamManager.get_team_name(winning_team).to_upper()
 	_end_sub.add_theme_color_override("font_color", team_color)
 	var stats: Dictionary = GameManager.player_stats.get(NetworkManager.get_local_id(), {"kills": 0, "deaths": 0})
-	_end_stats.text = "%d KILL   ·   %d ÖLÜM\n+%d XP KAZANILDI   ·   PROFİL: %d XP" % [
+	_end_stats.text = tr("%d KILL   ·   %d ÖLÜM\n+%d XP KAZANILDI   ·   PROFİL: %d XP") % [
 		stats.get("kills", 0), stats.get("deaths", 0), GameManager.match_xp, PROFILE.get_xp()]
 	_end_overlay.modulate.a = 0.0
 	_end_overlay.show()

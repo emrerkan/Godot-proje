@@ -38,14 +38,13 @@ const MAPS: Array[Dictionary] = [
 		"glb": "res://asset model/haritalar/Map4_Gece_Orman_Radar_Ussu_4v4v4v4.glb"},
 	{"id": "hospital", "name": "Karantina Hastanesi", "scene": IMPORTED_MAP_SCENE, "max_team": 2,
 		"glb": "res://asset model/haritalar/Map5_Karantina_Hastanesi_2v2v2v2.glb"},
-	# pit_climb [y, yükseklik]: oyuncu bu y'nin altındaysa (ray çukuru) basamak sınırı yükselir → perona tırmanır (kullanıcı isteği)
 	{"id": "subway", "name": "Yeraltı Metro İstasyonu", "scene": IMPORTED_MAP_SCENE, "max_team": 3,
-		"glb": "res://asset model/haritalar/Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb", "pit_climb": [-0.4, 0.95]},
+		"glb": "res://asset model/haritalar/Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb"},   # ray çukuru 0.85 m: zıplayarak çıkılır
 	{"id": "warehouse", "name": "Lojistik Depo Labirenti", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
 		"glb": "res://asset model/haritalar/Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb"},
 	{"id": "port", "name": "Gece Konteyner Limanı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
 		"glb": "res://asset model/haritalar/Map8_Gece_Konteyner_Limani_5v5v5v5.glb", "water_emission": 0.15,
-		"water_floor": true, "pit_climb": [-0.5, 1.05]},   # suya sızan düşmez, rıhtıma (0.94 m) tırmanır
+		"water_floor": true},   # suya sızan düşmez, rıhtıma (0.94 m) zıplayarak çıkar
 ]
 
 ## Oda ayarları — host değiştirir, _sync_room_settings ile herkese gider (yeni katılana da)
@@ -220,7 +219,7 @@ func _on_peer_disconnected(id: int) -> void:
 	if multiplayer.is_server():
 		_broadcast_player_list()
 		if not left_name.is_empty():
-			_chat_system("%s odadan ayrıldı" % left_name)
+			_chat_system("%s odadan ayrıldı", [left_name])
 	# Oyun sırasında ayrılan oyuncunun node'unu temizle (host + client)
 	if GameManager.state == GameManager.State.IN_GAME:
 		GameManager.on_player_disconnected(id)
@@ -375,7 +374,7 @@ func register_player(peer_id: int, player_name: String, password: String, saved_
 	# Diğer herkese güncel listeyi gönder
 	_broadcast_player_list()
 	emit_signal("player_list_updated")
-	_chat_system("%s odaya katıldı" % player_name)
+	_chat_system("%s odaya katıldı", [player_name])
 
 
 func _broadcast_player_list() -> void:
@@ -559,11 +558,12 @@ func _chat_request(text: String, channel: String) -> void:
 		_chat_deliver_to(pid, msg)
 
 
-## Host: herkese sistem mesajı (katıldı/ayrıldı vb.)
-func _chat_system(text: String) -> void:
+## Host: herkese sistem mesajı (katıldı/ayrıldı vb.). `text` biçim dizgisi (çeviri anahtarı), `args` içine konacak
+## değerler — çeviri ALAN tarafta yapılır (ChatBox._format: tr(text) % args), her oyuncu kendi dilinde görür.
+func _chat_system(text: String, args: Array = []) -> void:
 	if not multiplayer.is_server():
 		return
-	var msg := {"sender": 0, "name": "", "team": -1, "channel": "system", "text": text}
+	var msg := {"sender": 0, "name": "", "team": -1, "channel": "system", "text": text, "args": args}
 	for pid: int in players:
 		_chat_deliver_to(pid, msg)
 

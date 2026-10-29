@@ -184,7 +184,7 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			var dia := PackedVector2Array([cp + Vector2(0, -6), cp + Vector2(5, 0), cp + Vector2(0, 6), cp + Vector2(-5, 0)])
 			draw_colored_polygon(dia, Color(1.0, 0.9, 0.1))
 			draw_arc(cp, 10.0, 0.0, TAU, 20, Color(1.0, 0.9, 0.1, pulse), 1.5)
-		status += "TEST: ■ KAPI ◆ KART"
+		status += tr("TEST: ■ KAPI ◆ KART")
 
 	if not status.is_empty():
 		draw_string(font, Vector2(PAD + 4, SIZE.y - PAD - 4), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.9))

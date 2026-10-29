@@ -136,6 +136,7 @@ func _build_header() -> Control:
 	title_box.add_child(UITheme.label("LOBİ  ·  TAKIMINI SEÇ", 11, UITheme.TEXT_DIM, UITheme.font_caps))
 	_room_name_lbl = UITheme.label("", 26, UITheme.TEXT, UITheme.font_bold)
 	_room_name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_room_name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oda adı kullanıcı metni
 	title_box.add_child(_room_name_lbl)
 	# Ayar özeti (format · harita · şifre) — ayrıntılar ⚙ penceresinde
 	_settings_summary = UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
@@ -406,14 +407,14 @@ func _build_settings_panel() -> Control:
 	_map_option = OptionButton.new()
 	for m: Dictionary in NetworkManager.MAPS:
 		var mx := NetworkManager.get_map_max_team(m["id"])
-		_map_option.add_item(m["name"] if mx >= NetworkManager.TEAM_SIZE_MAX else "%s  (en fazla %s)" % [m["name"], NetworkManager.get_format_text(mx)])
+		_map_option.add_item(m["name"] if mx >= NetworkManager.TEAM_SIZE_MAX else tr("%s  (en fazla %s)") % [tr(m["name"]), NetworkManager.get_format_text(mx)])
 	_map_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
 	box.add_child(_setting_row("HARİTA", _map_option))
 
 	# Takım boyutu: 2v2v2v2 … 5v5v5v5
 	_size_option = OptionButton.new()
 	for s in range(NetworkManager.TEAM_SIZE_MIN, NetworkManager.TEAM_SIZE_MAX + 1):
-		_size_option.add_item("%s  (%d oyuncu)" % [NetworkManager.get_format_text(s), s * NetworkManager.TEAM_COUNT])
+		_size_option.add_item(tr("%s  (%d oyuncu)") % [NetworkManager.get_format_text(s), s * NetworkManager.TEAM_COUNT])
 	_size_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
 	box.add_child(_setting_row("FORMAT", _size_option))
 
@@ -517,19 +518,19 @@ func _update_draft_ui() -> void:
 	if NetworkManager.TEAM_SIZE_MIN + _size_option.selected > map_max:
 		_size_option.select(map_max - NetworkManager.TEAM_SIZE_MIN)
 	if new_map["id"] != NetworkManager.get_map_info()["id"]:
-		changes.append("harita → %s" % new_map["name"])
+		changes.append(tr("harita → %s") % tr(new_map["name"]))
 	var new_size := NetworkManager.TEAM_SIZE_MIN + _size_option.selected
 	if new_size != NetworkManager.get_team_size():
-		changes.append("format → %s" % NetworkManager.get_format_text(new_size))
+		changes.append(tr("format → %s") % NetworkManager.get_format_text(new_size))
 		var overflow := 0
 		for tid in NetworkManager.TEAM_COUNT:
 			overflow += maxi(NetworkManager.get_team_count(tid) - new_size, 0)
 		if overflow > 0:
-			changes.append("%d oyuncu takımından çıkar" % overflow)
+			changes.append(tr("%d oyuncu takımından çıkar") % overflow)
 	if not _pw_input.text.strip_edges().is_empty():
-		changes.append("şifre değişecek" if has_pw else "şifre eklenecek")
+		changes.append(tr("şifre değişecek") if has_pw else tr("şifre eklenecek"))
 	elif _pw_remove.button_pressed and has_pw:
-		changes.append("şifre kaldırılacak")
+		changes.append(tr("şifre kaldırılacak"))
 	_save_btn.disabled = changes.is_empty()
 	if not NetworkManager.is_host():
 		_draft_note.text = ""
@@ -537,7 +538,7 @@ func _update_draft_ui() -> void:
 		_draft_note.text = "Değişiklik yok"
 		_draft_note.add_theme_color_override("font_color", Color(UITheme.TEXT_DIM, 0.7))
 	else:
-		_draft_note.text = "Kaydedilince: " + ", ".join(changes)
+		_draft_note.text = tr("Kaydedilince: %s") % ", ".join(changes)
 		_draft_note.add_theme_color_override("font_color", UITheme.ACCENT)
 
 
@@ -572,8 +573,8 @@ func _refresh_settings() -> void:
 	if _settings_summary == null:
 		return
 	var has_pw: bool = NetworkManager.room_settings.get("has_password", false)
-	_settings_summary.text = "%s  ·  %s%s" % [NetworkManager.get_format_text(), String(NetworkManager.get_map_info()["name"]).to_upper(),
-		"  ·  🔒 ŞİFRELİ" if has_pw else ""]
+	_settings_summary.text = "%s  ·  %s%s" % [NetworkManager.get_format_text(), tr(String(NetworkManager.get_map_info()["name"])).to_upper(),
+		("  ·  " + tr("🔒 ŞİFRELİ")) if has_pw else ""]
 
 
 # ─────────────────────────────────────────────
@@ -604,6 +605,7 @@ func _build_player_slot(peer_id: int, data: Dictionary, team_color: Color, is_me
 	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_lbl.clip_text = true
 	name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı çevrilmesin
 	row.add_child(name_lbl)
 
 	if peer_id == 1:
@@ -634,6 +636,7 @@ func _avatar(player_name: String, color: Color) -> Control:
 	av.add_theme_stylebox_override("panel", UITheme.style(Color(color, 0.85), 12))
 	var initial := player_name.substr(0, 1).to_upper() if not player_name.is_empty() else "?"
 	var lbl := UITheme.label(initial, 13, Color(0.05, 0.05, 0.08), UITheme.font_bold)
+	lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	av.add_child(lbl)
@@ -733,7 +736,7 @@ func _get_team_count(team_id: int) -> int:
 
 
 func _update_room_info() -> void:
-	_room_name_lbl.text = NetworkManager.room_name if not NetworkManager.room_name.is_empty() else "Oda"
+	_room_name_lbl.text = NetworkManager.room_name if not NetworkManager.room_name.is_empty() else tr("Oda")
 	_room_code_lbl.text = RoomManager.room_code if not RoomManager.room_code.is_empty() else "-------"
 
 
@@ -786,8 +789,10 @@ func _refresh_player_list() -> void:
 			Color(UITheme.ACCENT, 0.5) if is_me else Color.TRANSPARENT, 1 if is_me else 0, 10, 3))
 		var label_text: String = data.get("name", "???")
 		if is_me:
-			label_text += "  (Sen)"
-		chip.add_child(UITheme.label(label_text, 12, UITheme.TEXT if is_me else UITheme.TEXT_DIM))
+			label_text = tr("%s  (Sen)") % label_text
+		var chip_lbl := UITheme.label(label_text, 12, UITheme.TEXT if is_me else UITheme.TEXT_DIM)
+		chip_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı çevrilmesin
+		chip.add_child(chip_lbl)
 		_unassigned_row.add_child(chip)
 
 	# Kontrol listesi
@@ -795,7 +800,7 @@ func _refresh_player_list() -> void:
 	var balanced := NetworkManager._are_teams_balanced()
 	_set_check(_check_balance, balanced, "Takımlar dengeli", "En az 2 takımda eşit oyuncu gerekli")
 	_set_check(_check_ready, ready_count == total and total > 0,
-		"Herkes hazır  (%d/%d)" % [ready_count, total], "Hazır olanlar  %d/%d" % [ready_count, total])
+		tr("Herkes hazır  (%d/%d)") % [ready_count, total], tr("Hazır olanlar  %d/%d") % [ready_count, total])
 	_player_count_lbl.text = "%d / %d" % [total, NetworkManager.get_max_players()]
 
 	# Butonlar
@@ -811,7 +816,7 @@ func _refresh_player_list() -> void:
 
 
 func _set_check(lbl: Label, ok: bool, ok_text: String, fail_text: String) -> void:
-	lbl.text = ("✓  " + ok_text) if ok else ("•  " + fail_text)
+	lbl.text = ("✓  " + tr(ok_text)) if ok else ("•  " + tr(fail_text))
 	lbl.add_theme_color_override("font_color", UITheme.SUCCESS if ok else UITheme.TEXT_DIM)
 
 

@@ -294,6 +294,13 @@ func _build_audio(col: VBoxContainer) -> void:
 
 
 func _build_game(col: VBoxContainer) -> void:
+	_section(col, "DİL")
+	var lang_codes: Array[String] = ["", "tr", "en"]   # "" = sistem dili (Lang.resolve)
+	# Dil adları kendi dilinde kalır (LangEN: "Türkçe" → "Türkçe", "English" → "English")
+	_option(col, "Dil", "Arayüz dili (UYGULA ile anında değişir)", ["Sistem dili", "Türkçe", "English"],
+		func() -> int: return maxi(lang_codes.find(String(_draft["language"])), 0),
+		func(i: int) -> void: _draft["language"] = lang_codes[i])
+
 	_section(col, "EKRAN")
 	_check(col, "FPS göster", "Sağ üst köşede kare hızı",
 		func() -> bool: return bool(_draft["show_fps"]),

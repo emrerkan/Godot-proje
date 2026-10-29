@@ -152,4 +152,4 @@ static func multipliers(levels: Variant) -> Dictionary:
 ## UI metni: "+%15 maksimum can" gibi (seviye × oran)
 static func stat_bonus_text(stat: String, level: int) -> String:
 	var info: Dictionary = STAT_INFO[stat]
-	return info["desc"] % int(round(level * float(info["per_level"]) * 100.0))
+	return String(TranslationServer.translate(info["desc"])) % int(round(level * float(info["per_level"]) * 100.0))

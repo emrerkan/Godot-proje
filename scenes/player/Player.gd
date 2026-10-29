@@ -92,12 +92,14 @@ var _crouch_delay := 0.0
 ## Zıplama (Space, tüm karakterler): ~1.15 m tepe — sandık/kütük/turnike gibi alçak engellerin üstüne çıkar, 3 m duvarlar
 ## aşılmaz. Koşu dayanıklılığından JUMP_STAMINA yer (kilitliyken / yetmezse zıplanmaz). Havadayken çömelme (bağışıklık) yok.
 ## Uzaklara _broadcast_state modunun AIR_FLAG biti → havada JumpRun animasyonu (Mixamo, kök hareketi atılmış).
-const JUMP_VELOCITY := 4.75         # v²/2g ≈ 1.15 m, havada ~0.97 sn
+## Havada yerçekimi: 9.8 ile zıplama/düşme "ağır çekim" gibiydi (kullanıcı: "çok yavaş yükselip çok yavaş alçalıyor")
+const AIR_GRAVITY := 24.0
+const JUMP_VELOCITY := 7.4          # v²/2g ≈ 1.14 m, havada ~0.62 sn
 const JUMP_STAMINA := 0.2
 const JUMP_COOLDOWN := 0.35         # yere indikten sonra
 const AIR_FLAG := 8
 const ANIM_JUMP := &"JumpRun"
-const JUMP_ANIM_SPEED := 0.7        # klipte havada kalma 0.07-0.67 sn → ~0.95 sn'lik fizik uçuşuna yayılır
+const JUMP_ANIM_SPEED := 1.0        # klipte havada kalma 0.07-0.67 sn ≈ ~0.62 sn'lik fizik uçuşu
 var _jump_cooldown := 0.0
 var _airborne := false              # local: zıpladı ve henüz inmedi · uzak: AIR_FLAG
 var _air_anim_played := false
@@ -167,9 +169,6 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	floor_snap_length = 0.3  # Zemin tespitini güvenilir yapar, hız dalgalanmasını engeller
 	_use_capsule_shape()
 	collision_mask |= VOID_WALL_LAYER   # ImportedMap su kenarı engeli (sadece oyuncuyu durdurur, mermi/bomba geçer)
-	var climb: Array = NetworkManager.get_map_info().get("pit_climb", [])
-	if climb.size() == 2:
-		_pit_climb = Vector2(float(climb[0]), float(climb[1]))
 	health = max_health
 
 	# FBX karakter mesh'ini bul
@@ -524,7 +523,7 @@ func _handle_local_input(delta: float) -> void:
 			sprint_stamina -= JUMP_STAMINA
 			_sprint_delay = STAMINA_REGEN_DELAY
 	else:
-		velocity.y -= GRAVITY * delta
+		velocity.y -= AIR_GRAVITY * delta
 		if is_on_ceiling() and velocity.y > 0.0:
 			velocity.y = 0.0
 
@@ -565,8 +564,6 @@ const BODY_HEIGHT := 1.8
 const STEP_HEIGHT := 0.42          # bu yüksekliğe kadar kenara otomatik basar (kütük 0.75 m, sandık vb. engel kalır)
 const STEP_PROBE := 0.3            # önde bu mesafede engel var mı (m)
 const VOID_WALL_LAYER := 16        # ImportedMap._build_void_walls (layer 5)
-## MAPS "pit_climb": (y eşiği, basamak) — Metro ray çukuru 0.85 m: çukurdayken perona tırmanılır; yukarıda normal basamak
-var _pit_climb := Vector2(-INF, 0.0)
 
 func _use_capsule_shape() -> void:
 	if collision_shape.shape is CapsuleShape3D:
@@ -588,7 +585,8 @@ func _try_step_up(horizontal_velocity: Vector3) -> void:
 	var t := global_transform
 	if not test_move(t, probe):
 		return                                   # önü boş
-	var step := _pit_climb.y if global_position.y < _pit_climb.x else STEP_HEIGHT
+	# Yüksek kenarlar (Metro ray çukuru 0.85 m, Liman rıhtımı 0.94 m...) otomatik çıkılmaz → zıplamak gerekir (kullanıcı isteği)
+	var step := STEP_HEIGHT
 	var up := Vector3(0, step, 0)
 	if test_move(t, up):
 		return                                   # tavan

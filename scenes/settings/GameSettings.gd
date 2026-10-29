@@ -13,6 +13,7 @@ extends RefCounted
 
 const SAVE_PATH := "user://options.cfg"
 const FPS_COUNTER := preload("res://scenes/settings/FpsCounter.gd")
+const LANG := preload("res://scenes/settings/Lang.gd")
 
 enum WindowMode { WINDOWED, BORDERLESS, EXCLUSIVE }
 enum AA { OFF, FXAA, MSAA_2X, MSAA_4X }
@@ -47,6 +48,7 @@ const DEFAULTS := {
 	"vol_UI": 0.7,
 	# Oyun
 	"show_fps": false,
+	"language": "",             # "" = sistem dili, "tr", "en" (Lang.gd)
 }
 
 ## Hazır grafik profilleri (ayar penceresi "Kalite" menüsü)
@@ -130,6 +132,7 @@ static func apply_once(tree: SceneTree) -> void:
 static func apply_all(tree: SceneTree) -> void:
 	_ensure_loaded()
 	var root := tree.root
+	LANG.apply(String(get_value("language")))
 	if _has_file:
 		_apply_window()
 	DisplayServer.window_set_vsync_mode([DisplayServer.VSYNC_DISABLED, DisplayServer.VSYNC_ENABLED,

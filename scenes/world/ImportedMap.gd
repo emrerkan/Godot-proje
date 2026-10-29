@@ -15,12 +15,15 @@ extends Node3D
 signal map_ready
 
 ## Çarpışma verilmeyecek mesh isim parçaları (rehber §6 + kendi eklemelerimiz).
-## NOT: rehber "Pad_Team"i de listeliyor ama takım platformları üstünde durulan zemin — çarpışma ALMALI
-## (yoksa Yeraltı haritasında oyuncular platformun 0.27 m içine gömülüyordu).
+## "Pad_Team": takım spawn platformları (parlak takım renkli ~7 m disk) GİZLENİR ve çarpışmasızdır — kullanıcı: "takım
+## bölgeleri işaretli durmasın, oyuncular öğrenince taktiksel olarak kullanır". (Eskiden çarpışmalıydı; görünmez
+## platforma takılmak daha kötü, oyuncu altındaki zemine basar.)
 const NO_COLLISION_KEYWORDS: Array[String] = [
 	"Canopy", "Needles", "Frond", "Neon", "LED", "Holo", "CardVisual", "Beacon", "GlowRing",
 	"Water", "Pool", "Basin", "Screen", "Glass", "Light", "Lamp", "Horn", "HospitalRedCross", "ER_RedGuideLine",
+	"Pad_Team",
 ]
+const HIDDEN_KEYWORDS: Array[String] = ["CardVisual", "Pad_Team"]
 const CANOPY_KEYWORDS: Array[String] = ["Canopy", "Needles", "Frond"]
 const WATER_KEYWORDS: Array[String] = ["Water", "Basin"]
 
@@ -53,6 +56,9 @@ var _canopies: Array[GeometryInstance3D] = []
 var _canopy_aabb: Array[AABB] = []
 var _lamp_scale := 1.0
 var _water_floor := false
+const LOADING := preload("res://scenes/ui/LoadingScreen.gd")
+const LOAD_SHARE := 0.55               # yükleme çubuğunda GLB yüklemesinin payı (kalanı yükseklik taraması)
+const SCAN_ROWS_PER_FRAME := 6
 var _spawn_list: Array[Vector3] = []
 var _card_list: Array[Vector3] = []
 
@@ -60,7 +66,16 @@ var _card_list: Array[Vector3] = []
 func _ready() -> void:
 	var info: Dictionary = NetworkManager.get_map_info()
 	var path: String = info.get("glb", "")
-	var packed: PackedScene = load(path) as PackedScene if not path.is_empty() and ResourceLoader.exists(path) else null
+	var packed: PackedScene = null
+	# GLB iş parçacığında yüklenir → yükleme perdesi (LoadingScreen) akmaya devam eder
+	if not path.is_empty() and ResourceLoader.exists(path) and ResourceLoader.load_threaded_request(path, "", true) == OK:
+		var progress := []
+		while ResourceLoader.load_threaded_get_status(path, progress) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			LOADING.set_progress(get_tree(), LOAD_SHARE * (float(progress[0]) if not progress.is_empty() else 0.0))
+			await get_tree().process_frame
+		if not is_instance_valid(self):
+			return
+		packed = ResourceLoader.load_threaded_get(path) as PackedScene
 	if packed == null:
 		push_error("Harita modeli yüklenemedi: %s" % path)
 		_finish()
@@ -87,7 +102,10 @@ func _ready() -> void:
 
 	var space := get_world_3d().direct_space_state
 	_snap_points(space)
-	_scan_heights(space)
+	await _scan_heights(space)
+	if not is_instance_valid(self):
+		return
+	LOADING.set_progress(get_tree(), 1.0)
 	_build_minimap()
 	var seed_base := hash(String(info.get("id", "map")))
 	var pm := get_node_or_null("PowerupManager")
@@ -108,7 +126,7 @@ func _finish() -> void:
 # ─────────────────────────────────────────────
 
 func _hide_card_visuals(n: Node) -> void:
-	if n is Node3D and "CardVisual" in String(n.name):
+	if n is Node3D and _has_keyword(String(n.name), HIDDEN_KEYWORDS):
 		(n as Node3D).visible = false
 	for c in n.get_children():
 		_hide_card_visuals(c)
@@ -147,7 +165,7 @@ func _build_collisions(n: Node) -> void:
 		(n as MeshInstance3D).create_trimesh_collision()   # StaticBody3D çocuğu, layer 1 (oyuncu + mermi)
 	elif _water_floor and n is MeshInstance3D and (n as MeshInstance3D).mesh and _has_keyword(String(n.name), WATER_KEYWORDS):
 		# Güvenlik zemini (MAPS "water_floor"): kenar duvarının kısmi hücrelerden (gemi gövdesi/rampa yanı) sızan oyuncu
-		# sonsuza düşmesin, suya basar ve pit_climb ile rıhtıma tırmanır. Sadece oyuncu katmanı — tarama/mermi görmez.
+		# sonsuza düşmesin, suya basar ve zıplayarak rıhtıma çıkar. Sadece oyuncu katmanı — tarama/mermi görmez.
 		(n as MeshInstance3D).create_trimesh_collision()
 		for b in n.get_children():
 			if b is StaticBody3D:
@@ -250,6 +268,13 @@ func _scan_heights(space: PhysicsDirectSpaceState3D) -> void:
 	sq.collision_mask = 1
 	sq.motion = Vector3(0, bottom - top, 0)
 	for z in _grid_h:
+		# Tarama 1-2 sn sürüyor: satır gruplarına bölünür, aralarda perde ilerler (fizik karesi — uzay sorgusu güvenli)
+		if z > 0 and z % SCAN_ROWS_PER_FRAME == 0:
+			LOADING.set_progress(get_tree(), LOAD_SHARE + (1.0 - LOAD_SHARE) * float(z) / float(_grid_h))
+			await get_tree().physics_frame
+			if not is_instance_valid(self):
+				return
+			space = get_world_3d().direct_space_state
 		for x in _grid_w:
 			var p := _cell_center(x, z)
 			sq.transform = Transform3D(Basis(), Vector3(p.x, top, p.z))

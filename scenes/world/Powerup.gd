@@ -101,7 +101,7 @@ func _ready() -> void:
 	add_child(_light)
 
 	var label := Label3D.new()
-	label.text = "%s %s" % [info["glyph"], info["name"]]
+	label.text = "%s %s" % [info["glyph"], tr(info["name"])]
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.font_size = 40

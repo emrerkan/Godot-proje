@@ -154,6 +154,22 @@
     bedeli, havadan ateş serbest (namlu yükseldiği için alçak hedefin üstünden geçebilir), havada çömelme bağışıklığı yok.
     Duran oyuncu da koşarak-zıplama klibini oynatır (UE kütüphanesindeki yerinde "Jump" kalkış öncesi çömelmeli, fiziğe uymuyordu).
 
+36. Zıplama "çok yavaş yükselip alçalıyor" → havada yerçekimi 24 (eskiden 9.8), aynı yükseklik ~0.6 sn. **Yüksek kenarlara zıplamadan
+    çıkılamaz** (kullanıcı): Metro/Liman `pit_climb` kaldırıldı, otomatik basamak 0.42 m. Kapı kilidi: yerdeki dolan yay kaldırıldı,
+    taşıyıcının ekranında karakterin üstünde dolan bar (takım/rakip üst paneli görmeye devam eder).
+37. Kapı görseli: "kalın dikdörtgenler yerine ince yuvarlak çizgi, O gibi" → çember kesintisiz ve ince (~4 cm), iç dolgu yok,
+    gri kapı kutusu çizilmiyor. Yerde sadece çember + üstte "KAPI" yazısı ve ışık kaldı.
+38. Kullanıcı: "çıkış noktası olduğunu anlayabilmem lazım, kapı mantıksızsa başka bir şey koy" → kapı yerine **tahliye noktası**:
+    çember + yukarı akan 3 ok + 7 m ışık sütunu + "▲ ÇIKIŞ" etiketi (eskisi 32 px'te okunmuyordu); yeşil → kilitte kehribar.
+    Görünürlük kuralı aynı (sadece taşıyıcı, 10 m'den belirir).
+39. **Takım bölgesi işaretleri kaldırıldı** (kullanıcı: "oyuncular öğrenince taktiksel olarak durabilir"): `Pad_Team*` gizli +
+    çarpışmasız (Elçilik/Çöl'de zaten yoktu). **Yükleme ekranları:** açılış, karakter seçimi, harita (+migration) — LoadingScreen.gd;
+    açılış donması ana menünün ana iş parçacığında yüklenmesiydi → iş parçacığı; harita GLB'si + tarama da artık kareler arasında.
+    **Dil:** Türkçe + İngilizce, varsayılan sistem dili, Ayarlar → OYUN → Dil (~340 anahtar; anlık değişir). Bilerek Türkçe kalanlar:
+    rastgele çağrı adları (oyuncu adı), "Türkçe" seçeneği; varsayılan oda adı kuranın dilinde oluşur. Ses yok → çevrilecek ses de yok.
+40. Yükleme ekranı görselleştirildi (kullanıcı: "TACTICAL DARK yazısı da olsun, düz yükleniyor olmasın; ipucu mantığı güzel"):
+    logo + karanlıkta tarayan fener konisi (ızgara/toz açığa çıkar) + ince duman + yüzde + dönen ipucu paneli.
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).

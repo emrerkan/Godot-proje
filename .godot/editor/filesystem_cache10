@@ -1,6 +1,6 @@
 78098b89c88a74ebe8c20117b8754620
-::res://::1793206773
-CLAUDE.md::TextFile::-1::1793206773::0::1::::<><><>0<>0<><>::
+::res://::1793299381
+CLAUDE.md::TextFile::-1::1793208409::0::1::::<><><>0<>0<><>::
 default_env.tres::Environment::6696662647191849165::1793112389::0::1::::<><><>0<>0<><>::
 DOKUMANTASYON.md::TextFile::-1::1793201239::0::1::::<><><>0<>0<><>::
 icon.svg::CompressedTexture2D::3864269300686135935::1791462691::1791898819::1::::<><><>0<>0<>e6b9b2ed665b320379262aa861e8dd4f<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
@@ -26,13 +26,13 @@ tesst.txt::TextFile::-1::1792259053::0::1::::<><><>0<>0<><>::
 ::res://addons/godot_mcp/Runtime/Tools/::1791898624
 ::res://addons/godot_mcp/tools/::1791898627
 ::res://addons/godot_mcp/ui/::1791898627
-::res://anims/::1793207483
+::res://anims/::1793207921
 Breathing Idle.fbx::PackedScene::6540072514156262424::1791454023::1791898819::1::::<><><>0<>0<>2a113c6b45ac1bff9ee730219903fb24<>res://.godot/imported/Breathing Idle.fbx-00ee10aea8c4798d7675b9b9b440ad62.scn::
 Dying.fbx::PackedScene::6100011304237600514::1792097320::1792098638::1::::<><><>0<>0<>d9f95c0613572ad08a35bf726e500698<>res://.godot/imported/Dying.fbx-eb1c0876693d705bef67ae941daa16fb.scn::
 Jump.fbx::PackedScene::7086107214584459454::1793207483::1793207921::1::::<><><>0<>0<>78cba85c9b804da055cec7a9adde2567<>res://.godot/imported/Jump.fbx-2d3a066dfa4434b1cdec859a2d4965fd.scn::
 NotWalkFire.fbx::PackedScene::8746671239341168877::1792097912::1792098637::1::::<><><>0<>0<>bf8b6457ff694acef80eed72af85e325<>res://.godot/imported/NotWalkFire.fbx-43ab0e7b70aacc1a7a6e8de28ddc6372.scn::
 Reloading.fbx::PackedScene::5511805981034815183::1792097557::1792098637::1::::<><><>0<>0<>a6439b6a2ed0065677aed09d738b4f45<>res://.godot/imported/Reloading.fbx-e1895fd799c4058520c2b90f59a5bef3.scn::
-survivalist_anims.res::AnimationLibrary::2734330269725378276::1792099253::0::1::::<><><>0<>0<><>::
+survivalist_anims.res::AnimationLibrary::-1::1793208044::0::1::::<><><>0<>0<><>::
 WalkFiring Rifle.fbx::PackedScene::7768675704610384817::1792097861::1792098637::1::::<><><>0<>0<>382f2c31ae0c68831971dce35956c2e4<>res://.godot/imported/WalkFiring Rifle.fbx-27f2595e2923fbc22c35299c4873394d.scn::
 ::res://anims/Basic Shooter Pack/::1792098639
 firing rifle.fbx::PackedScene::2193061587301756202::1792087288::1792098639::1::::<><><>0<>0<>da7595551d0c8ab3c443994b786d9a82<>res://.godot/imported/firing rifle.fbx-6e20c8d9d8d0b12e0d32fa4a4bc3bb95.scn::
@@ -183,13 +183,13 @@ ui_slot_flashbang.png::CompressedTexture2D::106219927278499033::1792402151::1792
 ui_slot_grenade.png::CompressedTexture2D::8085469720964910056::1792402151::1792933138::1::::<><><>0<>0<>81e6747997d383ff8db2fd6c0b05151b<>res://.godot/imported/ui_slot_grenade.png-c0768091b7766deca6f40eb6236ce8eb.ctex::
 ui_slot_satellite.png::CompressedTexture2D::7890781048922458653::1792402151::1792933138::1::::<><><>0<>0<>c722cf1d852c42b26bae761c1342373d<>res://.godot/imported/ui_slot_satellite.png-f78d47fa748737b707dfee4e4764fecd.ctex::
 ui_slot_stim.png::CompressedTexture2D::4073999442459016117::1792402151::1792933138::1::::<><><>0<>0<>f42aa39036373a1bf0a883fe946b442d<>res://.godot/imported/ui_slot_stim.png-5a746b2381e751c053678258134a453d.ctex::
-::res://autoload/::1793206723
+::res://autoload/::1793208130
 GameManager.gd::GDScript::7747858757678665870::1793201952::0::1::::<>Node<><>0<>0<><>::
-NetworkManager.gd::GDScript::9209667055640192206::1793206723::0::1::::<>Node<><>0<>0<><>::
+NetworkManager.gd::GDScript::9209667055640192206::1793208130::0::1::::<>Node<><>0<>0<><>::
 RoomManager.gd::GDScript::5147526031797872081::1792937033::0::1::::<>Node<><>0<>0<><>::
 TeamManager.gd::GDScript::5085910100125812743::1792001809::0::1::::<>Node<><>0<>0<><>::
-::res://docs/::1793206774
-PROJE_GECMISI.md::TextFile::-1::1793206774::0::1::::<><><>0<>0<><>::
+::res://docs/::1793208410
+PROJE_GECMISI.md::TextFile::-1::1793208410::0::1::::<><><>0<>0<><>::
 SANAT_KITABI.md::TextFile::-1::1793106306::0::1::::<><><>0<>0<><>::
 ::res://docs/claude_turkce/::1792934414
 README.md::TextFile::-1::1792934414::0::1::::<><><>0<>0<><>::
@@ -537,9 +537,9 @@ StreetLamp.tscn::PackedScene::-1::1791462691::0::1::::<><><>0<>0<><>::res://scen
 ::res://scenes/main/::1791960654
 Main.gd::GDScript::2990680006655880912::1791901407::0::1::::<>Node<><>0<>0<><>::
 Main.tscn::PackedScene::18548884408::1791960654::0::1::::<><><>0<>0<><>::uid://biuyces7g711u::::res://scenes/main/Main.gd
-::res://scenes/player/::1793206390
+::res://scenes/player/::1793208257
 HandRifle.gd::GDScript::8654881765119272815::1792161977::0::1::::<>SkeletonModifier3D<><>0<>0<><>::
-Player.gd::GDScript::7086428762684814405::1793206390::0::1::::<>CharacterBody3D<><>0<>0<><>::
+Player.gd::GDScript::7086428762684814405::1793208257::0::1::::<>CharacterBody3D<><>0<>0<><>::
 Player.tscn::PackedScene::2036310118231742133::1792099253::0::1::::<><><>0<>0<><>::uid://c77ypgatj76cv::::res://scenes/player/Player.gd<>uid://csenp2rgquxtx::::res://scenes/player/SurvivalistModel.tscn
 SelfVisibility.gdshader::Shader::1226009312003211618::1791462695::0::1::::<><><>0<>0<><>::
 SpineTwistModifier.gd::GDScript::8410650104438760143::1792007269::0::1::::SpineTwistModifier<>SkeletonModifier3D<><>0<>0<><>::
@@ -551,13 +551,13 @@ PlayerProfile.gd::GDScript::7495841198915662343::1792933087::0::1::::PlayerProfi
 ::res://scenes/settings/::1793110925
 FpsCounter.gd::GDScript::4647926397458315530::1793109971::0::1::::<>CanvasLayer<><>0<>0<><>::
 GameSettings.gd::GDScript::2415301790995857930::1793109997::0::1::::GameSettings<>RefCounted<><>0<>0<><>::
-::res://scenes/ui/::1793202671
+::res://scenes/ui/::1793208376
 BlurBackdrop.gdshader::Shader::7215197929924138539::1792161122::0::1::::<><><>0<>0<><>::
 CharacterSelect.gd::GDScript::8797244693588930917::1793105992::0::1::::<>Control<><>0<>0<><>::
 CharacterSelect.tscn::PackedScene::5265227833291186888::1791462691::0::1::::<><><>0<>0<><>::res://scenes/ui/CharacterSelect.gd
 ChatBox.gd::GDScript::4992965310883462549::1791919433::0::1::::ChatBox<>PanelContainer<><>0<>0<><>::
 Crosshair.gd::GDScript::7026228812099379399::1793110112::0::1::::<>Control<><>0<>0<><>::
-HUD.gd::GDScript::8879953225524299369::1793202671::0::1::::<>CanvasLayer<><>0<>0<><>::
+HUD.gd::GDScript::8879953225524299369::1793208376::0::1::::<>CanvasLayer<><>0<>0<><>::
 HUD.tscn::PackedScene::344922376::1791902497::0::1::::<><><>0<>0<><>::res://scenes/ui/HUD.gd
 Lobby.gd::GDScript::4296871368415808814::1793200788::0::1::::<>Control<><>0<>0<><>::
 Lobby.tscn::PackedScene::599431858240::1791901794::0::1::::<><><>0<>0<><>::res://scenes/ui/Lobby.gd
@@ -577,14 +577,14 @@ Bullet.gd::GDScript::604230341112233499::1793204136::0::1::::<>Area3D<><>0<>0<><
 Bullet.tscn::PackedScene::-1::1791462691::0::1::::<><><>0<>0<><>::res://scenes/weapons/Bullet.gd
 Weapon.gd::GDScript::7535938827061385862::1793204110::0::1::::<>Node3D<><>0<>0<><>::
 Weapon.tscn::PackedScene::-1::1791462691::0::1::::<><><>0<>0<><>::res://scenes/weapons/Weapon.gd
-::res://scenes/world/::1793206722
+::res://scenes/world/::1793208243
 Bomb.gd::GDScript::3073748922878818649::1793106020::0::1::::<>Node3D<><>0<>0<><>::
 CameraController.gd::GDScript::845686837757443432::1793110130::0::1::::<>Camera3D<><>0<>0<><>::
 Card.gd::GDScript::9150526131268287527::1793202646::0::1::::<>Area3D<><>0<>0<><>::
 Card.tscn::PackedScene::-1::1792002175::0::1::::<><><>0<>0<><>::res://scenes/world/Card.gd<>res://scenes/world/ProximityReveal.gd
 Door.gd::GDScript::4147028726566523735::1793202647::0::1::::<>Area3D<><>0<>0<><>::
 Door.tscn::PackedScene::-1::1792002177::0::1::::<><><>0<>0<><>::res://scenes/world/Door.gd<>res://scenes/world/ProximityReveal.gd
-ImportedMap.gd::GDScript::3768604527234721082::1793206722::0::1::::<>Node3D<><>0<>0<><>::
+ImportedMap.gd::GDScript::3768604527234721082::1793208243::0::1::::<>Node3D<><>0<>0<><>::
 ImportedMap.tscn::PackedScene::-1::1793201019::0::1::::<><><>0<>0<><>::res://scenes/world/ImportedMap.gd<>res://default_env.tres<>res://scenes/ui/HUD.tscn<>res://scenes/world/CameraController.gd<>res://scenes/world/PowerupManager.gd<>res://scenes/world/WallLamps.gd
 LightShaft.gdshader::Shader::1065006354266005747::1792076810::0::1::::<><><>0<>0<><>::
 Map.gd::GDScript::1360093020774556044::1792001810::0::1::::<>Node3D<><>0<>0<><>::

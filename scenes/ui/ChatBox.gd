@@ -57,6 +57,7 @@ func _ready() -> void:
 	_log.bbcode_enabled = true
 	_log.scroll_following = true
 	_log.selection_enabled = false
+	_log.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu mesajları çevrilmesin — sabit parçalar _format'ta tr()
 	if mode == Mode.GAME:
 		# Satırlar kutunun altına yaslı dursun (oyuncu kartının hemen üstünde), karanlıkta okunsun
 		var spacer := Control.new()
@@ -112,7 +113,7 @@ func _ready() -> void:
 		for msg: Dictionary in NetworkManager.chat_history:
 			_log.append_text(_format(msg, 1.0))
 		if NetworkManager.chat_history.is_empty():
-			_log.append_text("[color=#%s]Takımınla ya da herkesle buradan konuş.[/color]\n" % UITheme.TEXT_DIM.to_html(false))
+			_log.append_text("[color=#%s]%s[/color]\n" % [UITheme.TEXT_DIM.to_html(false), tr("Takımınla ya da herkesle buradan konuş.")])
 
 	_update_channel_btn()
 	_set_open(mode == Mode.LOBBY)
@@ -271,14 +272,19 @@ func _format(msg: Dictionary, alpha: float) -> String:
 	var channel: String = msg.get("channel", "all")
 	var text := _escape(String(msg.get("text", "")))
 	if channel == "system":
-		return "[color=#%s]•  %s[/color]\n" % [Color(UITheme.ACCENT, alpha).to_html(true), text]
+		# Sistem mesajı = çeviri anahtarı + değerler (NetworkManager._chat_system) → gösterirken kendi dilimizde biçimle
+		var args: Array = msg.get("args", [])
+		var sys_text := tr(String(msg.get("text", "")))
+		if not args.is_empty():
+			sys_text = sys_text % args
+		return "[color=#%s]•  %s[/color]\n" % [Color(UITheme.ACCENT, alpha).to_html(true), _escape(sys_text)]
 	var team: int = msg.get("team", -1)
 	var name_col := Color(TeamManager.get_color(team) if team >= 0 else UITheme.TEXT_DIM, alpha)
 	var line := ""
 	if channel == "team":
-		line += "[color=#%s][lb]TAKIM][/color] " % name_col.to_html(true)
+		line += "[color=#%s][lb]%s][/color] " % [name_col.to_html(true), tr("TAKIM")]
 	var is_me: bool = int(msg.get("sender", 0)) == NetworkManager.get_local_id()
-	line += "[b][color=#%s]%s%s:[/color][/b] " % [name_col.to_html(true), _escape(String(msg.get("name", "???"))), " (Sen)" if is_me else ""]
+	line += "[b][color=#%s]%s%s:[/color][/b] " % [name_col.to_html(true), _escape(String(msg.get("name", "???"))), (" " + tr("(Sen)")) if is_me else ""]
 	line += "[color=#%s]%s[/color]\n" % [Color(UITheme.TEXT, alpha).to_html(true), text]
 	return line
 

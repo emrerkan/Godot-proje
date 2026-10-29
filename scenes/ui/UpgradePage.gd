@@ -160,14 +160,14 @@ func refresh() -> void:
 	if _xp_lbl == null:
 		return
 	_xp_lbl.text = "◆ %d XP" % PROFILE.get_xp()
-	_level_lbl.text = "PROFİL SEVİYESİ %d" % PROFILE.profile_level()
+	_level_lbl.text = tr("PROFİL SEVİYESİ %d") % PROFILE.profile_level()
 	for c: String in _char_buttons:
 		(_char_buttons[c] as Button).text = "%s  %d/%d" % [c.to_upper(), PROFILE.upgrade_count(c), PROFILE.STATS.size() * PROFILE.MAX_LEVEL]
 
 	var levels := PROFILE.get_levels(_character)
 	var cost := PROFILE.next_cost(_character)
 	var can_afford := PROFILE.get_xp() >= cost
-	_role_lbl.text = "%s  ·  %s" % [_character.to_upper(), String(ROLES.get(_character, "")).to_upper()]
+	_role_lbl.text = "%s  ·  %s" % [_character.to_upper(), tr(String(ROLES.get(_character, ""))).to_upper()]
 	_refresh_summary(levels)
 
 	for stat: String in PROFILE.STATS:
@@ -183,9 +183,9 @@ func refresh() -> void:
 			btn.text = "MAKS"
 			btn.disabled = true
 		else:
-			btn.text = "YÜKSELT · %d XP" % cost
+			btn.text = tr("YÜKSELT · %d XP") % cost
 			btn.disabled = not can_afford
-	_cost_lbl.text = "Bu karakterin sonraki yükseltmesi: %d XP   ·   XP maçlarda kazanılır (kill, kart, zafer…)" % cost
+	_cost_lbl.text = tr("Bu karakterin sonraki yükseltmesi: %d XP   ·   XP maçlarda kazanılır (kill, kart, zafer…)") % cost
 
 
 func _refresh_summary(levels: Dictionary) -> void:
@@ -206,8 +206,8 @@ func _refresh_summary(levels: Dictionary) -> void:
 		box.add_theme_constant_override("separation", 0)
 		box.add_child(UITheme.label(e[0], 10, UITheme.TEXT_DIM, UITheme.font_caps))
 		var changed: bool = absf(float(e[2]) - float(e[1])) > 0.001
-		var val := UITheme.label(String(e[3]) % e[2], 17, UITheme.ACCENT if changed else UITheme.TEXT, UITheme.font_bold)
+		var val := UITheme.label(tr(String(e[3])) % e[2], 17, UITheme.ACCENT if changed else UITheme.TEXT, UITheme.font_bold)
 		box.add_child(val)
 		if changed:
-			box.add_child(UITheme.label("temel " + String(e[3]) % e[1], 10, UITheme.TEXT_DIM))
+			box.add_child(UITheme.label(tr("temel %s") % (tr(String(e[3])) % e[1]), 10, UITheme.TEXT_DIM))
 		_summary.add_child(box)

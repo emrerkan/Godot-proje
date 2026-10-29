@@ -178,7 +178,7 @@ func _handle_test_key(code: Key) -> bool:
 	if code == TEST_KEY_OBJECTIVES:
 		# Sadece yerel görsel: minimapte kart + kapı, 3D'de ProximityReveal mesafeyi yok sayar
 		test_show_objectives = not test_show_objectives
-		notice.emit("TEST: kart ve kapı %s" % ("GÖSTERİLİYOR" if test_show_objectives else "GİZLENDİ"), UITheme.SIGNAL)
+		notice.emit(tr("TEST: kart ve kapı %s") % tr("GÖSTERİLİYOR" if test_show_objectives else "GİZLENDİ"), UITheme.SIGNAL)
 		return true
 	if code == TEST_KEY_SPAWN:
 		var fwd: Vector3 = -(me as Node3D).global_transform.basis.z
@@ -347,7 +347,7 @@ func _set_item_rpc(peer_id: int, type: int, picked_up: bool = false, silent: boo
 			GameManager.gain_xp(GameManager.XP_POWERUP, "Güç toplandı")
 		inventory_changed.emit(type)
 		if type != NONE and not silent:
-			notice.emit("%s %s alındı  ·  [Q] kullan" % [INFO[type]["glyph"], INFO[type]["name"]], Color(INFO[type]["color"]))
+			notice.emit(tr("%s %s alındı  ·  [Q] kullan") % [INFO[type]["glyph"], tr(INFO[type]["name"])], Color(INFO[type]["color"]))
 
 
 ## Maç başında her oyuncuya karakterine göre bir güç (GameManager._begin_actual_game_rpc, TÜM peer'larda).
@@ -443,10 +443,10 @@ func _medic_heal_rpc(medic_peer: int, target_peer: int) -> void:
 	var target_name: String = NetworkManager.players.get(target_peer, {}).get("name", "?")
 	var col: Color = INFO[Type.HEAL]["color"]
 	if me == medic_peer:
-		notice.emit("✚ %s iyileştirildi (+%d)" % [target_name, int(HEAL_AMOUNT)], col)
+		notice.emit(tr("✚ %s iyileştirildi (+%d)") % [target_name, int(HEAL_AMOUNT)], col)
 		GameManager.gain_xp(GameManager.XP_HEAL_ALLY, "Takım arkadaşı iyileştirildi")
 	elif me == target_peer:
-		notice.emit("✚ MEDIC %s seni iyileştirdi" % medic_name, col)
+		notice.emit(tr("✚ MEDIC %s seni iyileştirdi") % medic_name, col)
 
 
 func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool, smoke: bool = false) -> void:
@@ -565,7 +565,7 @@ func _reveal_rpc(team: int, kind: String, duration: float, user_peer: int) -> vo
 		reveal_until[kind] = Time.get_ticks_msec() / 1000.0 + duration
 		reveal_started.emit(kind, duration, true)
 		var txt := "◈ UYDU (%s): tüm oyuncular haritada" if kind == "all_players" else "◉ TAKIM UYDUSU (%s): düşmanlar haritada"
-		notice.emit(txt % user_name, Color(INFO[Type.INTEL_SAT if kind == "all_players" else Type.ENEMY_SAT]["color"]))
+		notice.emit(tr(txt) % user_name, Color(INFO[Type.INTEL_SAT if kind == "all_players" else Type.ENEMY_SAT]["color"]))
 	elif kind == "enemies" or kind == "all_players":
 		reveal_started.emit(kind, duration, false)
-		notice.emit("⚠ %s TAKIM UYDUSU KONUMUNUZU TESPİT ETTİ!" % TeamManager.get_team_name(team).to_upper(), UITheme.DANGER)
+		notice.emit(tr("⚠ %s TAKIM UYDUSU KONUMUNUZU TESPİT ETTİ!") % TeamManager.get_team_name(team).to_upper(), UITheme.DANGER)
