@@ -41,6 +41,7 @@ const XP_HEAL_ALLY := 75              # Medic takım arkadaşını iyileştirdi 
 const XP_POWERUP := 25                # yerden güç aldı (PowerupManager)
 const XP_MATCH := 100                 # maçı bitirdi
 const XP_WIN := 300                   # kazanan takım
+const RETURN_TO_LOBBY_DELAY := 5.0    # maç bitince lobiye otomatik dönüş (HUD oyun sonu ekranı bu sabiti okur)
 var match_xp := 0                     # bu maçta kazanılan (oyun sonu ekranı)
 var _xp_survive_timer := 0.0
 var _xp_carry_timer := 0.0
@@ -438,8 +439,10 @@ func _on_team_won(team_id: int) -> void:
 	_end_game_rpc.rpc(team_id)
 
 
-@rpc("authority", "call_local", "reliable")
-func _end_game_rpc(winning_team: int) -> void:
+## XP/state/sinyal mantığı — _end_game_rpc (normal maç sonu) ve restore_from_migration'daki
+## instant_winner dalı (migration sonrası kesinleşmiş zafer) ortak kullanır. RPC DEĞİL: her peer
+## kendi yerel kopyasını zaten elindeki bilgiyle (winning_team) çağırır, broadcast'e gerek yok.
+func _apply_end_game(winning_team: int) -> void:
 	# Maç sonu XP'si game_ended'dan ÖNCE (HUD oyun sonu ekranı match_xp'yi gösterir)
 	if not _match_xp_closed:
 		_match_xp_closed = true
@@ -449,6 +452,37 @@ func _end_game_rpc(winning_team: int) -> void:
 			gain_xp(XP_WIN, "Zafer")
 	state = State.ENDED
 	emit_signal("game_ended", winning_team)
+
+
+@rpc("authority", "call_local", "reliable")
+func _end_game_rpc(winning_team: int) -> void:
+	_apply_end_game(winning_team)
+	if NetworkManager.is_host():
+		await get_tree().create_timer(RETURN_TO_LOBBY_DELAY).timeout
+		_return_to_lobby_rpc.rpc()
+
+
+## Maç bitince herkes aynı oturumda lobiye geri döner (lobi kapanmaz) — host RETURN_TO_LOBBY_DELAY sonra çağırır.
+@rpc("authority", "call_local", "reliable")
+func _return_to_lobby_rpc() -> void:
+	state = State.LOBBY
+	active_players.clear()
+	player_stats.clear()
+	card_instance = null
+	door_instance = null
+	card_carrier_peer_id = -1
+	door_unlock = 0.0
+	match_xp = 0
+	_match_xp_closed = false
+	_xp_survive_timer = 0.0
+	_xp_carry_timer = 0.0
+	if NetworkManager.is_host():
+		NetworkManager.reset_for_rematch()
+	LOADING.open(get_tree(), "LOBİYE DÖNÜLÜYOR", "")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	get_tree().change_scene_to_file("res://scenes/ui/Lobby.tscn")
+	LOADING.close(get_tree(), MAP_SETTLE_FRAMES)
 
 
 # ─────────────────────────────────────────────
@@ -605,6 +639,15 @@ func _stats_by_name() -> Dictionary:
 
 ## Migration sonrası oyunu geri yükle (yeni host + yeniden bağlanan clientlar)
 func restore_from_migration(mig: Dictionary) -> void:
+	# Migration anında zaten kesinleşmiş kazanan varsa (geriye tek takım kaldı, kimse geri bağlansa
+	# da sonuç değişmez) haritayı YENİDEN YÜKLEMEDEN doğrudan zaferi ilan et — client ekranında
+	# gereksiz 'YÜKLENİYOR' perdesi hiç görünmesin (HUD zaten canlı, game_ended sinyaline bağlı).
+	if mig.has("instant_winner"):
+		_apply_end_game(int(mig["instant_winner"]))
+		if NetworkManager.is_host():
+			await get_tree().create_timer(RETURN_TO_LOBBY_DELAY).timeout
+			_return_to_lobby_rpc.rpc()
+		return
 	door_unlock = 0.0  # kilit ilerlemesi host değişince sıfırdan
 	# Skorları geri yükle
 	var saved_scores: Dictionary = mig.get("scores", {})
@@ -636,8 +679,9 @@ func restore_from_migration(mig: Dictionary) -> void:
 		# Kart ve kapıyı kaydedilen pozisyona spawn et
 		_spawn_objects_rpc.rpc(_pending_card_pos, _pending_door_pos)
 	emit_signal("game_started")
-	# Migration sonrası tek takım kaldıysa kazandı ilan et — ama önce diğerlerinin yeniden bağlanmasını bekle
-	# (hemen kontrol edilirse yeni host sadece kendi takımını görüp oyunu anında bitiriyordu)
+	# Buraya gelindiğinde instant_winner yoktu, yani get_migration_remaining_team_count() birden
+	# fazlaydı — diğer takımların yeniden bağlanmasını bekle (hemen kontrol edilirse yeni host
+	# sadece kendi takımını görüp oyunu anında bitiriyordu)
 	if NetworkManager.is_host():
 		await get_tree().create_timer(NetworkManager.MIGRATION_WINDOW_MS / 1000.0).timeout
 		_check_last_team_standing()

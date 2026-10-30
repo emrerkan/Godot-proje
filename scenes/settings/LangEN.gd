@@ -252,6 +252,8 @@ const STRINGS := {
 	"YENİLGİ": "DEFEAT",
 	"%s TAKIMI KAZANDI": "%s TEAM WINS",
 	"%d KILL   ·   %d ÖLÜM\n+%d XP KAZANILDI   ·   PROFİL: %d XP": "%d KILLS   ·   %d DEATHS\n+%d XP EARNED   ·   PROFILE: %d XP",
+	"LOBİYE DÖNÜLÜYOR": "RETURNING TO LOBBY",
+	"%d sn sonra lobiye dönülüyor": "Returning to lobby in %ds",
 	"✚ +%d CAN": "✚ +%d HP",
 	"◆  KART YERDE  ·  BUL VE AL": "◆  CARD ON THE GROUND  ·  FIND AND GRAB IT",
 	"◆  KART SENDE  ·  KAPININ ÇEMBERİNDE %d SN KAL": "◆  YOU HAVE THE CARD  ·  STAY IN THE DOOR CIRCLE FOR %d S",

@@ -247,6 +247,35 @@ func _on_connection_failed() -> void:
 # Host Migration
 # ─────────────────────────────────────────────
 
+## Migration: ayrılan host (peer 1) hariç, _migration_players anlık görüntüsünde kaç farklı takımın
+## oyuncusu var. 1 veya daha az ise kimse geri bağlansa da tek-takım sonucu değişmez — migration sonrası
+## 20 sn'lik yeniden-bağlanma penceresi beklemeden anında 'tek takım kaldı' kontrolü yapılabilir.
+func get_migration_remaining_team_count() -> int:
+	var teams: Dictionary = {}
+	for pid in _migration_players:
+		if pid == 1:
+			continue
+		var tid: int = _migration_players[pid].get("team_id", -1)
+		if tid >= 0:
+			teams[tid] = true
+	return teams.size()
+
+
+## Migration: _migration_players anlık görüntüsünde (ayrılan host hariç) TAM OLARAK bir takımın
+## oyuncusu kaldıysa onun id'sini döner, birden fazla veya hiç yoksa -1 (kesin kazanan yok).
+func get_migration_winning_team() -> int:
+	var teams: Dictionary = {}
+	for pid in _migration_players:
+		if pid == 1:
+			continue
+		var tid: int = _migration_players[pid].get("team_id", -1)
+		if tid >= 0:
+			teams[tid] = true
+	if teams.size() == 1:
+		return teams.keys()[0]
+	return -1
+
+
 func _on_server_disconnected() -> void:
 	if _is_migrating:
 		return
@@ -261,6 +290,13 @@ func _on_server_disconnected() -> void:
 	_migration_settings = room_settings.duplicate(true)
 	_migration_addresses = peer_addresses.duplicate()
 	_pending_migration_state = GameManager.get_migration_state()
+	# Disconnect anında oyun sürüyorsa ve geriye kesin olarak tek takım kaldıysa (kimse geri
+	# bağlansa da sonuç değişmez), kazananı şimdiden işaretle — restore_from_migration haritayı
+	# yeniden yükleyip loading perdesi açmadan doğrudan zaferi ilan edebilsin.
+	if GameManager.state == GameManager.State.IN_GAME and get_migration_remaining_team_count() <= 1:
+		var winner := get_migration_winning_team()
+		if winner >= 0:
+			_pending_migration_state["instant_winner"] = winner
 	var saved_room := room_name
 	var saved_pw   := _pending_password  # Client sadece bunu bilir (password)
 	_migration_room = saved_room
@@ -370,7 +406,12 @@ func register_player(peer_id: int, player_name: String, password: String, saved_
 	# Yeni oyuncuya mevcut listeyi + oda ayarlarını gönder, ardından kabul bildir
 	receive_player_list.rpc_id(peer_id, players)
 	_sync_room_settings.rpc_id(peer_id, room_settings)
-	_accept_player.rpc_id(peer_id, _pending_migration_state, room_name, RoomManager.room_code)
+	# _pending_migration_state migration anından kalan BAYAT bir anlık görüntü — disconnect_all() dışında hiç
+	# temizlenmiyor. Maç migration sonrası bitip lobiye dönüldüyse hâlâ "game_state: IN_GAME" diyebilir; bu durumda
+	# _accept_player gereksiz yere restore_from_migration'a girip joined_server hiç emit edilmez (host/client
+	# ana menüde asılı kalır). Sadece GERÇEKTEN migration penceresi içinde VE maç hâlâ sürüyorsa gönder.
+	var mig_state := _pending_migration_state if (reconnecting and GameManager.state == GameManager.State.IN_GAME) else {}
+	_accept_player.rpc_id(peer_id, mig_state, room_name, RoomManager.room_code)
 	# Diğer herkese güncel listeyi gönder
 	_broadcast_player_list()
 	emit_signal("player_list_updated")
@@ -700,6 +741,18 @@ func _enforce_team_size() -> void:
 	if changed:
 		_broadcast_player_list()
 		emit_signal("player_list_updated")
+
+
+## Host: maç bitip lobiye dönülünce rövanş için oyuncuları hazırla — hazır/karakter sıfırlanır, takım KORUNUR.
+func reset_for_rematch() -> void:
+	if not is_host():
+		return
+	for pid in players:
+		players[pid]["is_ready"] = false
+		if players[pid].has("character"):
+			players[pid]["character"] = ""
+	_broadcast_player_list()
+	emit_signal("player_list_updated")
 
 
 func _push_settings() -> void:

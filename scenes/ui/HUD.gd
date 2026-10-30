@@ -72,6 +72,8 @@ var _end_overlay: Control
 var _end_title: Label
 var _end_sub: Label
 var _end_stats: Label
+var _end_countdown_lbl: Label
+var _end_countdown_remaining := 0.0
 var _chat: ChatBox
 var _crosshair: Control
 var _settings_window: Control
@@ -193,6 +195,11 @@ func _process(delta: float) -> void:
 	if _death_overlay.visible:
 		_death_time = maxf(_death_time - delta, 0.0)
 		_death_count.text = "%d" % ceili(_death_time) if _death_time > 0.0 else "…"
+
+	# Oyun sonu — lobiye otomatik dönüş geri sayımı (kozmetik; dönüşü GameManager RPC'si yapar)
+	if _end_overlay.visible:
+		_end_countdown_remaining = maxf(_end_countdown_remaining - delta, 0.0)
+		_end_countdown_lbl.text = tr("%d sn sonra lobiye dönülüyor") % ceili(_end_countdown_remaining)
 
 	# Kart sendeyse hedef çipi nabız atar
 	if _carrier_peer == NetworkManager.get_local_id() and _carrier_peer != -1:
@@ -770,12 +777,9 @@ func _setup_end_overlay() -> void:
 	box.add_child(_end_stats)
 	box.add_child(_vspace(18))
 
-	var btn_wrap := CenterContainer.new()
-	box.add_child(btn_wrap)
-	var back := _menu_button("ANA MENÜYE DÖN", "PrimaryButton")
-	back.custom_minimum_size = Vector2(260, 50)
-	back.pressed.connect(_on_back_btn_pressed)
-	btn_wrap.add_child(back)
+	_end_countdown_lbl = UITheme.label("", 13, UITheme.TEXT_DIM, UITheme.font_caps)
+	_end_countdown_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_end_countdown_lbl)
 
 
 # ─────────────────────────────────────────────
@@ -1236,10 +1240,7 @@ func _on_game_ended(winning_team: int) -> void:
 	var stats: Dictionary = GameManager.player_stats.get(NetworkManager.get_local_id(), {"kills": 0, "deaths": 0})
 	_end_stats.text = tr("%d KILL   ·   %d ÖLÜM\n+%d XP KAZANILDI   ·   PROFİL: %d XP") % [
 		stats.get("kills", 0), stats.get("deaths", 0), GameManager.match_xp, PROFILE.get_xp()]
+	_end_countdown_remaining = GameManager.RETURN_TO_LOBBY_DELAY
 	_end_overlay.modulate.a = 0.0
 	_end_overlay.show()
 	create_tween().tween_property(_end_overlay, "modulate:a", 1.0, 0.4)
-
-
-func _on_back_btn_pressed() -> void:
-	GameManager.return_to_menu()
