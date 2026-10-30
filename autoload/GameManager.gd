@@ -8,7 +8,8 @@ signal game_ended(winning_team: int)
 signal local_player_spawned(player: Node)
 signal card_picked_up(carrier_peer_id: int, carrier_pos: Vector3, carrier_team_id: int)
 signal card_dropped(drop_pos: Vector3, carrier_team_id: int)
-signal kill_happened(killer_peer_id: int, victim_peer_id: int)
+## method = öldüren hasarın kaynağı (Player.DAMAGE_*: 0 mermi, 1 patlama/tuzak, 2 bıçak, 3 arkadan bıçak)
+signal kill_happened(killer_peer_id: int, victim_peer_id: int, method: int)
 signal xp_gained(amount: int, reason: String)  # yerel oyuncu XP kazandı (HUD "+100 XP")
 signal door_unlock_changed(ratio: float, carrier_peer_id: int)  # kapı kilidi ilerlemesi (Door.gd + HUD)
 
@@ -32,6 +33,10 @@ const CHAR_SELECT_SETTLE_FRAMES := 6
 const MAP_SETTLE_FRAMES := 6
 const XP_KILL := 100
 const XP_CARRIER_KILL_BONUS := 150    # kart taşıyıcısını öldürmek
+const XP_KNIFE_BONUS := 40            # bıçakla öldürmek (önden)
+const XP_BACKSTAB_BONUS := 80         # arkadan bıçaklamak
+const KILL_KNIFE := 2                 # = Player.DAMAGE_MELEE
+const KILL_BACKSTAB := 3              # = Player.DAMAGE_BACKSTAB
 const XP_CARD_PICKUP := 150
 const XP_CARRY := 25                  # kart sendeyken her XP_CARRY_INTERVAL
 const XP_CARRY_INTERVAL := 10.0
@@ -383,15 +388,15 @@ func handle_card_delivered(carrier_peer_id: int) -> void:
 # Ölüm / Yeniden Doğma
 # ─────────────────────────────────────────────
 
-func handle_player_death(dead_peer_id: int, killer_peer_id: int) -> void:
+func handle_player_death(dead_peer_id: int, killer_peer_id: int, method: int = 0) -> void:
 	if not NetworkManager.is_host():
 		return
 	var killer_data: Dictionary = NetworkManager.players.get(killer_peer_id, {})
 	var killing_team: int = killer_data.get("team_id", -1)
-	if killing_team >= 0:
+	if killing_team >= 0 and killer_peer_id != dead_peer_id:  # kendi tuzağına basan skora yazılmaz
 		TeamManager.add_kill(killing_team)
 
-	_announce_kill_rpc.rpc(killer_peer_id, dead_peer_id)
+	_announce_kill_rpc.rpc(killer_peer_id, dead_peer_id, method)
 
 	if card_carrier_peer_id == dead_peer_id:
 		var dead_player: Node = active_players.get(dead_peer_id)
@@ -402,12 +407,13 @@ func handle_player_death(dead_peer_id: int, killer_peer_id: int) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _announce_kill_rpc(killer_peer_id: int, victim_peer_id: int) -> void:
+func _announce_kill_rpc(killer_peer_id: int, victim_peer_id: int, method: int) -> void:
 	if not player_stats.has(killer_peer_id):
 		player_stats[killer_peer_id] = {"kills": 0, "deaths": 0}
 	if not player_stats.has(victim_peer_id):
 		player_stats[victim_peer_id] = {"kills": 0, "deaths": 0}
-	player_stats[killer_peer_id]["kills"] += 1
+	if killer_peer_id != victim_peer_id:
+		player_stats[killer_peer_id]["kills"] += 1
 	player_stats[victim_peer_id]["deaths"] += 1
 	# Kart düşürme RPC'si bundan SONRA gelir → card_carrier_peer_id hâlâ kurbanı gösteriyor
 	if killer_peer_id == NetworkManager.get_local_id() and killer_peer_id != victim_peer_id:
@@ -415,7 +421,11 @@ func _announce_kill_rpc(killer_peer_id: int, victim_peer_id: int) -> void:
 			gain_xp(XP_KILL + XP_CARRIER_KILL_BONUS, "Kart taşıyıcısı öldürüldü")
 		else:
 			gain_xp(XP_KILL, "Düşman öldürüldü")
-	emit_signal("kill_happened", killer_peer_id, victim_peer_id)
+		if method == KILL_BACKSTAB:
+			gain_xp(XP_BACKSTAB_BONUS, "Arkadan bıçaklandı")
+		elif method == KILL_KNIFE:
+			gain_xp(XP_KNIFE_BONUS, "Bıçakla öldürüldü")
+	emit_signal("kill_happened", killer_peer_id, victim_peer_id, method)
 
 
 func _schedule_respawn(dead_peer_id: int) -> void:

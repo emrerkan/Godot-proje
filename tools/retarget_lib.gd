@@ -28,7 +28,9 @@ const FPS := 30.0
 ## src_path: Mixamo FBX (ağaca eklenip örneklenir), dst_root: hedef model (ağaçta), parent: geçici node'ların ekleneceği yer
 ## in_place: kalçanın kök hareketi (ileri/yukarı — ör. Mixamo koşarak zıplama 4 m ileri, 1 m yukarı) atılır,
 ## pelvis ilk karedeki konumunda kalır; hareketi oyunda fizik yapar.
-static func retarget(src_path: String, parent: Node, dst_root: Node3D, in_place := false) -> Animation:
+## keep_height (in_place ile): sadece YATAY kök hareketi atılır, kalça yüksekliği klipten gelir — takla klipleri:
+## havaya kalkış/dönüş görseli animasyondan, ilerleme oyunda fizikten (çarpışma gövdesi yerde kalır).
+static func retarget(src_path: String, parent: Node, dst_root: Node3D, in_place := false, keep_height := false) -> Animation:
 	var src_root: Node3D = (load(src_path) as PackedScene).instantiate()
 	parent.add_child(src_root)
 	var src_sk: Skeleton3D = src_root.find_children("*", "Skeleton3D", true, false)[0]
@@ -106,7 +108,7 @@ static func retarget(src_path: String, parent: Node, dst_root: Node3D, in_place 
 		if in_place:
 			if first_off == null:
 				first_off = src_off
-			src_off = first_off
+			src_off = Vector3(first_off.x, src_off.y, first_off.z) if keep_height else first_off
 		var pel_parent := dst_sk.get_bone_parent(dst_pelvis)
 		var parent_rest: Transform3D = dst_rest_g[pel_parent] if pel_parent >= 0 else Transform3D.IDENTITY
 		var local_pos: Vector3 = dst_sk.get_bone_rest(dst_pelvis).origin + parent_rest.basis.inverse() * (src_off * h_scale)

@@ -23,18 +23,39 @@ var _support := -1
 var _rel_to_hand := Transform3D.IDENTITY   # son geçerli tutuşta tüfeğin sağ ele göre konumu
 var _has_rel := false
 
+## Bıçaklama: show_knife(süre) boyunca tüfek gizlenir, sağ elde bıçak (yumruk içinde, ağız başparmak yönünde)
+var knife: Node3D = null
+var _knife_time := 0.0
+var _middle := -1
+var _thumb := -1
+
 
 func _ready() -> void:
 	var sk := get_skeleton()
 	if sk:
 		_grip = sk.find_bone(GRIP_BONE)
 		_support = sk.find_bone(SUPPORT_BONE)
+		_middle = sk.find_bone("middle_01_r")
+		_thumb = sk.find_bone("thumb_02_r")
 
 
-func _process_modification_with_delta(_delta: float) -> void:
+func show_knife(duration: float) -> void:
+	_knife_time = duration
+
+
+func _process_modification_with_delta(delta: float) -> void:
 	var sk := get_skeleton()
 	if sk == null or rifle == null or _grip < 0 or _support < 0:
 		return
+	if knife:
+		_knife_time = maxf(_knife_time - delta, 0.0)
+		var knife_on := _knife_time > 0.0 and _middle >= 0 and _thumb >= 0
+		knife.visible = knife_on
+		rifle.visible = not knife_on
+		if knife_on:
+			_place_knife(sk)
+			aim_valid = false
+			return
 	var hand := sk.get_bone_global_pose(_grip)
 	var support := sk.get_bone_global_pose(_support)
 	var grip_pos := hand.origin + GRIP_OFFSET
@@ -66,6 +87,49 @@ func _process_modification_with_delta(_delta: float) -> void:
 		return
 	# rifle iskeletin çocuğu → iskelet uzayı = rifle'ın yerel uzayı
 	rifle.transform = xf
+
+
+## Bıçak sap ortası yumrukta (el ile orta parmak kökü arası), ağız (-Z) başparmak yönüne — parmaklara dik
+func _place_knife(sk: Skeleton3D) -> void:
+	var hand := sk.get_bone_global_pose(_grip).origin
+	var fingers := sk.get_bone_global_pose(_middle).origin - hand
+	var thumb := sk.get_bone_global_pose(_thumb).origin - hand
+	if fingers.length() < 0.001:
+		return
+	var f := fingers.normalized()
+	var blade := thumb - f * thumb.dot(f)
+	if blade.length() < 0.001:
+		return
+	knife.transform = Transform3D(Basis.looking_at(blade.normalized(), f), hand + fingers * 0.6)
+
+
+## Prosedürel bıçak: -Z = ağız, orijin = sap ortası
+static func build_knife_mesh() -> Node3D:
+	var knife := Node3D.new()
+	knife.name = "HandKnife"
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.72, 0.74, 0.78)
+	steel.metallic = 0.95
+	steel.roughness = 0.2
+	var grip := StandardMaterial3D.new()
+	grip.albedo_color = Color(0.08, 0.08, 0.08)
+	grip.roughness = 0.85
+	# [boyut, konum, malzeme] — sap, siper, ağız
+	var parts := [
+		[Vector3(0.028, 0.034, 0.11), Vector3(0, 0, 0.0), grip],
+		[Vector3(0.05, 0.012, 0.012), Vector3(0, 0, -0.06), steel],
+		[Vector3(0.006, 0.03, 0.17), Vector3(0, 0.002, -0.15), steel],
+	]
+	for p: Array in parts:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = p[0]
+		mi.mesh = bm
+		mi.position = p[1]
+		mi.material_override = p[2]
+		knife.add_child(mi)
+	knife.visible = false
+	return knife
 
 
 ## Basit prosedürel tüfek (Weapon sahnesinde görsel yok). -Z = namlu; orijin = kabza (sağ el).

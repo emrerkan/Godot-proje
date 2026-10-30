@@ -31,6 +31,11 @@ const MIXAMO_CLIPS := {
 	"res://anims/Dying.fbx": ["Dying", false],
 	# Kullanıcının eklediği Mixamo koşarak zıplama (1 sn; havada ~0.07-0.67 sn) — 3. eleman: in_place (kök hareketi atılır)
 	"res://anims/Jump.fbx": ["JumpRun", false, true],
+	# Takla (Ctrl + Space) — 4. eleman keep_height: yatay kök hareketi atılır, kalça yüksekliği kalır
+	"res://anims/Front Flip.fbx": ["FrontFlip", false, true, true],
+	"res://anims/Backflip.fbx": ["BackFlip", false, true, true],
+	# Bıçaklama (V / sağ tık) — üst gövde aksiyonu, sağ el ~0.5 sn'de ileri saplar
+	"res://anims/Stabbing.fbx": ["Stab", false, true],
 }
 
 
@@ -85,7 +90,8 @@ func _run() -> void:
 		if not ResourceLoader.exists(path):
 			print("YOK: ", path)
 			continue
-		var anim: Animation = retarget.retarget(path, get_root(), model, MIXAMO_CLIPS[path].size() > 2 and MIXAMO_CLIPS[path][2])
+		var opts: Array = MIXAMO_CLIPS[path]
+		var anim: Animation = retarget.retarget(path, get_root(), model, opts.size() > 2 and opts[2], opts.size() > 3 and opts[3])
 		anim.loop_mode = Animation.LOOP_LINEAR if MIXAMO_CLIPS[path][1] else Animation.LOOP_NONE
 		lib.add_animation(StringName(MIXAMO_CLIPS[path][0]), anim)
 		print("%-34s → %-10s len=%.2f tracks=%d (Mixamo → UE)" % [path.get_file(), MIXAMO_CLIPS[path][0], anim.length, anim.get_track_count()])

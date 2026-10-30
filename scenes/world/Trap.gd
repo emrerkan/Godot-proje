@@ -10,6 +10,7 @@ const PROXIMITY_SCRIPT := preload("res://scenes/world/ProximityReveal.gd")
 
 var id := 0
 var team_id := -1          # tuzağı koyan takım (bu takım tetikleyemez)
+var owner_peer := -1       # tuzağı koyan oyuncu — tuzak hasarıyla gelen kill ona yazılır
 var armed := true
 var trapped_peer := -1
 var rescue_ratio := 0.0
@@ -21,10 +22,11 @@ var _jaw_right: MeshInstance3D
 var _tween: Tween
 
 
-func setup(manager: Node, p_id: int, p_team: int) -> void:
+func setup(manager: Node, p_id: int, p_team: int, p_owner: int) -> void:
 	_manager = manager
 	id = p_id
 	team_id = p_team
+	owner_peer = p_owner
 
 
 ## Yakından fark edilsin diye: parlak metal (flaşör ışığında gözükür) + çene kenarlarında ince kehribar

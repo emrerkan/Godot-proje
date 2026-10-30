@@ -454,7 +454,7 @@ func _setup_player_card() -> void:
 	_sprint_bar = sprint[1]
 	_sprint_fill = sprint[2]
 	_sprint_cap = sprint[3]
-	var crouch := _make_stamina_meter("ÇÖMELME  ·  CTRL", Color(0.45, 0.75, 1.0))
+	var crouch := _make_stamina_meter("ÇÖMEL  ·  TAKLA",Color(0.45, 0.75, 1.0))
 	stamina_row.add_child(crouch[0])
 	_crouch_bar = crouch[1]
 	_crouch_fill = crouch[2]
@@ -584,7 +584,7 @@ func _setup_test_hint() -> void:
 	box.add_theme_constant_override("separation", 2)
 	chip.add_child(box)
 	box.add_child(UITheme.label("TEST MODU", 9, UITheme.ACCENT, UITheme.font_caps))
-	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu   4 Takım uydusu", "6 Flaş   8 Sis bombası", "7 Kart/kapı göster", "5 Önüne güç doğur   Q Kullan"]:
+	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu   4 Takım uydusu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "5 Önüne güç doğur   Q Kullan"]:
 		box.add_child(UITheme.label(line, 11, UITheme.TEXT_DIM))
 	_ignore_mouse_recursive(chip)
 
@@ -1234,7 +1234,7 @@ func _on_card_dropped(_drop_pos: Vector3, carrier_team_id: int) -> void:
 #  Kill feed
 # ─────────────────────────────────────────────
 
-func _on_kill_happened(killer_peer_id: int, victim_peer_id: int) -> void:
+func _on_kill_happened(killer_peer_id: int, victim_peer_id: int, method: int) -> void:
 	# Maksimum KILL_FEED_MAX satır — en eskiyi sil
 	if _kill_feed_root.get_child_count() >= KILL_FEED_MAX:
 		_kill_feed_root.get_child(0).queue_free()
@@ -1248,11 +1248,18 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int) -> void:
 	var vcol: Color = TeamManager.get_color(vd.get("team_id", -1))
 
 	var border := Color.TRANSPARENT
-	if killer_peer_id == local_id:
-		border = Color(UITheme.ACCENT, 0.8)
-	elif victim_peer_id == local_id:
+	if victim_peer_id == local_id:
 		border = Color(UITheme.DANGER, 0.8)
-		_death_killer.text = tr("Seni vuran: %s") % kname
+		if killer_peer_id == local_id:
+			_death_killer.text = tr("Kendi tuzağına yakalandın")
+		elif method == GameManager.KILL_BACKSTAB:
+			_death_killer.text = tr("Seni arkadan bıçaklayan: %s") % kname
+		elif method == GameManager.KILL_KNIFE:
+			_death_killer.text = tr("Seni bıçaklayan: %s") % kname
+		else:
+			_death_killer.text = tr("Seni vuran: %s") % kname
+	elif killer_peer_id == local_id:
+		border = Color(UITheme.ACCENT, 0.8)
 
 	var row := PanelContainer.new()
 	row.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -1263,7 +1270,10 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int) -> void:
 	var k_lbl := UITheme.label(kname, 13, kcol, UITheme.font_bold)
 	k_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adları çevrilmesin
 	h.add_child(k_lbl)
-	h.add_child(UITheme.label("▸", 12, UITheme.TEXT_DIM))
+	if method == GameManager.KILL_KNIFE or method == GameManager.KILL_BACKSTAB:
+		h.add_child(UITheme.label("🔪", 13, UITheme.TEXT))
+	else:
+		h.add_child(UITheme.label("▸", 12, UITheme.TEXT_DIM))
 	var v_lbl := UITheme.label(vname, 13, vcol, UITheme.font_bold)
 	v_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	h.add_child(v_lbl)

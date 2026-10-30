@@ -180,7 +180,7 @@ func _update_traps(delta: float) -> void:
 			trap._dot_timer += delta
 			if trap._dot_timer >= 1.0:
 				trap._dot_timer -= 1.0
-				(trapped as Node).take_damage(TRAP_DOT_DAMAGE, -1, 1)
+				(trapped as Node).take_damage(TRAP_DOT_DAMAGE, trap.owner_peer, 1)  # kill tuzağı koyana
 			var rescuer := -1
 			var pos: Vector3 = (trap as Node3D).global_position
 			var trapped_team := _team_of(trap.trapped_peer)
@@ -225,16 +225,18 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 # ─────────────────────────────────────────────
 #  TEST MODU (sadece debug build — editörden çalıştırınca; dışa aktarılmış oyunda kapalı)
-#  1 bomba · 2 sağlık · 3 uydu · 4 takım uydusu · 6 flaş · 8 sis → doğrudan envantere (slot doluysa değiştirir)
+#  1 bomba · 2 sağlık · 3 uydu · 4 takım uydusu · 6 flaş · 8 sis · 9 tuzak → doğrudan envantere (slot doluysa değiştirir)
 #  7 → kart + kapı konumunu göster/gizle (yerel, minimap + 3D)
 #  5 → önüne rastgele bir güç doğur (yerden almayı denemek için)
+#  0 → önüne DÜŞMAN tuzağı kur (takımsız, team -1 — üstüne basıp yakalanmayı tek başına denemek için)
 # ─────────────────────────────────────────────
 
 ## Rakam tuşları — F tuşları KULLANILMAZ: oyun editör içinde çalışırken F1 yardım, F5 çalıştır, F6 sahne, F7 duraklat,
 ## F8 DURDUR (oyunu kapatıyordu!) editör kısayolları.
-const TEST_KEYS := {KEY_1: Type.BOMB, KEY_2: Type.HEAL, KEY_3: Type.INTEL_SAT, KEY_4: Type.ENEMY_SAT, KEY_6: Type.FLASH, KEY_8: Type.SMOKE}
+const TEST_KEYS := {KEY_1: Type.BOMB, KEY_2: Type.HEAL, KEY_3: Type.INTEL_SAT, KEY_4: Type.ENEMY_SAT, KEY_6: Type.FLASH, KEY_8: Type.SMOKE, KEY_9: Type.TRAP}
 const TEST_KEY_SPAWN := KEY_5          # önüne rastgele güç
 const TEST_KEY_OBJECTIVES := KEY_7     # kart + kapı göster/gizle
+const TEST_KEY_ENEMY_TRAP := KEY_0     # önüne düşman tuzağı
 
 
 func _handle_test_key(code: Key) -> bool:
@@ -260,6 +262,13 @@ func _handle_test_key(code: Key) -> bool:
 		else:
 			_request_test_spawn.rpc_id(1, pos)
 		return true
+	if code == TEST_KEY_ENEMY_TRAP:
+		if NetworkManager.is_host():
+			_request_test_trap()
+		else:
+			_request_test_trap.rpc_id(1)
+		notice.emit(tr("TEST: önüne düşman tuzağı kuruldu"), UITheme.SIGNAL)
+		return true
 	return false
 
 
@@ -280,6 +289,20 @@ func _request_test_spawn(pos: Vector3) -> void:
 	var id := _next_id
 	_next_id += 1
 	_spawn_rpc.rpc(id, _pick_type(), Vector3(pos.x, 0.0, pos.z), 15.0)
+
+
+## Takımsız (team -1) tuzak: kimsenin takımıyla eşleşmez → isteyen dahil herkes tetikler.
+@rpc("any_peer", "reliable")
+func _request_test_trap() -> void:
+	if not NetworkManager.is_host() or not TEST_MODE:
+		return
+	var peer := multiplayer.get_remote_sender_id()
+	if peer == 0:
+		peer = 1
+	var player: Variant = GameManager.active_players.get(peer)
+	if player == null or not is_instance_valid(player) or player.is_dead:
+		return
+	_place_trap(peer, -1, player as Node3D)
 
 
 # ─────────────────────────────────────────────
@@ -375,7 +398,7 @@ func _request_sync() -> void:
 		var trap: Variant = _traps[id]
 		if not is_instance_valid(trap):
 			continue
-		_trap_spawn_rpc.rpc_id(requester, id, (trap as Node3D).global_position, trap.team_id)
+		_trap_spawn_rpc.rpc_id(requester, id, (trap as Node3D).global_position, trap.team_id, trap.owner_peer)
 		if not trap.armed:
 			_trap_trigger_rpc.rpc_id(requester, id, trap.trapped_peer)
 			_trap_rescue_sync_rpc.rpc_id(requester, id, trap.rescue_ratio, -1)
@@ -440,7 +463,7 @@ func grant_starting_items() -> void:
 			_set_item_rpc(pid, STARTING_ITEMS[character], false, true)  # yerel çağrı (rpc değil), bildirimsiz
 
 
-func _on_kill_happened(_killer: int, victim: int) -> void:
+func _on_kill_happened(_killer: int, victim: int, _method: int) -> void:
 	# Ölünce slot boşalır (host karar verir)
 	if NetworkManager.is_host() and get_item(victim) != NONE:
 		_set_item_rpc.rpc(victim, NONE)
@@ -671,16 +694,16 @@ func _place_trap(peer: int, team: int, player: Node3D) -> void:
 		target = Vector3(back.x, 0.1, back.z)
 	var id := _next_id
 	_next_id += 1
-	_trap_spawn_rpc.rpc(id, target, team)
+	_trap_spawn_rpc.rpc(id, target, team, peer)
 	notice.emit(tr("▽ Tuzak yere bırakıldı"), Color(INFO[Type.TRAP]["color"]))
 
 
 @rpc("authority", "call_local", "reliable")
-func _trap_spawn_rpc(id: int, pos: Vector3, team: int) -> void:
+func _trap_spawn_rpc(id: int, pos: Vector3, team: int, owner_peer: int) -> void:
 	if _traps.has(id):
 		return
 	var trap: Variant = TRAP_SCRIPT.new()
-	trap.setup(self, id, team)
+	trap.setup(self, id, team, owner_peer)
 	get_parent().add_child(trap)
 	(trap as Node3D).global_position = pos
 	trap._dot_timer = 0.0

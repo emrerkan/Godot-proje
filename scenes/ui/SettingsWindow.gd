@@ -261,14 +261,17 @@ func _build_controls(col: VBoxContainer) -> void:
 		func(v: float) -> String: return "%d%%" % int(v))
 
 	_section(col, "TUŞLAR")
-	for k: Array in [["W A S D", "Hareket"], ["Shift", "Koş"], ["Ctrl", "Çömel (3 sn, mermiler üstünden geçer)"],
-			["Sol tık", "Ateş"], ["R", "Şarjör değiştir"], ["Q", "Özel gücü kullan"], ["Enter / T", "Sohbet / takım sohbeti"],
+	for k: Array in [["W A S D", "Hareket"], ["Shift", "Koş"], ["Space", "Zıpla (koşu dayanıklılığından yer)"],
+			["Ctrl", "Çömel (3 sn, mermiler üstünden geçer)"],
+			["Ctrl + Space", "Takla (hareket ederken — ileri / geri; çömelme dayanıklılığından yer)"],
+			["Sol tık", "Ateş"], ["V / Sağ tık", "Bıçakla (arkadan tek vuruş, önden 55 hasar)"],
+			["R", "Şarjör değiştir"], ["Q", "Özel gücü kullan"], ["Enter / T", "Sohbet / takım sohbeti"],
 			["TAB", "Skor tablosu"], ["ESC", "Menü"]]:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 14)
 		col.add_child(row)
 		var key := PanelContainer.new()
-		key.custom_minimum_size = Vector2(110, 0)
+		key.custom_minimum_size = Vector2(134, 0)  # "V / Right click" (EN) sığsın
 		key.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.06), 4, UITheme.BORDER, 1, 10, 4))
 		var kl := UITheme.label(k[0], 12, UITheme.TEXT, UITheme.font_mono)
 		kl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

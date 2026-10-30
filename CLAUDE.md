@@ -137,7 +137,7 @@ Test: 3 headless süreçle (host + 2 client, localhost) doğrulandı — yeni ho
 | `return_to_menu()` | HUD "Ana Menüye Dön" / pause menü | state temizle, `NetworkManager.disconnect_all()`, Main.tscn |
 
 **Sinyaller:** `game_started`, `game_ended(team_id)`, `local_player_spawned(player)`,
-`card_picked_up(peer,pos,team)`, `card_dropped(pos,team)`, `kill_happened(killer,victim)`.
+`card_picked_up(peer,pos,team)`, `card_dropped(pos,team)`, `kill_happened(killer,victim,method)`.
 
 **Önemli:** Hasar/kill/kart/respawn mantığının TÜMÜ host guard'lı (`if not NetworkManager.is_host(): return`).
 Client'lar sadece `request_*` RPC'leriyle host'a istek yollar.
@@ -188,7 +188,25 @@ t=0 karesinden üretir). Dayanıklılık (sadece local, HUD okur):
 `JUMP_COOLDOWN`; havada çömelme yok; `_airborne` iken `_try_step_up` de çalışır (kenara tutunma). Uzaklara `_broadcast_state` mod
 değerinin `AIR_FLAG` (8) biti → `JumpRun` (kullanıcının `anims/Jump.fbx` Mixamo klibi, `build_anim_library` MIXAMO_CLIPS 3. eleman
 `in_place` = kök hareketi atılır) `JUMP_ANIM_SPEED` 1.0 ile bir kez oynar. Otomatik basamak sadece `STEP_HEIGHT` 0.42 —
-daha yüksek kenarlar (Metro çukuru 0.85, Liman rıhtımı 0.94) SADECE zıplayarak (kullanıcı isteği; eski `pit_climb` kaldırıldı). HUD etiketi "KOŞU · ZIPLA". `Input.is_physical_key_pressed` — project.godot'ya eklenmedi.
+daha yüksek kenarlar (Metro çukuru 0.85, Liman rıhtımı 0.94) SADECE zıplayarak (kullanıcı isteği; eski `pit_climb` kaldırıldı). HUD etiketi "KOŞU · ZIPLA".
+**Takla** (Ctrl basılı + hareket + Space basışı, yerde): nişana göre ileri gidiyorsa `FrontFlip`, geri gidiyorsa `BackFlip`
+(kullanıcının `anims/Front Flip.fbx` / `Backflip.fbx`, MIXAMO_CLIPS 4. eleman `keep_height` → yatay kök atılır, kalça yüksekliği
+klipte kalır — çarpışma gövdesi YERDE, `_airborne` set edilmez). `_start_local_flip` → `_flip_rpc` (call_local, tür + gövde dünya yönü
+`_flip_face_yaw`; BackFlip ilerlemenin tersine bakar) → `_update_flip_timer` her peer'da `_flip_t` (klip zamanı, `FLIP_ANIM_SPEED` 1.25),
+`FLIP_END`'de `_end_flip` (üst gövde katmanı geri, `FLIP_COOLDOWN`). Local ilerleme `_flip_speed`: `FLIP_MOVE` penceresinde
+`FLIP_DISTANCE` (5 / 2.6 m) sabit hızla, yön kilitli. Takla sırasında ateş yok, `move_mode` WALK (çömelme bağışıklığı yok),
+`_update_leg_facing` gövdeyi dünya yönünde tutar + spine twist 0. Çömelme dayanıklılığından `FLIP_STAMINA` 0.3 (koşu↔zıplama gibi);
+HUD etiketi "ÇÖMEL · TAKLA". `Input.is_physical_key_pressed` — project.godot'ya eklenmedi.
+**Bıçaklama** (V veya sağ tık, her karakter, her an — şarjörde/tuzakta/çömelirken de, takla hariç):
+ARKADAN tek vuruş (`DAMAGE_BACKSTAB` 3, hedefin nişan yönüne göre `BACKSTAB_COS`), önden `STAB_FRONT_DAMAGE` 55 (`DAMAGE_MELEE` 2).
+Basınca `STAB_LUNGE_DIST` 1 m ileri hamle (tuzakta yok). Öldürme yöntemi `take_damage` source → `_die` → `handle_player_death(…, method)`
+→ `_announce_kill_rpc` → `kill_happened(killer, victim, method)` (3 parametre!): HUD kill feed "🔪" (arkadan da aynı), ölüm ekranı
+"Seni (arkadan) bıçaklayan", XP `XP_KNIFE_BONUS` 40 / `XP_BACKSTAB_BONUS` 80 (`KILL_KNIFE`/`KILL_BACKSTAB`).
+`_handle_stab_input` (local, `_handle_local_input`'tan ÖNCE — tuzakta o erken döner) → `_broadcast_action(Action.STAB)`
+(her peer: `Stab` klibi üst gövdede `STAB_DURATION` 0.9 s, `HandRifle.show_knife` tüfeği gizleyip sağ ele prosedürel bıçak koyar,
+`_stab_timer` ateşi kilitler + `_aim_corr`'u 0'a çeker — bıçak göğüsten düz saplar). `STAB_HIT_TIME` sonra `_find_stab_target`
+(yerel: nişan ±60° koni, `STAB_RANGE` 1.9 m, duvar ışını) → host `_request_stab` (sender = bu oyuncu, takım, menzil+tolerans, duvar)
+→ arka/ön kararı → `take_damage` (çömelme korumaz). `STAB_COOLDOWN` 1 s.
 **Çömelme bağışıklığı:** `is_crouching()` → `Bullet._on_body_entered` mermiyi yok etmeden geçirir; host
 `take_damage(amount, shooter, source)` `source==DAMAGE_BULLET` ise çömelmiş hedefe işlemez (host, `_broadcast_state` modunu kullanır).
 Bomba `DAMAGE_EXPLOSION` (1) gönderir → çömelme korumaz.
@@ -211,7 +229,7 @@ ik_* kemik, scale ve pelvis dışı position track'leri atılır) + yedek `Breat
 `_setup_idle()` hepsini varsayılan kütüphaneye ekler, autoplay `Idle`.
 Mixamo tüfek klipleri (`tools/build_anim_library.gd` → `tools/retarget_lib.gd` ile UE iskeletine bake, `MIXAMO_CLIPS`):
 `AimIdle` (rifle aiming idle), `FireStand` (NotWalkFire), `FireWalk` (WalkFiring Rifle), `Reload` (Reloading), `Toss`
-(toss grenade), `HitReact` (hit reaction), `Dying` (Dying). Kullanılmayan: strafe/backwards/turn (bacak-yönü sistemi
+(toss grenade), `HitReact` (hit reaction), `Dying` (Dying), `JumpRun`, `FrontFlip`, `BackFlip`, `Stab` (Stabbing). Kullanılmayan: strafe/backwards/turn (bacak-yönü sistemi
 gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst gövde aynı işi yapıyor), Jump/Talk/rifle jump.
 
 **Üst gövde katmanı** (Skeleton3D çocukları, sıra önemli: `UpperBodyLayer` → `SpineTwistModifier` → `HandRifle`):
@@ -266,6 +284,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 - `Weapon.configure(config)`: karakter silah ayarlarını uygular, `ammo_changed` sinyali emit eder.
 - **Duvar:** `Bullet._physics_process` eski→yeni konum ışın taraması (ince duvarı atlama/tunneling yoktu önce): ilk duvarda durur,
   oyuncuda `_on_body_entered`; atan/çömelmiş hariç tutulur; `_done` çift hasarı önler. `pierce_walls` (sadece Sniper, WEAPON_CONFIGS) duvardan geçer.
+  `Weapon._safe_spawn_position`: duvarın dibinde namlu duvarın arkasına taşabiliyor → gövde→namlu ışını duvara çarparsa mermi gövdeden doğar.
 
 ---
 
@@ -343,8 +362,8 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   `reveal_until` o takımda; diğer takımlara "konumunuz tespit edildi" uyarısı.
   **TEST MODU** (`TEST_MODE = OS.is_debug_build()` — editörden çalıştırınca açık, export'ta kapalı; host da debug olmalı):
   **Test tuşları RAKAM (F tuşu YOK — editör içinde F1/F5/F6/F7/F8 editör kısayolu, F8 oyunu DURDURUR)**: 7 → `test_show_objectives` (yerel: Minimap kart ◆ + kapı ■, ProximityReveal kart/kapıyı mesafesiz gösterir).
-  1 Bomba / 2 Sağlık / 3 Uydu / 4 Takım uydusu / 6 Flaş / 8 Sis → `_request_test_give` (slotu değiştirir), 5 → `_request_test_spawn`
-  (önüne rastgele güç, 15 s ömür). HUD skor panelinin altında tuş hatırlatıcısı (`_setup_test_hint`). Sinyaller: `inventory_changed`, `reveal_started`, `notice` (HUD banner).
+  1 Bomba / 2 Sağlık / 3 Uydu / 4 Takım uydusu / 6 Flaş / 8 Sis / 9 Tuzak → `_request_test_give` (slotu değiştirir), 5 → `_request_test_spawn`
+  (önüne rastgele güç, 15 s ömür), 0 → `_request_test_trap` (önüne takımsız `team -1` tuzak — kendi tuzağın seni yakalamadığı için tek başına yakalanma testi). HUD skor panelinin altında tuş hatırlatıcısı (`_setup_test_hint`). Sinyaller: `inventory_changed`, `reveal_started`, `notice` (HUD banner).
   Geç katılan client 1.5 s sonra `_request_sync`. HUD envanter slotu oyuncu kartının sağında.
 - **`WallLamps.gd`** (Map.tscn → `WallLamps` Node3D, çocukları `Lamp*` Marker3D — `tools/maze_lamps.py` üretir,
   32 adet, editörde taşınabilir): her marker'da armatür + emissive ampul + OmniLight (gölgesiz, r=6.5) +

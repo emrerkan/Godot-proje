@@ -36,7 +36,7 @@ const WEAPON_CONFIGS: Dictionary = {
 	"Tank":     {"damage": 22.0,  "fire_rate": 0.10, "max_ammo": 30, "reload_time": 2.0, "spread_degrees": 3.0, "bullet_speed": 32.0, "is_semi_auto": false, "max_distance": 45.0},
 	"Visioner": {"damage": 18.0,  "fire_rate": 0.09, "max_ammo": 28, "reload_time": 1.7, "spread_degrees": 2.5, "bullet_speed": 32.0, "is_semi_auto": false, "max_distance": 35.0},
 	"Runner":   {"damage": 11.0,  "fire_rate": 0.06, "max_ammo": 40, "reload_time": 1.2, "spread_degrees": 4.5, "bullet_speed": 30.0, "is_semi_auto": false, "max_distance": 25.0},
-	"Sniper":   {"damage": 120.0, "fire_rate": 0.5,  "max_ammo": 1,  "reload_time": 2.5, "spread_degrees": 0.0, "bullet_speed": 80.0, "is_semi_auto": true,  "max_distance": 130.0, "pierce_walls": true},
+	"Sniper":   {"damage": 120.0, "fire_rate": 1.3,  "max_ammo": 5,  "reload_time": 2.5, "spread_degrees": 0.0, "bullet_speed": 80.0, "is_semi_auto": true,  "max_distance": 400.0, "pierce_walls": true},  # fire_rate 1.3: sürgü — seri ateş yok
 	"Medic":    {"damage": 45.0,  "fire_rate": 0.4,  "max_ammo": 7,  "reload_time": 2.0, "spread_degrees": 1.5, "bullet_speed": 35.0, "is_semi_auto": true,  "max_distance": 55.0},
 }
 
@@ -105,6 +105,25 @@ var _jump_cooldown := 0.0
 var _airborne := false              # local: zıpladı ve henüz inmedi · uzak: AIR_FLAG
 var _air_anim_played := false
 
+## Takla (Ctrl basılı çömelirken + Space, hareket ederken): nişana göre ileri gidiyorsa FrontFlip, geri gidiyorsa BackFlip.
+## Kliplerin kalça yüksekliği animasyondan (build_anim_library keep_height), çarpışma gövdesi yerde kalır; ilerlemeyi
+## fizik verir: klibin FLIP_MOVE penceresinde yön kilitli sabit hız. Takla sürerken ateş yok, çömelme bağışıklığı yok,
+## üst gövde katmanı (AimIdle) kapalı. Uzaklara _flip_rpc (call_local) — konum zaten _broadcast_state ile gelir.
+enum Flip { NONE = -1, FRONT, BACK }
+const FLIP_ANIMS: Array[StringName] = [&"FrontFlip", &"BackFlip"]
+const FLIP_ANIM_SPEED := 1.25
+const FLIP_DISTANCE: Array[float] = [5.0, 2.6]            # m (FrontFlip klibi ~6 m koşarak, BackFlip yerinde)
+const FLIP_MOVE: Array[Vector2] = [Vector2(0.0, 1.45), Vector2(0.6, 1.4)]   # klip zamanı: ilerleme penceresi
+const FLIP_END: Array[float] = [1.5, 1.7]                  # klip zamanı: kontrol geri gelir (kalanı harmanlanır)
+const FLIP_STAMINA := 0.3                                  # çömelme dayanıklılığından (koşu ↔ zıplama gibi)
+const FLIP_COOLDOWN := 0.5
+var _flip: int = Flip.NONE
+var _flip_t := 0.0             # klip zamanı
+var _flip_dir := Vector3.ZERO  # yatay ilerleme yönü (local)
+var _flip_face_yaw := 0.0      # gövdenin dünya yönü (BackFlip: ilerlemenin tersi)
+var _flip_cooldown := 0.0
+var _space_was_down := false
+
 ## Bacak yönü / omurga dönüşü (bkz _update_leg_facing)
 const MAX_SPINE_TWIST := 1.92  # ~110°
 const LEG_TURN_SPEED := 10.0
@@ -120,7 +139,7 @@ var _upper: Node = null       # UpperBodyLayer — tüfek pozları (AimIdle taba
 var _hand_rifle: Node = null  # HandRifle — tüfek görseli eller arasında
 
 ## Üst gövde aksiyonları (_action_rpc ile diğer peer'lara da oynatılır)
-enum Action { RELOAD, TOSS, HIT }
+enum Action { RELOAD, TOSS, HIT, STAB }
 const ANIM_AIM := &"AimIdle"
 const ANIM_FIRE_STAND := &"FireStand"
 const ANIM_FIRE_WALK := &"FireWalk"
@@ -131,6 +150,32 @@ const ANIM_DYING := &"Dying"
 const DYING_SPEED := 1.6          # Dying 4.4 s → ~2.75 s (respawn 3 s'den önce bitsin)
 const TOSS_DURATION := 1.2        # Toss 3.2 s → bomba fırlatma hızında
 const FIRE_HOLD := 0.22           # son atıştan sonra ateş pozu ne kadar sürsün
+
+## Bıçaklama (V veya sağ tık, her karakter, her an — şarjör değiştirirken / tuzaktayken / çömelirken de; takla hariç):
+## ARKADAN tek vuruş, önden STAB_FRONT_DAMAGE (çömelme korumaz). Arka = hedefin nişan yönüne göre saldıran ±BACKSTAB_ARC
+## arkasında (host karar verir). Darbe anında (STAB_HIT_TIME) önündeki koni içindeki en yakın düşman yerel olarak bulunur
+## (mermi gibi atan client hesaplar) → host _request_stab ile mesafe/takım/duvarı doğrular. Basınca kısa ileri hamle (lunge).
+## Görsel: Stab klibi üst gövdede (Mixamo Stabbing 2.17 s → STAB_DURATION), tüfek gizlenir, sağ elde bıçak (HandRifle).
+const ANIM_STAB := &"Stab"
+const STAB_KEY := KEY_V
+const STAB_DURATION := 0.9        # klip bu süreye sıkıştırılır (darbe klipte ~0.5/2.17 → ~0.21 s)
+const STAB_HIT_TIME := 0.22
+const STAB_COOLDOWN := 1.0        # basıştan basışa
+const STAB_RANGE := 1.9           # m (gövde merkezleri arası)
+const STAB_CONE_COS := 0.5        # nişan yönünden ±60°
+const STAB_RANGE_TOLERANCE := 1.2 # host doğrulaması: gecikmeli konum farkı payı
+const STAB_DAMAGE := 9999.0       # arkadan
+const STAB_FRONT_DAMAGE := 55.0   # önden/yandan
+const BACKSTAB_COS := -0.3        # hedefin bakışı · (hedef→saldıran) bundan küçükse arkadan (~±107° arka yay)
+const STAB_LUNGE_DIST := 1.0      # basınca ileri hamle (m)
+const STAB_LUNGE_TIME := 0.18
+const DAMAGE_MELEE := 2
+const DAMAGE_BACKSTAB := 3
+var _stab_lunge := 0.0            # local: kalan hamle süresi
+var _stab_timer := 0.0            # >0: bıçaklama sürüyor (her peer — görsel + ateş kilidi)
+var _stab_cooldown := 0.0
+var _stab_pending := -1.0         # local: darbe anına kalan süre
+var _stab_was_down := false
 var _spine_twist: Node = null  # SpineTwistModifier (preload — global class cache'e bağımlı olmasın)
 var _idle_anim: StringName = &""
 var _last_anim_pos: Vector3 = Vector3.ZERO
@@ -193,6 +238,9 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 			_hand_rifle = HAND_RIFLE_SCRIPT.new()
 			_hand_rifle.rifle = rifle
 			_hand_rifle.aim_node = self  # root -Z = nişan
+			var knife: Node3D = HAND_RIFLE_SCRIPT.build_knife_mesh()
+			sk.add_child(knife)
+			_hand_rifle.knife = knife
 			sk.add_child(_hand_rifle)
 		_anim_player = _find_anim_player(_char_mesh)
 		_play_idle()
@@ -326,6 +374,15 @@ func _update_animation(delta: float) -> void:
 	var moving := _move_speed > ANIM_MOVE_THRESHOLD
 	_update_leg_facing(step, moving, delta)
 
+	# Takla: klip bir kez, zamanı _flip_t yönetir (uzaklarda da aynı RPC'den başlar)
+	if _flip != Flip.NONE:
+		var flip_clip: StringName = FLIP_ANIMS[_flip]
+		if _anim_player.has_animation(flip_clip):
+			if _anim_player.current_animation != flip_clip:
+				_anim_player.play(flip_clip, 0.1)
+			_anim_player.speed_scale = FLIP_ANIM_SPEED
+		return
+
 	# Havada: zıplama klibi bir kez baştan (bitince son karede kalır), inişte normal klibe harmanlanır
 	if _airborne and _anim_player.has_animation(ANIM_JUMP):
 		if not _air_anim_played:
@@ -359,6 +416,15 @@ func _update_leg_facing(step: Vector3, moving: bool, delta: float) -> void:
 	if _char_mesh == null:
 		return
 	var target := 0.0
+	if _flip != Flip.NONE:
+		# Takla: gövde dünya yönünde sabit (nişan dönse de), omurga bükülmez
+		target = wrapf(_flip_face_yaw - rotation.y, -PI, PI)
+		target = _leg_yaw + wrapf(target - _leg_yaw, -PI, PI)
+		_leg_yaw = wrapf(lerpf(_leg_yaw, target, 1.0 - exp(-LEG_TURN_SPEED * 2.0 * delta)), -PI, PI)
+		_char_mesh.transform.basis = Basis(Vector3.UP, _leg_yaw) * _mesh_base_basis
+		if _spine_twist:
+			_spine_twist.twist = 0.0
+		return
 	if moving and step.length() > 0.0001:
 		var move_yaw := atan2(-step.x, -step.z)  # rotation.y = θ ⇒ ileri = (-sinθ, 0, -cosθ)
 		target = wrapf(move_yaw - rotation.y, -PI, PI)
@@ -368,7 +434,10 @@ func _update_leg_facing(step: Vector3, moving: bool, delta: float) -> void:
 	_char_mesh.transform.basis = Basis(Vector3.UP, _leg_yaw) * _mesh_base_basis
 	# Nişan düzeltmesi: tüfek namlusu nişan yönüne bakana kadar omurgayı yumuşakça çevir (HandRifle ölçer).
 	# Mixamo nişan pozu tüfeği gövdenin ~60° soluna tutar → düzeltme ~-60°'ye oturur. Şarjör/bomba sırasında dondurulur.
-	if _hand_rifle and _hand_rifle.aim_valid and not (_upper and _upper.is_busy()):
+	if _stab_timer > 0.0:
+		# Bıçak göğüsten dümdüz ileri saplar → tüfek tutuşu düzeltmesi bırakılır, gövde nişana döner
+		_aim_corr = lerpf(_aim_corr, 0.0, 1.0 - exp(-14.0 * delta))
+	elif _hand_rifle and _hand_rifle.aim_valid and not (_upper and _upper.is_busy()):
 		_aim_corr = clampf(_aim_corr - _hand_rifle.aim_error * minf(AIM_CORR_GAIN * delta, 1.0), -MAX_AIM_CORR, MAX_AIM_CORR)
 	if _spine_twist:
 		_spine_twist.twist = clampf(-_leg_yaw + _aim_corr, -MAX_SPINE_TWIST - MAX_AIM_CORR, MAX_SPINE_TWIST + MAX_AIM_CORR)
@@ -452,9 +521,15 @@ func play_action(action: int) -> void:
 			if _anim_player.has_animation(ANIM_TOSS):
 				_upper.play_once(_anim_player.get_animation(ANIM_TOSS), TOSS_DURATION)
 		Action.HIT:
-			# Şarjör/bomba atma sürerken sarsılma onları bölmesin
+			# Şarjör/bomba atma/bıçaklama sürerken sarsılma onları bölmesin
 			if _anim_player.has_animation(ANIM_HIT) and not _upper.is_busy():
 				_upper.play_once(_anim_player.get_animation(ANIM_HIT), -1.0, 0.65)
+		Action.STAB:
+			_stab_timer = STAB_DURATION
+			if _anim_player.has_animation(ANIM_STAB):
+				_upper.play_once(_anim_player.get_animation(ANIM_STAB), STAB_DURATION)
+			if _hand_rifle:
+				_hand_rifle.show_knife(STAB_DURATION)
 
 
 # ─────────────────────────────────────────────
@@ -481,7 +556,10 @@ func _process(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
+	_update_flip_timer(delta)
+	_stab_timer = maxf(_stab_timer - delta, 0.0)
 	if is_local:
+		_handle_stab_input(delta)  # tuzaktayken de (_handle_local_input erken döner)
 		_handle_local_input(delta)
 	else:
 		_interpolate_remote(delta)
@@ -511,10 +589,31 @@ func _handle_local_input(delta: float) -> void:
 	dir = dir.normalized()
 
 	# Hareket modu: varsayılan yürüyüş; Ctrl = çömelme, Shift = koşu (ikisi de süreli + yenilenir)
-	_update_move_mode(dir, typing, delta)
-	var move_speed: float = speed * MOVE_SPEED_MULT[move_mode]
-	velocity.x = dir.x * move_speed
-	velocity.z = dir.z * move_speed
+	var space_down := not typing and Input.is_physical_key_pressed(KEY_SPACE)
+	var space_pressed := space_down and not _space_was_down
+	_space_was_down = space_down
+	_flip_cooldown = maxf(_flip_cooldown - delta, 0.0)
+	if _flip != Flip.NONE:
+		move_mode = MoveMode.WALK  # takla havada — çömelme bağışıklığı yok
+		var flip_speed := _flip_speed()
+		velocity.x = _flip_dir.x * flip_speed
+		velocity.z = _flip_dir.z * flip_speed
+	else:
+		_update_move_mode(dir, typing, delta)
+		var move_speed: float = speed * MOVE_SPEED_MULT[move_mode]
+		velocity.x = dir.x * move_speed
+		velocity.z = dir.z * move_speed
+		# Bıçak hamlesi: nişan yönüne kısa itiş (yürüyüşe eklenir)
+		if _stab_lunge > 0.0:
+			_stab_lunge -= delta
+			var lunge := -global_transform.basis.z
+			lunge = Vector3(lunge.x, 0.0, lunge.z).normalized() * (STAB_LUNGE_DIST / STAB_LUNGE_TIME)
+			velocity.x += lunge.x
+			velocity.z += lunge.z
+		# Takla: çömelirken (Ctrl) hareket halinde Space'e bas
+		if space_pressed and move_mode == MoveMode.CROUCH and dir != Vector3.ZERO and is_on_floor() and _stab_timer <= 0.0 \
+				and _flip_cooldown <= 0.0 and not crouch_locked and crouch_stamina >= FLIP_STAMINA:
+			_start_local_flip(dir)
 
 	# Yerçekimi + zıplama
 	_jump_cooldown = maxf(_jump_cooldown - delta, 0.0)
@@ -523,7 +622,7 @@ func _handle_local_input(delta: float) -> void:
 			_airborne = false
 			_jump_cooldown = JUMP_COOLDOWN
 		velocity.y = 0.0
-		if not typing and Input.is_physical_key_pressed(KEY_SPACE) and _jump_cooldown <= 0.0 \
+		if space_down and _jump_cooldown <= 0.0 and _flip == Flip.NONE and _flip_cooldown <= 0.0 \
 				and move_mode != MoveMode.CROUCH and not sprint_locked and sprint_stamina >= JUMP_STAMINA:
 			velocity.y = JUMP_VELOCITY
 			_airborne = true
@@ -549,7 +648,7 @@ func _handle_local_input(delta: float) -> void:
 		shoot_pressed = Input.is_action_just_pressed("shoot")
 	else:
 		shoot_pressed = Input.is_action_pressed("shoot")
-	if shoot_pressed and current_weapon and not typing:
+	if shoot_pressed and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
 		current_weapon.try_shoot(peer_id, team_id)
 
 	if Input.is_action_just_pressed("reload") and current_weapon and not typing:
@@ -611,6 +710,137 @@ func _try_step_up(horizontal_velocity: Vector3) -> void:
 	global_position.y += rise + 0.01
 
 
+## Bıçaklama girişi (sadece local): basış anında animasyonu herkese yayınlar, STAB_HIT_TIME sonra hedefi arar
+func _handle_stab_input(delta: float) -> void:
+	_stab_cooldown = maxf(_stab_cooldown - delta, 0.0)
+	var typing := ChatBox.is_typing
+	var down := not typing and (Input.is_physical_key_pressed(STAB_KEY) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	var pressed := down and not _stab_was_down
+	_stab_was_down = down
+	if pressed and _stab_cooldown <= 0.0 and _flip == Flip.NONE:
+		_stab_cooldown = STAB_COOLDOWN
+		_stab_pending = STAB_HIT_TIME
+		_stab_lunge = STAB_LUNGE_TIME if not is_trapped else 0.0
+		_broadcast_action(Action.STAB)
+	if _stab_pending >= 0.0:
+		_stab_pending -= delta
+		if _stab_pending < 0.0:
+			var target := _find_stab_target()
+			if target != null:
+				if NetworkManager.is_host():
+					_request_stab(target.peer_id)
+				else:
+					_request_stab.rpc_id(1, target.peer_id)
+
+
+## Önündeki koni (nişan yönü ±60°) içinde, STAB_RANGE'de, arada duvar olmayan en yakın canlı düşman
+func _find_stab_target() -> Node:
+	var fwd := -global_transform.basis.z
+	var fwd2 := Vector2(fwd.x, fwd.z).normalized()
+	var best: Node = null
+	var best_d := INF
+	for pid: int in GameManager.active_players:
+		var other: Variant = GameManager.active_players[pid]
+		if pid == peer_id or other == null or not is_instance_valid(other) or other.is_dead or other.team_id == team_id:
+			continue
+		var to: Vector3 = (other as Node3D).global_position - global_position
+		var d := Vector2(to.x, to.z).length()
+		if d > STAB_RANGE or d >= best_d:
+			continue
+		if d > 0.3 and fwd2.dot(Vector2(to.x, to.z) / d) < STAB_CONE_COS:
+			continue
+		if _wall_between(other as Node3D):
+			continue
+		best = other
+		best_d = d
+	return best
+
+
+func _wall_between(other: Node3D) -> bool:
+	var from := global_position + Vector3(0, 1.1, 0)
+	var q := PhysicsRayQueryParameters3D.create(from, other.global_position + Vector3(0, 1.1, 0), 1)
+	q.exclude = [get_rid(), (other as CollisionObject3D).get_rid()]
+	return not get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+
+## Host: bıçaklayanın (bu node) isteğini doğrular → tek vuruş. Gönderen bu oyuncunun sahibi olmalı.
+@rpc("any_peer", "reliable")
+func _request_stab(target_peer: int) -> void:
+	if not NetworkManager.is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0:
+		sender = 1
+	if sender != peer_id or is_dead:
+		return
+	var target: Variant = GameManager.active_players.get(target_peer)
+	if target == null or not is_instance_valid(target) or target.is_dead or target.team_id == team_id:
+		return
+	var to: Vector3 = (target as Node3D).global_position - global_position
+	if Vector2(to.x, to.z).length() > STAB_RANGE + STAB_RANGE_TOLERANCE or _wall_between(target as Node3D):
+		return
+	# Arkadan mı: hedefin nişan yönü (root -Z) ile hedeften saldırana vektör zıt yöndeyse
+	var target_fwd := -(target as Node3D).global_transform.basis.z
+	var to_attacker := Vector2(-to.x, -to.z).normalized()
+	if Vector2(target_fwd.x, target_fwd.z).normalized().dot(to_attacker) < BACKSTAB_COS:
+		target.take_damage(STAB_DAMAGE, peer_id, DAMAGE_BACKSTAB)
+	else:
+		target.take_damage(STAB_FRONT_DAMAGE, peer_id, DAMAGE_MELEE)
+
+
+## Nişana göre ileri gidiyorsa FrontFlip (gövde ilerleme yönüne), geri gidiyorsa BackFlip (gövde ilerlemenin tersine,
+## yani nişana yakın bakar ve geriye doğru döner).
+func _start_local_flip(dir: Vector3) -> void:
+	var aim_fwd := -global_transform.basis.z
+	var kind: int = Flip.FRONT if dir.dot(Vector3(aim_fwd.x, 0.0, aim_fwd.z)) >= 0.0 else Flip.BACK
+	var move_yaw := atan2(-dir.x, -dir.z)
+	_flip_dir = dir
+	crouch_stamina -= FLIP_STAMINA
+	_crouch_delay = STAMINA_REGEN_DELAY
+	var face_yaw := move_yaw if kind == Flip.FRONT else wrapf(move_yaw + PI, -PI, PI)
+	if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0:
+		_flip_rpc.rpc(kind, face_yaw)
+	else:
+		_flip_rpc(kind, face_yaw)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _flip_rpc(kind: int, face_yaw: float) -> void:
+	if is_dead or kind < 0 or kind >= FLIP_ANIMS.size():
+		return
+	_flip = kind
+	_flip_t = 0.0
+	_flip_face_yaw = face_yaw
+	if _upper:
+		_upper.set_enabled_smooth(false)  # tam gövde takla
+
+
+## Her peer'da (local + uzak): klip zamanını ilerletir, bitince kontrolü ve üst gövde katmanını geri verir
+func _update_flip_timer(delta: float) -> void:
+	if _flip == Flip.NONE:
+		return
+	_flip_t += delta * FLIP_ANIM_SPEED
+	if _flip_t >= FLIP_END[_flip]:
+		_end_flip()
+
+
+func _end_flip() -> void:
+	if _flip == Flip.NONE:
+		return
+	_flip = Flip.NONE
+	_flip_cooldown = FLIP_COOLDOWN
+	if _upper and not is_dead:
+		_upper.set_enabled_smooth(true)
+
+
+## İlerleme penceresinde sabit hız (FLIP_DISTANCE'ı pencere süresine yayar), dışında yerinde
+func _flip_speed() -> float:
+	var win: Vector2 = FLIP_MOVE[_flip]
+	if _flip_t < win.x or _flip_t > win.y:
+		return 0.0
+	return FLIP_DISTANCE[_flip] / ((win.y - win.x) / FLIP_ANIM_SPEED)
+
+
 ## Çömelme (Ctrl basılı, en fazla CROUCH_MAX_TIME) önceliklidir; sonra koşu (Shift + hareket, SPRINT_MAX_TIME).
 ## Tükenen dayanıklılık kilitlenir, *_UNLOCK seviyesine dolana kadar o mod kullanılamaz. Bırakınca
 ## STAMINA_REGEN_DELAY sonra dolar. Çömelmesi biten oyuncu otomatik kalkar.
@@ -654,6 +884,12 @@ func _reset_stamina() -> void:
 	move_mode = MoveMode.WALK
 	_airborne = false
 	_jump_cooldown = 0.0
+	_flip = Flip.NONE
+	_flip_cooldown = 0.0
+	_stab_pending = -1.0
+	_stab_timer = 0.0
+	_stab_cooldown = 0.0
+	_stab_lunge = 0.0
 
 
 ## Çömelmiş (ve canlı) oyuncunun üstünden mermi geçer — Bullet.gd ve host take_damage kullanır
@@ -710,7 +946,7 @@ func take_damage(amount: float, shooter_peer_id: int, source: int = DAMAGE_BULLE
 	health = clampf(health, 0.0, max_health)
 	_sync_health.rpc(health)
 	if health <= 0.0:
-		_die(shooter_peer_id)
+		_die(shooter_peer_id, source)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -735,9 +971,9 @@ func _sync_health(new_health: float) -> void:
 # Ölüm
 # ─────────────────────────────────────────────
 
-func _die(killer_peer_id: int) -> void:
+func _die(killer_peer_id: int, source: int = DAMAGE_BULLET) -> void:
 	_apply_death.rpc()
-	GameManager.handle_player_death(peer_id, killer_peer_id)
+	GameManager.handle_player_death(peer_id, killer_peer_id, source)  # kill feed 🔪 / bıçak XP'si için
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -746,6 +982,11 @@ func _apply_death() -> void:
 	has_card = false
 	is_trapped = false
 	_death_token += 1
+	_end_flip()  # is_dead zaten true → üst gövde katmanı açılmaz
+	_stab_pending = -1.0  # ölürken savrulan bıçak sonradan isabet etmesin
+	_stab_timer = 0.0
+	if _hand_rifle:
+		_hand_rifle.show_knife(0.0)
 	_reset_leg_facing()
 	if _upper:
 		_upper.set_enabled_smooth(false)  # tam gövde ölüm animasyonu

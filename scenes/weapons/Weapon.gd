@@ -64,10 +64,27 @@ func try_shoot(shooter_peer_id: int, shooter_team_id: int) -> void:
 	var spread_rot := Basis(Vector3.UP, spread_rad)
 	var direction := (spread_rot * forward).normalized()
 
-	_spawn_bullet.rpc(muzzle.global_position, direction, shooter_peer_id, shooter_team_id, max_distance)
+	_spawn_bullet.rpc(_safe_spawn_position(), direction, shooter_peer_id, shooter_team_id, max_distance)
 
 	if current_ammo <= 0:
 		reload()
+
+
+## Duvarın dibinde namlu duvarın İÇİNE/ARKASINA geçebiliyor → mermi orada doğup duvarı hiç görmüyordu.
+## Oyuncu gövdesinden (namlu yüksekliğinde) namluya ışın: arada duvar varsa mermi gövdeden doğar,
+## Bullet'ın ilk ışın taraması duvara çarpıp onu yok eder. Sniper (pierce_walls) zaten geçer → kontrol yok.
+func _safe_spawn_position() -> Vector3:
+	var muzzle_pos := muzzle.global_position
+	var player := get_parent().get_parent() as Node3D
+	if pierce_walls or player == null:
+		return muzzle_pos
+	var body_pos := Vector3(player.global_position.x, muzzle_pos.y, player.global_position.z)
+	var q := PhysicsRayQueryParameters3D.create(body_pos, muzzle_pos, 1)
+	if player is CollisionObject3D:
+		q.exclude = [(player as CollisionObject3D).get_rid()]
+	if get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+		return muzzle_pos
+	return body_pos
 
 
 @rpc("any_peer", "call_local", "reliable")
