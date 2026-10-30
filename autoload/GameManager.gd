@@ -39,6 +39,7 @@ const XP_SURVIVE := 10                # hayattayken her XP_SURVIVE_INTERVAL
 const XP_SURVIVE_INTERVAL := 15.0
 const XP_HEAL_ALLY := 75              # Medic takım arkadaşını iyileştirdi (PowerupManager)
 const XP_POWERUP := 25                # yerden güç aldı (PowerupManager)
+const XP_TRAP_RESCUE := 75            # tuzaktaki takım arkadaşını kurtardı (PowerupManager)
 const XP_MATCH := 100                 # maçı bitirdi
 const XP_WIN := 300                   # kazanan takım
 const RETURN_TO_LOBBY_DELAY := 5.0    # maç bitince lobiye otomatik dönüş (HUD oyun sonu ekranı bu sabiti okur)

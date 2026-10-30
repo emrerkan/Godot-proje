@@ -74,6 +74,20 @@ func _ready() -> void:
 			cap.radius = 0.15
 			cap.height = 0.55
 			core.mesh = cap
+		6:  # tuzak — katlanmış/paketlenmiş hali (yassı disk + çarpı şeklinde iki çene)
+			var disk := CylinderMesh.new()
+			disk.top_radius = 0.3
+			disk.bottom_radius = 0.3
+			disk.height = 0.08
+			core.mesh = disk
+			for ang in [45.0, -45.0]:
+				var cross := MeshInstance3D.new()
+				var cb := BoxMesh.new()
+				cb.size = Vector3(0.5, 0.06, 0.1)
+				cross.mesh = cb
+				cross.rotation.y = deg_to_rad(ang)
+				cross.material_override = glow
+				_visual.add_child(cross)
 		_:  # takım uydusu — halka
 			var t := TorusMesh.new()
 			t.inner_radius = 0.18

@@ -158,6 +158,7 @@ func _process(delta: float) -> void:
 			_refresh_scoreboard()
 
 	_update_carrier_bar_position()
+	_update_trap_bar_position()
 
 	# Koşu / çömelme dayanıklılığı
 	if _local_player and is_instance_valid(_local_player) and _sprint_bar:
@@ -530,9 +531,11 @@ func _setup_item_slot() -> void:
 		_powerups.inventory_changed.connect(_on_item_changed)
 		_powerups.notice.connect(_show_banner)
 		_powerups.flashed.connect(_on_flashed)
+		_powerups.trap_rescue_changed.connect(_on_trap_rescue_changed)
 		if _powerups.TEST_MODE:
 			_setup_test_hint()
 	_on_item_changed(-1)
+	_build_trap_bar()
 
 
 ## XP kazanımları — güç slotunun üstünde kısa süreli "+100 XP  Düşman öldürüldü" satırları
@@ -1154,6 +1157,70 @@ func _on_door_unlock_changed(ratio: float, carrier_peer_id: int) -> void:
 	_unlock_bar.value = ratio
 	_unlock_panel.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 10, Color(col, 0.6), 1, 16, 9))
 	_unlock_panel.visible = true
+
+
+## Tuzağa yakalanan oyuncunun kurtarılma barı — carrier-bar kalıbının ikinci kopyası, farkı: hedef
+## _local_player değil, trapped_peer'ın Player node'u (sadece kendisi/takımı görür).
+const TRAP_BAR_HEAD := 2.3
+var _trap_bar: PanelContainer
+var _trap_bar_fill: ProgressBar
+var _trap_bar_lbl: Label
+var _trap_bar_target: Node3D = null
+
+func _build_trap_bar() -> void:
+	_trap_bar = PanelContainer.new()
+	_trap_bar.visible = false
+	_trap_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_trap_bar.custom_minimum_size = Vector2(170, 0)
+	_trap_bar.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.7), 4, Color(UITheme.DANGER, 0.7), 1, 8, 5))
+	_root.add_child(_trap_bar)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	_trap_bar.add_child(box)
+	_trap_bar_lbl = UITheme.label("", 11, UITheme.DANGER, UITheme.font_caps)
+	_trap_bar_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_trap_bar_lbl)
+	_trap_bar_fill = ProgressBar.new()
+	_trap_bar_fill.show_percentage = false
+	_trap_bar_fill.max_value = 1.0
+	_trap_bar_fill.custom_minimum_size = Vector2(0, 9)
+	_trap_bar_fill.add_theme_stylebox_override("fill", UITheme.style(UITheme.DANGER, 2))
+	_trap_bar_fill.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.1), 2))
+	box.add_child(_trap_bar_fill)
+
+
+func _update_trap_bar_position() -> void:
+	if _trap_bar == null or not _trap_bar.visible or _trap_bar_target == null or not is_instance_valid(_trap_bar_target):
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var head: Vector3 = _trap_bar_target.global_position + Vector3(0, TRAP_BAR_HEAD, 0)
+	var sp := cam.unproject_position(head)
+	_trap_bar.position = (sp - Vector2(_trap_bar.size.x * 0.5, _trap_bar.size.y)).round()
+
+
+func _on_trap_rescue_changed(trapped_peer: int, ratio: float, _rescuer_peer: int) -> void:
+	if ratio <= 0.0 or ratio >= 1.0:
+		_trap_bar.visible = false
+		_trap_bar_target = null
+		return
+	var tid: int = NetworkManager.players.get(trapped_peer, {}).get("team_id", -1)
+	if tid != _get_local_team():
+		_trap_bar.visible = false
+		_trap_bar_target = null
+		return
+	var pl: Variant = GameManager.active_players.get(trapped_peer)
+	if pl == null or not is_instance_valid(pl):
+		_trap_bar.visible = false
+		_trap_bar_target = null
+		return
+	_trap_bar_target = pl as Node3D
+	var trapped_name: String = tr("SEN") if trapped_peer == NetworkManager.get_local_id() else NetworkManager.players.get(trapped_peer, {}).get("name", "?")
+	_trap_bar_lbl.text = tr("KURTARILIYOR · %s · %.1f sn") % [trapped_name, (1.0 - ratio) * _powerups.TRAP_RESCUE_TIME]
+	_trap_bar_fill.value = ratio
+	_trap_bar.visible = true
+	_update_trap_bar_position()
 
 
 func _on_card_dropped(_drop_pos: Vector3, carrier_team_id: int) -> void:

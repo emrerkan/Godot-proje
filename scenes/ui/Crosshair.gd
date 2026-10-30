@@ -80,7 +80,7 @@ func _on_ammo_changed(current: int, total: int, reloading: bool) -> void:
 
 
 func _process(delta: float) -> void:
-	var alive: bool = _player != null and is_instance_valid(_player) and not _player.is_dead
+	var alive: bool = _player != null and is_instance_valid(_player) and not _player.is_dead and not _player.is_trapped
 	var show := allowed and alive and not ChatBox.is_typing
 	visible = show
 	_set_cursor_active(show and DisplayServer.window_is_focused())

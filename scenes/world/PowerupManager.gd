@@ -18,8 +18,9 @@ signal inventory_changed(item_type: int)            # yerel oyuncunun slotu (-1 
 signal reveal_started(kind: String, duration: float, own_team: bool)
 signal notice(text: String, color: Color)
 signal flashed(strength: float)                     # yerel oyuncu flaşla kör oldu (0..1)
+signal trap_rescue_changed(trapped_peer: int, ratio: float, rescuer_peer: int)  # HUD kurtarma barı
 
-enum Type { BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE }  # index sabit (Powerup.gd/Minimap sayıyla kullanır)
+enum Type { BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE, TRAP }  # index sabit (Powerup.gd/Minimap sayıyla kullanır) — yeni tip SONA eklenir
 const NONE := -1
 
 ## Görünüm/isim (HUD, Powerup.gd, Minimap ortak kullanır)
@@ -30,8 +31,9 @@ const INFO := {
 	Type.ENEMY_SAT: {"name": "TAKIM UYDUSU",  "glyph": "◉", "color": Color(0.8, 0.45, 1.0),   "desc": "Düşmanlar haritada"},
 	Type.FLASH:     {"name": "FLAŞ BOMBASI",  "glyph": "✦", "color": Color(0.85, 0.93, 1.0),  "desc": "Fareye fırlat, görenleri kör eder"},
 	Type.SMOKE:     {"name": "SİS BOMBASI",   "glyph": "≋", "color": Color(0.72, 0.78, 0.86), "desc": "Fareye fırlat, görüşü kapatan sis bulutu"},
+	Type.TRAP:      {"name": "TUZAK",         "glyph": "▽", "color": Color(0.55, 0.5, 0.42),  "desc": "Yere bırak, düşmanı yakalar"},
 }
-const WEIGHTS := {Type.BOMB: 22, Type.HEAL: 22, Type.FLASH: 18, Type.SMOKE: 16, Type.INTEL_SAT: 11, Type.ENEMY_SAT: 11}
+const WEIGHTS := {Type.BOMB: 22, Type.HEAL: 22, Type.FLASH: 18, Type.SMOKE: 16, Type.INTEL_SAT: 11, Type.ENEMY_SAT: 11, Type.TRAP: 14}
 
 ## Zamanlama (sn)
 const FIRST_SPAWN_DELAY := 12.0
@@ -54,6 +56,14 @@ const SMOKE_RADIUS := 6.0          # duman bulutu yarıçapı (koridor ~4 m — 
 const SMOKE_DURATION := 15.0       # duman tam yoğunlukta ne kadar kalır (sonra ~3.5 sn'de seyrelir)
 const INTEL_DURATION := 8.0
 const ENEMY_SAT_DURATION := 6.0
+const TRAP_PLACE_DISTANCE := 1.0   # oyuncunun önüne, kısa mesafe (fırlatılmaz, bırakılır)
+const TRAP_TRIGGER_RADIUS := 0.9
+const TRAP_REVEAL_FAR := 5.0       # küçük görsel ama bu mesafeden belirmeye başlar
+const TRAP_REVEAL_NEAR := 2.0
+const TRAP_DOT_DAMAGE := 12.0      # saniye başı
+const TRAP_RESCUE_TIME := 4.0
+const TRAP_RESCUE_RADIUS := 2.0
+const TRAP_SYNC_INTERVAL := 0.1
 
 ## Maç başında karaktere özel TEK SEFERLİK güç (GameManager._begin_actual_game_rpc → grant_starting_items)
 const STARTING_ITEMS := {
@@ -72,6 +82,7 @@ const PICKUP_RANGE := 2.5          # host doğrulaması
 
 const POWERUP_SCRIPT := preload("res://scenes/world/Powerup.gd")
 const BOMB_SCRIPT := preload("res://scenes/world/Bomb.gd")
+const TRAP_SCRIPT := preload("res://scenes/world/Trap.gd")
 
 ## Host + client: id → Powerup node
 var _items: Dictionary = {}
@@ -79,6 +90,9 @@ var _items: Dictionary = {}
 var inventory: Dictionary = {}
 ## Yerel: aktif açığa çıkarmalar (kind → bitiş zamanı, sn) — sadece kendi takımımız kullandıysa
 var reveal_until: Dictionary = {}
+## Host + client: id → Trap node (ground-placed; tetiklenme/kurtarma host _process'te hesaplanır)
+var _traps: Dictionary = {}
+var _trap_sync_timer := 0.0
 
 var _points: Array[Vector3] = []
 var _next_id := 1
@@ -111,6 +125,8 @@ func set_points(points: Array[Vector3]) -> void:
 
 
 func _process(delta: float) -> void:
+	if NetworkManager.is_host() and GameManager.state == GameManager.State.IN_GAME:
+		_update_traps(delta)
 	if not NetworkManager.is_host() or GameManager.state != GameManager.State.IN_GAME or _points.is_empty():
 		return
 	_spawn_timer -= delta
@@ -129,6 +145,62 @@ func _process(delta: float) -> void:
 	var id := _next_id
 	_next_id += 1
 	_spawn_rpc.rpc(id, _pick_type(), free.pick_random(), randf_range(LIFETIME.x, LIFETIME.y))
+
+
+## Host-only: her tuzağın ömür/tetikleme/DOT/kurtarma mantığı — _door_unlock ile birebir aynı "yakınlıkla
+## dolan, kırılınca sıfırlanan ilerleme" kalıbı, çoğullaştırılmış (id ile).
+func _update_traps(delta: float) -> void:
+	if _traps.is_empty():
+		return
+	_trap_sync_timer -= delta
+	var do_sync := _trap_sync_timer <= 0.0
+	if do_sync:
+		_trap_sync_timer = TRAP_SYNC_INTERVAL
+	for id: int in _traps.keys():
+		var trap: Variant = _traps.get(id)
+		if not is_instance_valid(trap):
+			_traps.erase(id)
+			continue
+		if trap.armed:
+			var pos: Vector3 = (trap as Node3D).global_position
+			for pid: int in GameManager.active_players.keys():
+				var pl: Variant = GameManager.active_players.get(pid)
+				if pl == null or not is_instance_valid(pl) or pl.is_dead or pl.is_trapped:
+					continue
+				if _team_of(pid) == trap.team_id:
+					continue  # kendi takımı tetikleyemez
+				if (pl as Node3D).global_position.distance_to(pos) <= TRAP_TRIGGER_RADIUS:
+					_trap_trigger_rpc.rpc(id, pid)
+					break
+		else:
+			var trapped: Variant = GameManager.active_players.get(trap.trapped_peer)
+			if trapped == null or not is_instance_valid(trapped) or trapped.is_dead:
+				_trap_despawn_rpc.rpc(id)
+				continue
+			trap._dot_timer += delta
+			if trap._dot_timer >= 1.0:
+				trap._dot_timer -= 1.0
+				(trapped as Node).take_damage(TRAP_DOT_DAMAGE, -1, 1)
+			var rescuer := -1
+			var pos: Vector3 = (trap as Node3D).global_position
+			var trapped_team := _team_of(trap.trapped_peer)
+			for pid: int in GameManager.active_players.keys():
+				if pid == trap.trapped_peer:
+					continue
+				var pl: Variant = GameManager.active_players.get(pid)
+				if pl == null or not is_instance_valid(pl) or pl.is_dead or _team_of(pid) != trapped_team:
+					continue
+				if (pl as Node3D).global_position.distance_to(pos) <= TRAP_RESCUE_RADIUS:
+					rescuer = pid
+					break
+			if rescuer != -1:
+				trap.rescue_ratio = minf(trap.rescue_ratio + delta / TRAP_RESCUE_TIME, 1.0)
+			else:
+				trap.rescue_ratio = 0.0
+			if trap.rescue_ratio >= 1.0:
+				_trap_freed_rpc.rpc(id, rescuer)
+			elif do_sync:
+				_trap_rescue_sync_rpc.rpc(id, trap.rescue_ratio, rescuer)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -299,6 +371,14 @@ func _request_sync() -> void:
 			_spawn_rpc.rpc_id(requester, id, item.get("item_type"), item.global_position, item.get("time_left"))
 	for pid: int in inventory:
 		_set_item_rpc.rpc_id(requester, pid, inventory[pid], false, true)  # senkron — bildirim yok
+	for id: int in _traps:
+		var trap: Variant = _traps[id]
+		if not is_instance_valid(trap):
+			continue
+		_trap_spawn_rpc.rpc_id(requester, id, (trap as Node3D).global_position, trap.team_id)
+		if not trap.armed:
+			_trap_trigger_rpc.rpc_id(requester, id, trap.trapped_peer)
+			_trap_rescue_sync_rpc.rpc_id(requester, id, trap.rescue_ratio, -1)
 
 
 # ─────────────────────────────────────────────
@@ -403,6 +483,8 @@ func _request_use(aim: Vector3) -> void:
 			_reveal_rpc.rpc(team, "all_players", INTEL_DURATION, peer)
 		Type.ENEMY_SAT:
 			_reveal_rpc.rpc(team, "enemies", ENEMY_SAT_DURATION, peer)
+		Type.TRAP:
+			_place_trap(peer, team, player as Node3D)
 
 
 ## Medic: nişan noktasına en yakın yaralı takım arkadaşı (Medic'e ≤ MEDIC_HEAL_RANGE, nişana ≤ MEDIC_AIM_RADIUS).
@@ -569,3 +651,97 @@ func _reveal_rpc(team: int, kind: String, duration: float, user_peer: int) -> vo
 	elif kind == "enemies" or kind == "all_players":
 		reveal_started.emit(kind, duration, false)
 		notice.emit(tr("⚠ %s TAKIM UYDUSU KONUMUNUZU TESPİT ETTİ!") % TeamManager.get_team_name(team).to_upper(), UITheme.DANGER)
+
+
+# ─────────────────────────────────────────────
+#  Tuzak (Ayı kapanı) — yerleştirme/tetikleme/kurtarma host'ta, görsel herkeste
+# ─────────────────────────────────────────────
+
+func _place_trap(peer: int, team: int, player: Node3D) -> void:
+	var from := player.global_position + Vector3(0, 1.0, 0)
+	var fwd := -player.global_transform.basis.z
+	var flat := Vector3(fwd.x, 0.0, fwd.z).normalized() * TRAP_PLACE_DISTANCE
+	var target := Vector3(from.x + flat.x, 0.1, from.z + flat.z)
+	var space := player.get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(from, Vector3(target.x, from.y, target.z), 1)
+	q.exclude = _player_rids()
+	var hit := space.intersect_ray(q)
+	if not hit.is_empty():
+		var back: Vector3 = (hit["position"] as Vector3) - flat.normalized() * 0.3
+		target = Vector3(back.x, 0.1, back.z)
+	var id := _next_id
+	_next_id += 1
+	_trap_spawn_rpc.rpc(id, target, team)
+	notice.emit(tr("▽ Tuzak yere bırakıldı"), Color(INFO[Type.TRAP]["color"]))
+
+
+@rpc("authority", "call_local", "reliable")
+func _trap_spawn_rpc(id: int, pos: Vector3, team: int) -> void:
+	if _traps.has(id):
+		return
+	var trap: Variant = TRAP_SCRIPT.new()
+	trap.setup(self, id, team)
+	get_parent().add_child(trap)
+	(trap as Node3D).global_position = pos
+	trap._dot_timer = 0.0
+	_traps[id] = trap
+
+
+@rpc("authority", "call_local", "reliable")
+func _trap_despawn_rpc(id: int) -> void:
+	var trap: Variant = _traps.get(id)
+	_traps.erase(id)
+	if trap != null and is_instance_valid(trap):
+		(trap as Node).queue_free()
+
+
+@rpc("authority", "call_local", "reliable")
+func _trap_trigger_rpc(id: int, trapped_peer: int) -> void:
+	var trap: Variant = _traps.get(id)
+	if trap == null or not is_instance_valid(trap):
+		return
+	trap.armed = false
+	trap.trapped_peer = trapped_peer
+	trap.rescue_ratio = 0.0
+	if trap.has_method("spring_shut"):
+		trap.spring_shut()
+	var pl: Variant = GameManager.active_players.get(trapped_peer)
+	if pl != null and is_instance_valid(pl) and pl.has_method("set_trapped"):
+		pl.set_trapped(true)
+	var me := NetworkManager.get_local_id()
+	var trapped_name: String = NetworkManager.players.get(trapped_peer, {}).get("name", "?")
+	var col: Color = INFO[Type.TRAP]["color"]
+	if me == trapped_peer:
+		notice.emit(tr("⚠ TUZAĞA YAKALANDIN! Takım arkadaşın gelsin"), UITheme.DANGER)
+	elif _team_of(trapped_peer) == _local_team():
+		notice.emit(tr("⚠ %s TUZAĞA YAKALANDI! Kurtar") % trapped_name, UITheme.DANGER)
+	elif _team_of(me) == trap.team_id:
+		notice.emit(tr("🪤 Tuzağınız %s'ı yakaladı!") % trapped_name, col)
+
+
+@rpc("authority", "call_local", "reliable")
+func _trap_rescue_sync_rpc(id: int, ratio: float, rescuer_peer: int) -> void:
+	var trap: Variant = _traps.get(id)
+	if trap != null and is_instance_valid(trap):
+		trap.rescue_ratio = ratio
+	trap_rescue_changed.emit(trap.trapped_peer if trap != null and is_instance_valid(trap) else -1, ratio, rescuer_peer)
+
+
+@rpc("authority", "call_local", "reliable")
+func _trap_freed_rpc(id: int, rescuer_peer: int) -> void:
+	var trap: Variant = _traps.get(id)
+	var trapped_peer: int = trap.trapped_peer if trap != null and is_instance_valid(trap) else -1
+	var pl: Variant = GameManager.active_players.get(trapped_peer)
+	if pl != null and is_instance_valid(pl) and pl.has_method("set_trapped"):
+		pl.set_trapped(false)
+	_traps.erase(id)
+	if trap != null and is_instance_valid(trap):
+		(trap as Node).queue_free()
+	trap_rescue_changed.emit(trapped_peer, 0.0, -1)
+	var me := NetworkManager.get_local_id()
+	var trapped_name: String = NetworkManager.players.get(trapped_peer, {}).get("name", "?")
+	if me == rescuer_peer:
+		GameManager.gain_xp(GameManager.XP_TRAP_RESCUE, "Takım arkadaşı kurtarıldı")
+		notice.emit(tr("✓ %s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))
+	elif _team_of(trapped_peer) == _local_team():
+		notice.emit(tr("✓ %s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))

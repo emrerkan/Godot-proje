@@ -295,6 +295,14 @@ const STRINGS := {
 	"◈ UYDU (%s): tüm oyuncular haritada": "◈ SATELLITE (%s): all players on the map",
 	"◉ TAKIM UYDUSU (%s): düşmanlar haritada": "◉ TEAM SATELLITE (%s): enemies on the map",
 	"⚠ %s TAKIM UYDUSU KONUMUNUZU TESPİT ETTİ!": "⚠ %s TEAM'S SATELLITE HAS SPOTTED YOU!",
+	"TUZAK": "BEAR TRAP",
+	"▽ Tuzak yere bırakıldı": "▽ Trap placed on the ground",
+	"⚠ TUZAĞA YAKALANDIN! Takım arkadaşın gelsin": "⚠ YOU'RE CAUGHT IN A TRAP! Get a teammate to rescue you",
+	"⚠ %s TUZAĞA YAKALANDI! Kurtar": "⚠ %s IS CAUGHT IN A TRAP! Rescue them",
+	"🪤 Tuzağınız %s'ı yakaladı!": "🪤 Your trap caught %s!",
+	"✓ %s KURTARILDI": "✓ %s RESCUED",
+	"KURTARILIYOR · %s · %.1f sn": "RESCUING · %s · %.1f s",
+	"SEN": "YOU",
 
 	# ── Dünya etiketleri (Door/Card Label3D) ──
 	"KAPI": "DOOR",

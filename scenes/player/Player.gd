@@ -48,6 +48,7 @@ var is_dead: bool = false
 var current_weapon: Node = null
 var is_local: bool = false
 var has_card: bool = false
+var is_trapped: bool = false   # Ayı kapanı — tam hareketsiz/çaresiz (PowerupManager._trap_trigger_rpc/_trap_freed_rpc)
 
 var _char_mesh: Node3D = null
 var _anim_player: AnimationPlayer = null
@@ -487,7 +488,13 @@ func _physics_process(delta: float) -> void:
 	_update_animation(delta)
 
 
+func set_trapped(v: bool) -> void:
+	is_trapped = v
+
+
 func _handle_local_input(delta: float) -> void:
+	if is_trapped:
+		return
 	if _card_pickup_blocked > 0.0:
 		_card_pickup_blocked -= delta
 
@@ -737,6 +744,7 @@ func _die(killer_peer_id: int) -> void:
 func _apply_death() -> void:
 	is_dead = true
 	has_card = false
+	is_trapped = false
 	_death_token += 1
 	_reset_leg_facing()
 	if _upper:
@@ -780,6 +788,7 @@ func respawn(spawn_pos: Vector3) -> void:
 func _apply_respawn(spawn_pos: Vector3) -> void:
 	is_dead = false
 	has_card = false
+	is_trapped = false
 	health = max_health
 	if is_local:
 		emit_signal("health_changed", health)
