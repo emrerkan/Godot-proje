@@ -79,6 +79,15 @@ static func set_progress(tree: SceneTree, ratio: float) -> void:
 		ls.set("_progress", ratio)
 
 
+## Alt satırı değiştirir (ör. "3/6 oyuncu hazır · en fazla 1:52") — perde açık değilse bir şey yapmaz
+static func set_subtitle(tree: SceneTree, text: String) -> void:
+	var ls: Node = _find(tree)
+	if ls:
+		var sub: Label = ls.get("_sub")
+		sub.text = text
+		sub.visible = not text.is_empty()
+
+
 static func is_open(tree: SceneTree) -> bool:
 	var ls: Node = _find(tree)
 	return ls != null and not bool(ls.get("_closing"))

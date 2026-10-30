@@ -12,6 +12,7 @@ signal card_dropped(drop_pos: Vector3, carrier_team_id: int)
 signal kill_happened(killer_peer_id: int, victim_peer_id: int, method: int)
 signal xp_gained(amount: int, reason: String)  # yerel oyuncu XP kazandı (HUD "+100 XP")
 signal door_unlock_changed(ratio: float, carrier_peer_id: int)  # kapı kilidi ilerlemesi (Door.gd + HUD)
+signal warmup_status(loaded: int, total: int, seconds_left: int)  # ısınma: kaç oyuncu yüklendi (HUD hedef çipi)
 
 ## ─── Kapı kilidi ───
 ## Kart taşıyıcısı kapının çevresindeki çemberde (DOOR_UNLOCK_RADIUS) DOOR_UNLOCK_TIME sn kalırsa kazanır.
@@ -48,6 +49,21 @@ const XP_TRAP_RESCUE := 75            # tuzaktaki takım arkadaşını kurtardı
 const XP_MATCH := 100                 # maçı bitirdi
 const XP_WIN := 300                   # kazanan takım
 const RETURN_TO_LOBBY_DELAY := 5.0    # maç bitince lobiye otomatik dönüş (HUD oyun sonu ekranı bu sabiti okur)
+## ─── Yükleme bekleme + ISINMA (CS tarzı) ───
+## Herkes haritayı yükleyip kendi oyuncusunu doğurunca host'a bildirir (_peer_loaded) ve perdesi kalkar: yüklenen oyuncu
+## haritada serbestçe dolaşır (ısınma — hasar yok, kart/kapı/güç yok, XP yok; HUD hedef çipi "n/N oyuncu hazır · süre").
+## Maç, HERKES yüklenince _match_go_rpc ile aynı anda başlar: herkes kendi spawn'ına ışınlanır (can/mermi/dayanıklılık dolu).
+## LOAD_WAIT_MAX sn sonunda yüklenemeyenler atılır, maç kalanlarla başlar.
+const LOAD_WAIT_MAX := 120.0
+const LOAD_STATUS_INTERVAL := 0.5
+var match_live := false               # tüm peer'larda: maç gerçekten başladı mı (Player/PowerupManager okur)
+var menu_notice := ""                 # ana menüde gösterilecek tek seferlik mesaj (yükleme süresi aşımıyla atılma)
+var _local_loaded := false
+var _expected_loaders: Array = []     # host: maç başında odadaki peer'lar
+var _loaded_peers: Dictionary = {}    # host: yüklenmiş peer'lar
+var _load_wait_left := 0.0            # host
+var _load_status_timer := 0.0         # host
+
 var match_xp := 0                     # bu maçta kazanılan (oyun sonu ekranı)
 var _xp_survive_timer := 0.0
 var _xp_carry_timer := 0.0
@@ -137,6 +153,13 @@ func _begin_actual_game_rpc() -> void:
 	_xp_carry_timer = 0.0
 	_match_xp_closed = false
 	door_unlock = 0.0
+	match_live = false
+	_local_loaded = false
+	if NetworkManager.is_host():
+		_expected_loaders = NetworkManager.players.keys()
+		_loaded_peers.clear()
+		_load_wait_left = LOAD_WAIT_MAX
+		_load_status_timer = 0.0
 	# Sahne HEMEN değişir (geç kalan peer başkalarının spawn RPC'sini eski sahnede kaçırmasın); ağır GLB'yi
 	# ImportedMap iş parçacığında yükler, perde map_ready + kendi oyuncumuz doğana kadar açık kalır.
 	LOADING.open(get_tree(), "YÜKLENİYOR", "Harita hazırlanıyor")
@@ -144,10 +167,110 @@ func _begin_actual_game_rpc() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await _wait_map_ready()
+	if state != State.IN_GAME:
+		return  # yüklerken atıldı / menüye dönüldü
 	_spawn_local_player()
+	_local_loaded = true
+	# Isınma: perde kalkar, oyuncu dolaşabilir — maç herkes yüklenince _match_go_rpc ile başlar
 	LOADING.close(get_tree(), MAP_SETTLE_FRAMES)
-	# Maç başı karaktere özel tek seferlik güç — HER PEER kendi hesaplar (bekleme/RPC yok, oyun başlar başlamaz).
-	# Migration/respawn'da verilmez — sadece bu yoldan.
+	if NetworkManager.is_host():
+		_on_peer_loaded(1)
+	else:
+		_peer_loaded.rpc_id(1)
+
+
+## Client → host: haritam yüklendi, oyuncum doğdu
+@rpc("any_peer", "reliable")
+func _peer_loaded() -> void:
+	if NetworkManager.is_host():
+		_on_peer_loaded(multiplayer.get_remote_sender_id())
+
+
+func _on_peer_loaded(peer_id: int) -> void:
+	if state != State.IN_GAME:
+		return
+	if match_live:
+		_match_go_rpc.rpc_id(peer_id)  # maç başladıktan sonra yetişen (süre sınırında) — ona da başlat
+		return
+	_loaded_peers[peer_id] = true
+	_send_load_status()
+	_check_all_loaded()
+
+
+## Host: beklenenlerden odada kalan herkes yüklendiyse maçı başlat (yüklerken ayrılan beklenmez)
+func _check_all_loaded() -> void:
+	if not NetworkManager.is_host() or match_live or state != State.IN_GAME:
+		return
+	for pid: int in _expected_loaders:
+		if NetworkManager.players.has(pid) and not _loaded_peers.has(pid):
+			return
+	if multiplayer.get_peers().is_empty():
+		_match_go_rpc()  # herkes ayrıldı — RPC'siz (bağlı peer yokken rpc hata verir)
+	else:
+		_match_go_rpc.rpc()
+
+
+## Host her LOAD_STATUS_INTERVAL'de + her yüklenmede: n/N ve kalan süre → herkesin perdesi
+func _send_load_status() -> void:
+	var total := 0
+	var loaded := 0
+	for pid: int in _expected_loaders:
+		if NetworkManager.players.has(pid):
+			total += 1
+			if _loaded_peers.has(pid):
+				loaded += 1
+	if multiplayer.get_peers().is_empty():
+		_load_status_rpc(loaded, total, ceili(_load_wait_left))
+	else:
+		_load_status_rpc.rpc(loaded, total, ceili(_load_wait_left))
+
+
+@rpc("authority", "call_local", "unreliable_ordered")
+func _load_status_rpc(loaded: int, total: int, seconds_left: int) -> void:
+	if match_live or not _local_loaded:
+		return  # kendi yüklemesi bitmeyenin perdesi "Harita hazırlanıyor" kalır
+	warmup_status.emit(loaded, total, seconds_left)
+
+
+## Süre doldu: yüklenemeyenleri at, maçı kalanlarla başlat
+func _load_timeout() -> void:
+	for pid: int in _expected_loaders:
+		if pid == 1 or not NetworkManager.players.has(pid) or _loaded_peers.has(pid):
+			continue
+		var pname: String = NetworkManager.players[pid].get("name", "?")
+		NetworkManager._chat_system("%s yüklemeyi zamanında bitiremedi, oyundan atıldı", [pname])
+		# Client RPC'yi alınca kendi bağlantısını kapatır → host normal peer_disconnected alır. Tamamen donmuş client'ı
+		# ENet zaman aşımı (NetworkManager._relax_timeout, 15-30 s) düşürür. Host'tan disconnect_peer YAPILMAZ:
+		# kibar kesme donmuş peer'da "Unable to send packet" spamı, zorla kesme SceneMultiplayer'ı habersiz bırakıyordu.
+		_kicked_from_match.rpc_id(pid, "Harita yüklemesi çok uzun sürdü — oyundan atıldın")
+	_match_go_rpc.rpc()
+
+
+## Host → yüklemeyi bitiremeyen client: menüye dön, sebebi ana menüde göster
+@rpc("authority", "reliable")
+func _kicked_from_match(reason: String) -> void:
+	menu_notice = reason
+	LOADING.close(get_tree(), 0)
+	return_to_menu()
+
+
+## Maç başlıyor (tüm peer'lar aynı anda): perde kapanır, başlangıç gücü, host kart/kapı
+@rpc("authority", "call_local", "reliable")
+func _match_go_rpc() -> void:
+	if match_live or state != State.IN_GAME or not _local_loaded:
+		return
+	match_live = true
+	LOADING.close(get_tree(), 0)  # zaman aşımı sınırında yetişen peer'ın perdesi hâlâ açık olabilir
+	# Isınmadan maça: herkes KENDİ oyuncusunu spawn'ına ışınlar (_apply_respawn call_local — can/mermi/dayanıklılık dolar)
+	var me: Variant = active_players.get(NetworkManager.get_local_id())
+	if me != null and is_instance_valid(me):
+		var team_id: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", 0)
+		var pos := TeamManager.get_spawn_position(team_id)
+		if multiplayer.get_peers().is_empty():
+			me._apply_respawn(pos)
+		else:
+			me._apply_respawn.rpc(pos)
+	# Maç başı karaktere özel tek seferlik güç — HER PEER kendi hesaplar (RPC yok). Migration/respawn'da verilmez.
 	var powerups := get_tree().current_scene.get_node_or_null("PowerupManager")
 	if powerups and powerups.has_method("grant_starting_items"):
 		powerups.grant_starting_items()
@@ -552,6 +675,17 @@ func gain_xp(amount: int, reason: String) -> void:
 func _process(delta: float) -> void:
 	if state != State.IN_GAME:
 		return
+	if not match_live:
+		# Yükleme bekleme: host süreyi sayar, durumu yayar, dolunca yüklenemeyenleri atar
+		if NetworkManager.is_host() and _loaded_peers.has(1):
+			_load_wait_left -= delta
+			_load_status_timer -= delta
+			if _load_wait_left <= 0.0:
+				_load_timeout()
+			elif _load_status_timer <= 0.0:
+				_load_status_timer = LOAD_STATUS_INTERVAL
+				_send_load_status()
+		return
 	if NetworkManager.is_host():
 		_update_door_unlock(delta)
 		if state != State.IN_GAME:
@@ -586,6 +720,7 @@ func on_player_disconnected(peer_id: int) -> void:
 		p.queue_free()
 	active_players.erase(peer_id)
 	_check_last_team_standing()
+	_check_all_loaded()  # yüklerken ayrılan beklenmesin
 
 
 func _check_last_team_standing() -> void:
@@ -669,8 +804,10 @@ func restore_from_migration(mig: Dictionary) -> void:
 	_pending_positions = mig.get("positions", {}).duplicate()
 	# Kill/ölüm istatistikleri isimle taşınır, yeni peer id'lere geri eşlenir
 	_restore_stats_by_name(mig.get("stats_by_name", {}))
-	# Oyun durumunu sıfırla
+	# Oyun durumunu sıfırla — migration'da yükleme beklemesi YOK (maç zaten sürüyordu, herkes kendi yüklenince oynar)
 	state = State.IN_GAME
+	match_live = true
+	_local_loaded = true
 	card_carrier_peer_id = -1
 	card_instance = null
 	door_instance = null
@@ -720,5 +857,7 @@ func return_to_menu() -> void:
 	door_instance = null
 	card_carrier_peer_id = -1
 	state = State.MENU
+	match_live = false
+	_local_loaded = false
 	NetworkManager.disconnect_all()
 	get_tree().change_scene_to_file("res://scenes/main/Main.tscn")

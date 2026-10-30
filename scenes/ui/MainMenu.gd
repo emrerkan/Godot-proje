@@ -71,6 +71,10 @@ func _ready() -> void:
 	_build_ui()
 	_name_input.text = _load_name()
 	_show_tab("browse")
+	# Maçtan atılarak dönüldüyse (yükleme süresi aşımı) sebebi göster
+	if not GameManager.menu_notice.is_empty():
+		_set_status(tr(GameManager.menu_notice), "error")
+		GameManager.menu_notice = ""
 
 
 ## Dil değişince (AYARLAR → OYUN → Dil) kodla biçimlenmiş metinleri yeniden yaz — sabit metinleri Control'ler kendisi çevirir

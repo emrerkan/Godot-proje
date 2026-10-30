@@ -33,7 +33,10 @@ const STAT_INFO := {
 static var xp := 0                 # harcanabilir
 static var total_xp := 0           # şimdiye kadar kazanılan (profil seviyesi)
 static var upgrades := {}          # karakter → {stat: seviye}
+static var powers := {}            # HESAP GENELİ güç ağaçları: ağaç → [düğüm id] (PowerTrees.gd)
 static var _loaded := false
+
+const POWER_TREES := preload("res://scenes/profile/PowerTrees.gd")
 
 
 # ─────────────────────────────────────────────
@@ -49,6 +52,7 @@ static func load_profile() -> void:
 	total_xp = int(cfg.get_value("profile", "total_xp", 0))
 	for c in CHARACTERS:
 		upgrades[c] = sanitize(cfg.get_value("upgrades", c, {}))
+	powers = POWER_TREES.sanitize(cfg.get_value("powers", "owned", {}))
 
 
 static func save() -> void:
@@ -57,6 +61,7 @@ static func save() -> void:
 	cfg.set_value("profile", "total_xp", total_xp)
 	for c: String in upgrades:
 		cfg.set_value("upgrades", c, upgrades[c])
+	cfg.set_value("powers", "owned", powers)
 	cfg.save(SAVE_PATH)
 
 
@@ -130,6 +135,47 @@ static func buy(character: String, stat: String) -> bool:
 	var lv := get_levels(character)
 	lv[stat] = int(lv[stat]) + 1
 	upgrades[character] = lv
+	xp -= cost
+	save()
+	return true
+
+
+# ─────────────────────────────────────────────
+#  Güç ağaçları (hesap geneli, fiyat ağaç başına — PowerTrees.gd)
+# ─────────────────────────────────────────────
+
+static func get_powers() -> Dictionary:
+	_ensure_loaded()
+	return POWER_TREES.sanitize(powers)
+
+
+static func has_power(tree: String, node_id: String) -> bool:
+	return (get_powers().get(tree, []) as Array).has(node_id)
+
+
+static func power_cost(tree: String) -> int:
+	return POWER_TREES.next_cost(get_powers(), tree)
+
+
+## Açılabilir mi: alınmamış, ön koşulu açık, XP yetiyor
+static func can_buy_power(tree: String, node_id: String) -> bool:
+	var n := POWER_TREES.get_node_def(tree, node_id)
+	if n.is_empty() or has_power(tree, node_id):
+		return false
+	if n["req"] != "" and not has_power(tree, n["req"]):
+		return false
+	return get_xp() >= power_cost(tree)
+
+
+static func buy_power(tree: String, node_id: String) -> bool:
+	if not can_buy_power(tree, node_id):
+		return false
+	var cost := power_cost(tree)
+	var p := get_powers()
+	var owned: Array = p.get(tree, [])
+	owned.append(node_id)
+	p[tree] = owned
+	powers = POWER_TREES.sanitize(p)
 	xp -= cost
 	save()
 	return true

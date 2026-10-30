@@ -53,6 +53,7 @@ var _migration_settings: Dictionary = {}
 var _saved_character: String = ""
 var _saved_upgrades: Dictionary = {}  # migration: seçili karakterin profil yükseltmeleri
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+const POWER_TREES := preload("res://scenes/profile/PowerTrees.gd")
 ## Yeni host: migration sonrası yeniden bağlananları oyun sürerken de kabul etme penceresi
 var _migration_window_until: int = 0
 var _migration_room: String = ""
@@ -104,7 +105,7 @@ func create_server(player_name: String, p_room_name: String = "", p_password: St
 	# Eski (migration öncesi) oyuncu listesini temizle — kalıntı kayıt kalmasın
 	players.clear()
 	# Host kendini ekle
-	players[1] = { "name": local_player_name, "team_id": -1, "is_ready": false }
+	players[1] = { "name": local_player_name, "team_id": -1, "is_ready": false, "powers": PROFILE.get_powers() }
 	room_settings = _default_settings()
 	room_settings["has_password"] = not p_password.is_empty()
 	RoomManager.create_room(p_room_name, p_password)
@@ -229,7 +230,7 @@ func _on_connected_to_server() -> void:
 	_local_id_cache = multiplayer.get_unique_id()  # Peer açıkken cache'le
 	_relax_timeout(1)  # client tarafı: host'a bağlantı da kısa donmalarda kopmasın
 	# joined_server emit etmiyoruz — host _accept_player RPC'si ile onaylayacak
-	register_player.rpc_id(1, _local_id_cache, local_player_name, _pending_password, _saved_team_id, _saved_character, _saved_upgrades)
+	register_player.rpc_id(1, _local_id_cache, local_player_name, _pending_password, _saved_team_id, _saved_character, _saved_upgrades, PROFILE.get_powers())
 
 
 func _on_connection_failed() -> void:
@@ -279,6 +280,13 @@ func get_migration_winning_team() -> int:
 func _on_server_disconnected() -> void:
 	if _is_migrating:
 		return
+	# Harita yüklemesi bitmeden bağlantı koptu (yükleme süresi aşıldı → host zorla attı, ya da host o arada çöktü):
+	# yarım yüklenmiş oyuncuyla migration yapılmaz → ana menü
+	if GameManager.state == GameManager.State.IN_GAME and not GameManager.match_live and not GameManager._local_loaded:
+		GameManager.menu_notice = "Harita yüklenirken oyundan çıkarıldın (süre doldu ya da bağlantı koptu)"
+		GameManager.LOADING.close(get_tree(), 0)
+		GameManager.return_to_menu()
+		return
 	_is_migrating = true
 
 	# Peer kapandıktan sonra get_unique_id() hata verir — cache kullan
@@ -323,7 +331,7 @@ func _on_server_disconnected() -> void:
 		await get_tree().create_timer(0.3).timeout
 		create_server(local_player_name, saved_room, saved_pw)
 		# Kendi player datasını migration bilgisiyle güncelle (karakter de korunur)
-		players[1] = { "name": local_player_name, "team_id": _saved_team_id, "is_ready": false }
+		players[1] = { "name": local_player_name, "team_id": _saved_team_id, "is_ready": false, "powers": PROFILE.get_powers() }
 		if not _saved_character.is_empty():
 			players[1]["character"] = _saved_character
 			players[1]["upgrades"] = PROFILE.sanitize(_saved_upgrades)
@@ -376,7 +384,7 @@ func _reconnect_loop(target_room: String, password: String) -> void:
 # ─────────────────────────────────────────────
 
 @rpc("any_peer", "reliable")
-func register_player(peer_id: int, player_name: String, password: String, saved_team_id: int = -1, saved_character: String = "", saved_upgrades: Dictionary = {}) -> void:
+func register_player(peer_id: int, player_name: String, password: String, saved_team_id: int = -1, saved_character: String = "", saved_upgrades: Dictionary = {}, powers: Dictionary = {}) -> void:
 	if not multiplayer.is_server():
 		return
 	# Şifre kontrolü
@@ -392,7 +400,8 @@ func register_player(peer_id: int, player_name: String, password: String, saved_
 		_reject_player.rpc_id(peer_id, "Oda dolu")
 		return
 	# Migration sırasında eski takım + karakter bilgisini koru
-	players[peer_id] = { "name": player_name, "team_id": saved_team_id, "is_ready": false }
+	# Güç ağaçları hesap geneli → her katılımda oyuncunun kendi profilinden gelir (host ön koşulları doğrular)
+	players[peer_id] = { "name": player_name, "team_id": saved_team_id, "is_ready": false, "powers": POWER_TREES.sanitize(powers) }
 	if not saved_character.is_empty():
 		players[peer_id]["character"] = saved_character
 		players[peer_id]["upgrades"] = PROFILE.sanitize(saved_upgrades)
@@ -526,14 +535,15 @@ func _are_teams_balanced() -> bool:
 func request_select_character(char_name: String) -> void:
 	var my_id := get_local_id()
 	var levels := PROFILE.get_levels(char_name)
+	var powers := PROFILE.get_powers()
 	if is_host():
-		_apply_character_selection(my_id, char_name, levels)
+		_apply_character_selection(my_id, char_name, levels, powers)
 	else:
-		_apply_character_selection.rpc_id(1, my_id, char_name, levels)
+		_apply_character_selection.rpc_id(1, my_id, char_name, levels, powers)
 
 
 @rpc("any_peer", "reliable")
-func _apply_character_selection(peer_id: int, char_name: String, levels: Dictionary = {}) -> void:
+func _apply_character_selection(peer_id: int, char_name: String, levels: Dictionary = {}, powers: Dictionary = {}) -> void:
 	if not multiplayer.is_server():
 		return
 	if not players.has(peer_id):
@@ -548,6 +558,7 @@ func _apply_character_selection(peer_id: int, char_name: String, levels: Diction
 			return  # Takım arkadaşı zaten almış
 	players[peer_id]["character"] = char_name
 	players[peer_id]["upgrades"] = PROFILE.sanitize(levels)
+	players[peer_id]["powers"] = POWER_TREES.sanitize(powers)  # lobide profil değişmiş olabilir — maç başında tazele
 	_broadcast_player_list()
 	emit_signal("player_list_updated")
 	GameManager.check_all_characters_selected()

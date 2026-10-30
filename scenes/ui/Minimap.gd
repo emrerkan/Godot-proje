@@ -145,6 +145,8 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			var pl: Variant = GameManager.active_players[pid]
 			if pl == null or not is_instance_valid(pl) or pl.is_dead:
 				continue
+			if pid != NetworkManager.get_local_id() and _powerups.hidden_from_satellite((pl as Node3D).global_position):
+				continue  # "Radar Örtüsü" sisinin içinde
 			var tid: int = NetworkManager.players.get(pid, {}).get("team_id", -1)
 			var pp := _w2m((pl as Node3D).global_position)
 			if pid != NetworkManager.get_local_id():

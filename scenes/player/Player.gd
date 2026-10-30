@@ -937,8 +937,8 @@ func _broadcast_state(pos: Vector3, aim_y: float, mode: int = MoveMode.WALK) -> 
 func take_damage(amount: float, shooter_peer_id: int, source: int = DAMAGE_BULLET) -> void:
 	if not NetworkManager.is_host():
 		return
-	if is_dead:
-		return
+	if is_dead or not GameManager.match_live:
+		return  # ısınmada (diğer oyuncuların yüklemesi bekleniyor) hasar yok
 	# Çömelme: mermiler üstünden geçer (host, hedefin _broadcast_state ile gelen moduna göre karar verir)
 	if source == DAMAGE_BULLET and is_crouching():
 		return

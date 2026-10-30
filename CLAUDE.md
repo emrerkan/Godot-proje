@@ -18,6 +18,14 @@ XP: `GameManager.gain_xp(amount, reason)` YEREL (her peer kendine): `_announce_k
 PowerupManager `_set_item_rpc(..., picked_up)` ve `_medic_heal_rpc`. `xp_gained` → HUD `_xp_feed`. UI: MainMenu sol alttaki operatör
 kartında profil seviyesi + XP + **PROFİL** butonu → `_open_profile()` bulanık modal (`_profile_modal`, ESC/✕/dışına tık kapatır)
 içinde `UpgradePage.gd` (oda sekmeleri sadece oyun bulmak için — profil oraya konmayacak, kullanıcı isteği); CharacterSelect kartları yükseltilmiş değer + "SV n". Kurallar/fikir havuzu: docs/PROJE_GECMISI.md §5.
+**Güç ağaçları (HESAP GENELİ)** — `scenes/profile/PowerTrees.gd` (statik, preload): `TREES` (bomb/heal/sat/flash/smoke/trap; düğüm
+id/req/pos/`set`), `BASE` değerler, `mods(owned)` = BASE + düğüm `set`'leri (tanım sırasıyla — sonraki öncekini ezer), `mods_for(peer)`
+(NetworkManager.players[peer]["powers"]), fiyat ağaç başına `300×1.4^n`. Kayıt `PlayerProfile.powers` (cfg `[powers] owned`), `buy_power`.
+Ağ: `register_player(..., powers)` + `_apply_character_selection(..., powers)` + host `players[1]` → host `sanitize` → herkes.
+Uygulama: PowerupManager `_m(peer)` (kullanan/atan) — sağlık `_use_heal` (kritik çarpan, `_heal_over_time`, grup), fırlatma menzili,
+`_bomb_rpc` atanın fitil/uçuş/yarıçap/sis değerleri (her peer aynı hesap, RPC'ye alan eklenmedi), `_on_bomb_exploded.bind(thrower, team)`
+flaş körlük çarpanları, `_radar_smokes` + `hidden_from_satellite` (Minimap uydu çizimi), Trap.setup koyanın `trap_*` değerleri,
+HUD kurtarma `trap_rescue_time`. UpgradePage: sekmeler KARAKTER/GÜÇ GELİŞİMİ, güç sekmesi ağaç tuvali (`_draw_links`) + detay paneli.
 
 ## Ayarlar — `scenes/settings/GameSettings.gd` (class_name, statik, `preload`) + `scenes/ui/SettingsWindow.gd`
 `user://options.cfg` (oyuncu adı ayrı: user://settings.cfg). `DEFAULTS` / `PRESETS` (Düşük-Orta-Yüksek-Ultra). `apply_once` UITheme.apply'dan
@@ -124,7 +132,8 @@ Test: 3 headless süreçle (host + 2 client, localhost) doğrulandı — yeni ho
 |---|---|---|
 | `start_game()` | Lobby "Oyunu Başlat" (host) | `TeamManager.reset()` → `_start_game_rpc` → CharacterSelect sahnesi |
 | `check_all_characters_selected()` | `NetworkManager._apply_character_selection` | herkes seçtiyse `_begin_actual_game_rpc` |
-| `_begin_actual_game_rpc()` | kendi | `_get_map_scene()` (oda ayarındaki harita, `NetworkManager.MAPS`) yükle → `_spawn_local_player()` (migration'da `_pending_positions`'tan konum) → host ise `_spawn_card_and_door()` → `game_started` sinyali |
+| `_begin_actual_game_rpc()` | kendi | `_get_map_scene()` (oda ayarındaki harita, `NetworkManager.MAPS`) yükle → `_spawn_local_player()` (migration'da `_pending_positions`'tan konum) → `_local_loaded` → perde KALKAR (ısınma) → host'a `_peer_loaded` |
+| **Yükleme bekleme + ISINMA (CS tarzı)** | host `_on_peer_loaded` / `_process` | `match_live` false = ISINMA: yüklenen oyuncu serbest dolaşır/ateş eder ama `Player.take_damage` hasar İŞLEMEZ; Q/test tuşları, güç doğuşu, XP tick'leri, kart/kapı YOK. Host `_expected_loaders` (maç başı players) hepsi yüklenince → `_match_go_rpc` (call_local: herkes kendi oyuncusunu `_apply_respawn.rpc(spawn)` ile ışınlar — can/mermi/dayanıklılık dolu, `grant_starting_items`, host `_spawn_card_and_door`, `game_started` → HUD "MAÇ BAŞLADI" bandı). `_load_status_rpc` n/N + kalan süre → `warmup_status` sinyali → HUD hedef çipi "ISINMA · n/N OYUNCU HAZIR · EN FAZLA m:ss". `LOAD_WAIT_MAX` 120 s (host kendisi yüklenince sayar) → `_load_timeout`: yüklenemeyene `_kicked_from_match` RPC (client `menu_notice` + `return_to_menu`, MainMenu `_set_status` gösterir) + sistem sohbeti, maç kalanlarla başlar. Host `disconnect_peer` YAPMAZ (kibar → paket spamı, force → SceneMultiplayer habersiz); donmuş client'ı ENet zaman aşımı düşürür. Yüklemesi bitmeden host bağlantısı kopan client migration'a GİRMEZ → menü (`NetworkManager._on_server_disconnected`). Yüklerken ayrılan beklenmez (`on_player_disconnected` → `_check_all_loaded`). Migration'da bekleme yok (`restore_from_migration` match_live=true). Test: 2 süreç, client `OS.delay_msec` ile dondurulur |
 | `_spawn_local_player()` | `_begin_actual_game_rpc`, `restore_from_migration` | Player instantiate, `initialize()`, `_notify_player_spawned.rpc()` broadcast, client ise `_request_active_players.rpc_id(1)` |
 | `handle_card_pickup(peer_id)` | `Card.gd._on_body_entered` (host) veya `request_card_pickup` RPC | `_apply_card_pickup_rpc` broadcast → `card_picked_up` sinyali |
 | `handle_card_drop(pos)` | ölüm sırasında taşıyıcı öldüyse, veya host | `_apply_card_drop_rpc` broadcast → `card_dropped` sinyali |
@@ -335,7 +344,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 - **`PowerupManager.gd`** (Map.tscn → `PowerupManager` Node; RPC'ler bu node path'iyle, tüm peer'larda aynı):
   host `_process` → `SPAWN_INTERVAL` (8-15s) aralıkla `PowerupPoints/Point*` (33 köşe, `tools/maze_corners.py`)
   üzerinde `_spawn_rpc(id, type, pos, lifetime 5-10s)`, `MAX_ACTIVE=3`, ömür dolunca `_despawn_rpc`.
-  Tipler `Type {BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE}` (index sabit — Powerup.gd/Minimap sayıyla kullanır), görünüm/isim `INFO` (HUD/Minimap/Powerup ortak).
+  Tipler `Type {BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE, TRAP}` (index sabit — Powerup.gd/Minimap sayıyla kullanır), görünüm/isim `INFO` (HUD/Minimap/Powerup ortak).
+  **TEK UYDU:** ENEMY_SAT artık doğmaz (WEIGHTS'te yok, test tuşu 4 kaldırıldı); INTEL_SAT tüm takımların oyuncuları + kart taşıyıcı.
+  Yükseltilebilen değerler (iyileştirme 35, yarıçaplar, fitiller, atış, sis 10 s, uydu 8 s, tuzak) sabit DEĞİL → `PowerTrees.BASE` + `_m(peer)`.
   **SMOKE** (sis bombası, test 8): `_throw_bomb(..., flash=false, smoke=true)` → `_bomb_rpc(..., smoke)` → Bomb.gd `is_smoke`
   fitil (`SMOKE_FUSE`) sonra `SmokeCloud.gd` bırakır (YEREL görsel, her peer): **hacimsel sis FogVolume** (CS:GO tarzı; eski parçacık
   sürümü 'kare kare' görünüyordu), elipsoid `SMOKE_RADIUS` 6 m × 3.6 m, `DENSITY` 6 (opak), NoiseTexture3D + yavaş dönme,
@@ -362,7 +373,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   `reveal_until` o takımda; diğer takımlara "konumunuz tespit edildi" uyarısı.
   **TEST MODU** (`TEST_MODE = OS.is_debug_build()` — editörden çalıştırınca açık, export'ta kapalı; host da debug olmalı):
   **Test tuşları RAKAM (F tuşu YOK — editör içinde F1/F5/F6/F7/F8 editör kısayolu, F8 oyunu DURDURUR)**: 7 → `test_show_objectives` (yerel: Minimap kart ◆ + kapı ■, ProximityReveal kart/kapıyı mesafesiz gösterir).
-  1 Bomba / 2 Sağlık / 3 Uydu / 4 Takım uydusu / 6 Flaş / 8 Sis / 9 Tuzak → `_request_test_give` (slotu değiştirir), 5 → `_request_test_spawn`
+  1 Bomba / 2 Sağlık / 3 Uydu / 6 Flaş / 8 Sis / 9 Tuzak → `_request_test_give` (slotu değiştirir), 5 → `_request_test_spawn`
   (önüne rastgele güç, 15 s ömür), 0 → `_request_test_trap` (önüne takımsız `team -1` tuzak — kendi tuzağın seni yakalamadığı için tek başına yakalanma testi). HUD skor panelinin altında tuş hatırlatıcısı (`_setup_test_hint`). Sinyaller: `inventory_changed`, `reveal_started`, `notice` (HUD banner).
   Geç katılan client 1.5 s sonra `_request_sync`. HUD envanter slotu oyuncu kartının sağında.
 - **`WallLamps.gd`** (Map.tscn → `WallLamps` Node3D, çocukları `Lamp*` Marker3D — `tools/maze_lamps.py` üretir,

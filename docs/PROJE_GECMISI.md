@@ -169,6 +169,15 @@
     rastgele çağrı adları (oyuncu adı), "Türkçe" seçeneği; varsayılan oda adı kuranın dilinde oluşur. Ses yok → çevrilecek ses de yok.
 40. Yükleme ekranı görselleştirildi (kullanıcı: "TACTICAL DARK yazısı da olsun, düz yükleniyor olmasın; ipucu mantığı güzel"):
     logo + karanlıkta tarayan fener konisi (ızgara/toz açığa çıkar) + ince duman + yüzde + dönen ipucu paneli.
+41. **Yükleme bekleme (CS tarzı)** (kullanıcı: "kimisinin cihazı hızlı kimisinin yavaş; herkes girince başlasın, en fazla 2 dk,
+    girmeyenleri atalım"): maç herkes haritayı yükleyince AYNI ANDA başlar, perdede "n/N oyuncu hazır · en fazla m:ss";
+    120 s dolunca yüklenemeyen menüye atılır (sebep ana menüde yazar, sohbete sistem mesajı), maç kalanlarla başlar.
+    Kararlar: host bağlantıyı kendisi kesmez (Godot ENet: kibar kesme donmuş peer'da paket hatası spamı, zorla kesme
+    SceneMultiplayer'ı habersiz bırakıp "Invalid target peer" hatası) — atılan client kendisi çıkar, donmuşu ENet zaman aşımı düşürür.
+    Host migration'daki yeniden yüklemede bekleme yok. 2 süreçle doğrulandı (client 8 s donma → bekledi; elle zaman aşımı → atıldı).
+    **Isınma** (kullanıcı: "yüklenenler gelene kadar haritada oynayabilsin"): perde yüklenince kalkar, oyuncu dolaşır/zıplar/ateş eder,
+    HASAR YOK (seçilen varsayılan — istenirse hasarlı ısınma + anında respawn eklenebilir), kart/kapı/güç yok, hedef çipinde
+    "ISINMA · n/N OYUNCU HAZIR · süre". Herkes gelince herkes kendi spawn'ına ışınlanır (can/mermi dolu) ve maç başlar.
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
@@ -232,3 +241,59 @@ kapatmasını veya Project Settings'ten kendisinin eklemesini iste.
   "yükseltmesiz mod" ayarı düşünülmeli.
 - **Steam'e geçiş (ÖNEMLİ):** profil şu an yerel dosya → elle değiştirilebilir (hile). Steam sürümünde Steam Cloud / Steam Stats veya
   sunucu tarafı doğrulama; XP kazanımı da host/sunucu onaylı olmalı. Depolama kodu tek yerde (`PlayerProfile.load_profile/save`).
+
+### 5.3 Profil: KARAKTER GELİŞİMİ + GÜÇ GELİŞİMİ sekmeleri, ağaç görünümü (Ekim 2026 — UYGULANDI, kod: `scenes/profile/PowerTrees.gd`)
+**Son kararlar (kullanıcı, 31 Ekim):** hesap geneli · her ağaçta B3 TEK düğüm (seçim mekaniği yok) · Bomba B3 = Anlık Fitil ·
+Sağlık temel 60→**35**, kök 40, A: Yenilenme (+10 can/4 s) → Güçlü Sargı 45, B: Uzak Tedavi (Medic 8 m) → Acil Müdahale (<%30 canda ×1.5)
+→ Grup Şifası (2.5 m'deki takıma iyileştirmenin %20'si) · Uydu: tek uydu (tüm takımların oyuncuları), ağaç sadece süre 8→9.5→11→12.5 ·
+Flaş B3 = takıma körlük ×0.5 · Sis temel 15→**10**, kök 11, A geniş 6.8 m → 13 s, B hızlı duman → atış 14.5 → Radar Örtüsü ·
+Tuzak B dalı tetik alanı: Geniş Çene 1.1 → Kamuflaj → Dev Çene 1.3. Kesin değerler PowerTrees.TREES'te (aşağıdaki liste ilk taslaktır).
+- Profil penceresi iki sekme: **KARAKTER GELİŞİMİ** (mevcut 5 stat × 5 seviye, 5 yatay zincir olarak çizilir — veri/fiyat değişmez)
+  ve **GÜÇ GELİŞİMİ**. Ağaç soldan sağa büyür (pencere 1000×640, yükseklik kısıtlı), sağda sabit detay paneli (eski→yeni değer, fiyat, AÇ).
+- Güç yükseltmeleri **HESAP GENELİ** (kullanıcı kararı — güçler karaktere ait değil, herkes toplayabiliyor).
+- **Her güç kendi ağacında ilerler** (kullanıcı: "bütün özel güçler kendi hedefinde ilerlesin") — fiyat sayacı ağaç başına.
+  Öneri formül `300 × 1.4^(o ağaçta alınan düğüm)` → 300/420/590/825/1155/1615, ağaç ~4.900 XP. XP havuzu tek (karakterle ortak).
+- İskelet: Kök → A dalı (A1, A2) + B dalı (B1, B2, B3). Kullanıcı her ağaç için B3'ü tek seçenekle belirledi:
+  - **Bomba:** kök kısa fitil 1.2→1.0, A yarıçap 4→4.6 / kenar hasarı %35→%45, B atış 12→14.5 / hızlı uçuş. B3: (açık soru, bkz aşağı).
+    Merkez hasarı bilerek ARTMIYOR (karakter HASAR stat'ıyla üst üste biner).
+  - **Sağlık:** başlangıç iyileştirmesi (60) çok yüksek bulundu → düşürülecek, A/B yeniden düzenlenecek; **B3 = yakındaki takım arkadaşlarına %20**.
+  - **Uydu:** oyunda TEK uydu kalacak (UYDU + TAKIM UYDUSU birleşir), takımlardaki oyuncuları gösterir. Ağaç sadece SÜRE artırır.
+  - **Flaş:** kök fitil 0.8→0.65, A yarıçap 11→12.5 / körlük ×1.15, B kendine körlük ×0.6 / atış 14.5. **B3 = takım arkadaşlarına körlük ×0.5.**
+    Flaş atanı ASLA tamamen bağışık olmaz (bedel tasarımın parçası).
+  - **Sis:** 15-17 s çok uzun bulundu → kısaltılacak. **B3 = sis içindekiler uydu haritasında görünmez.**
+  - **Tuzak:** kök hasar 12→14/sn, A 16/sn / kurtarma 4→5 s, **B dalı = tetik alanı geniş** (0.9→1.1) + zor fark edilir (5→4 / 2→1.5 m).
+- Senkron: `players[peer]["powers"]` (register_player ile), host `sanitize_powers` (ön koşul zinciri, bilinmeyen anahtar). Host etkileri
+  atanın verisinden; yerel görseller (flaş körlüğü, sis boyutu) için değerler `_bomb_rpc`'ye `mods` olarak eklenir (her peer aynı sayı).
+- "Yükseltmesiz mod" oda ayarı eklenirse güç ağaçlarını da kapatmalı.
+
+#### 5.3.1 Not edilen YENİ MEKANİK fikirleri (⚠ — yeni ağ alanı/mekanik ister, şimdilik YAPILMADI)
+- **Çift şarj (Bomba "Çift Bomba", Tuzak "İkinci Tuzak"):** envanter tek slot → slota şarj sayısı alanı (`inventory[peer] = {type, charges}`),
+  `_set_item_rpc` şarj parametresi, HUD slotunda "×2". Kullanınca şarj düşer, 0'da slot boşalır. İkisi aynı altyapıyı paylaşır.
+- **Bomba "Anlık Fitil":** fitil toplam 0.7 s — yere düşer düşmez patlar, kaçma payı neredeyse yok (sert; dikkatli dengelenmeli).
+- **Sağlık "Taşma Kalkanı":** maksimum canı aşan iyileştirme geçici kalkana (en fazla 20) dönüşür → Player'a `shield` değeri + senkron,
+  `take_damage` önce kalkandan düşer, HUD can çubuğunda ayrı renk. Süreyle erir (ör. 8 s).
+- **Sağlık "Adrenalin":** iyileştirilen 3 s +%15 hız → Player'a süreli hız çarpanı (buff) + uzak peer'lara senkron (hareket zaten konumla gelir,
+  sadece animasyon hızı için gerekli). Genel bir "buff" sistemi ileride başka güçlere de yarar.
+- **Sis "Çift Bulut":** 4.5 m'lik 2 bulut — FogVolume maliyeti nedeniyle performans testi şart (1 bulut ~-%15 FPS ölçüldü).
+- **Uydu ek fikirleri (tek uydu kararından önce önerilmişti):** kart izi (taşıyıcı işareti +3 s), sessiz tarama (rakip uyarısı 2 s gecikir),
+  düşük canlı düşman kırmızı, kapı YÖN oku (konum değil), son konumların soluk kalması. Kullanıcı şimdilik sadece süreyi seçti.
+- **Flaş "Sessiz Flaş":** uçuş görseli rakiplere gizli (Bomb.gd yerel). **Tuzak "Alarm":** yakalananın konumu 4 s kendi takımının haritasında.
+- **Runner "Dash":** kısa atılma (yeni hareket mekaniği, bıçak hamlesi altyapısı benzer).
+
+#### 5.3.2 KARAKTER UZMANLIĞI (kullanıcı: "pek anlamadım, yapma ama detaylı not et")
+**Ne:** Karakter ağacının en sağındaki özel düğüm. 5 stat zinciri "her karakterde aynı" sayısal artışlar; uzmanlık ise o karaktere
+ÖZEL bir davranış ekler — karakterin rolünü belirginleştirir (Medic daha iyi destek, Sniper daha iyi keşif...).
+**Nasıl açılır:** o karakterde toplam **10 stat yükseltmesi** alındıktan sonra açılabilir hale gelir (önce temel gelişim, sonra uzmanlaşma).
+**Seçim:** her karakterde **2 seçenek, sadece BİRİ** alınır (oyun tarzı kararı). Değiştirmek ucuz (ör. 100 XP) — deneme cezalandırılmasın.
+**Fiyat:** sabit **2.000 XP**; stat fiyatının üstel sayacına GİRMEZ (yoksa sonraki stat yükseltmeleri pahalanırdı, mevcut oyuncuların fiyatı kayardı).
+**Seçenekler (öneri):**
+| Karakter | Seçenek 1 | Seçenek 2 |
+|---|---|---|
+| Medic | Sağlık gücünün takım arkadaşı menzili 6→8 m | Takım arkadaşını iyileştirince ek +15 can |
+| Sniper | Dürbün: kamera fareye doğru kayar (uzağı görür) | (belirlenecek — "duvar delmede hasar kaybı" önerisi geçersiz: kodda kayıp yok) |
+| Tank | Patlama (bomba/tuzak) hasarı −%15 | Önden bıçak hasarı −%20 (arkadan bıçak yine öldürür) |
+| Runner | Dash ⚠ (yeni mekanik) | Koşu dayanıklılığı %30 daha hızlı dolar |
+| Visioner | Uydu süresi +2 s | Ölünce katilin konumu 3 s takımın haritasında |
+**Veri/geçiş:** profil dosyasına `specialization[karakter] = "1"/"2"/""` anahtarı eklenir; mevcut `upgrades` ve fiyatlar değişmez, iade gerekmez.
+Ağda `players[peer]["spec"]` ile gider, host doğrular (10 yükseltme şartı + geçerli seçenek).
+**Durum:** YAPILMADI — kullanıcı onayı bekliyor.

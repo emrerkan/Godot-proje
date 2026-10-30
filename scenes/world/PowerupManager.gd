@@ -33,7 +33,8 @@ const INFO := {
 	Type.SMOKE:     {"name": "SİS BOMBASI",   "glyph": "≋", "color": Color(0.72, 0.78, 0.86), "desc": "Fareye fırlat, görüşü kapatan sis bulutu"},
 	Type.TRAP:      {"name": "TUZAK",         "glyph": "▽", "color": Color(0.55, 0.5, 0.42),  "desc": "Yere bırak, düşmanı yakalar"},
 }
-const WEIGHTS := {Type.BOMB: 22, Type.HEAL: 22, Type.FLASH: 18, Type.SMOKE: 16, Type.INTEL_SAT: 11, Type.ENEMY_SAT: 11, Type.TRAP: 14}
+## ENEMY_SAT artık doğmaz (tek uydu kararı — INTEL_SAT tüm takımların oyuncularını gösterir); index sabit kaldığı için enum'da duruyor
+const WEIGHTS := {Type.BOMB: 22, Type.HEAL: 22, Type.FLASH: 18, Type.SMOKE: 16, Type.INTEL_SAT: 16, Type.TRAP: 14}
 
 ## Zamanlama (sn)
 const FIRST_SPAWN_DELAY := 12.0
@@ -41,27 +42,16 @@ const SPAWN_INTERVAL := Vector2(8.0, 15.0)
 const LIFETIME := Vector2(5.0, 10.0)
 const MAX_ACTIVE := 3
 
-## Etkiler
-const HEAL_AMOUNT := 60.0
-const BOMB_DAMAGE := 75.0          # merkezde; kenarda %35'e düşer
-const BOMB_RADIUS := 4.0
-const BOMB_MAX_THROW := 12.0
-const BOMB_FLIGHT := 0.55
-const BOMB_FUSE := 1.2             # yere düştükten sonra
+## Etkiler — yükseltilebilen değerler (iyileştirme, yarıçap, fitil, atış, süre, tuzak...) burada DEĞİL:
+## PowerTrees.BASE + kullananın güç ağacı → `_m(peer)` (her peer players listesinden aynı sonucu hesaplar).
+const POWER_TREES := preload("res://scenes/profile/PowerTrees.gd")
+const BOMB_DAMAGE := 75.0          # merkezde; kenarda PowerTrees "bomb_edge" (%35) oranına düşer — bilerek yükseltilmez
 const BOMB_SHAKE_RANGE := 16.0     # bu mesafenin ötesinde sarsıntı yok
-const FLASH_FUSE := 0.8
-const FLASH_RADIUS := 11.0         # görüş hattı varsa bu mesafeye kadar kör eder (atan + takımı dahil!)
-const SMOKE_FUSE := 0.4            # yere düştükten sonra duman çıkana kadar
-const SMOKE_RADIUS := 6.0          # duman bulutu yarıçapı (koridor ~4 m — kavşağı da kapatır)
-const SMOKE_DURATION := 15.0       # duman tam yoğunlukta ne kadar kalır (sonra ~3.5 sn'de seyrelir)
-const INTEL_DURATION := 8.0
-const ENEMY_SAT_DURATION := 6.0
+const SMOKE_FADE := 3.5            # SmokeCloud seyrelme süresi (radar örtüsü bitişi için)
+const HEAL_REGEN_TIME := 4.0       # "Yenilenme" ek canı bu sürede dolar
+const HEAL_CRITICAL_RATIO := 0.3   # "Acil Müdahale" bu oranın altındaki cana etki eder
+const HEAL_GROUP_RADIUS := 2.5     # "Grup Şifası" iyileştirilene uzaklık
 const TRAP_PLACE_DISTANCE := 1.0   # oyuncunun önüne, kısa mesafe (fırlatılmaz, bırakılır)
-const TRAP_TRIGGER_RADIUS := 0.9
-const TRAP_REVEAL_FAR := 5.0       # küçük görsel ama bu mesafeden belirmeye başlar
-const TRAP_REVEAL_NEAR := 2.0
-const TRAP_DOT_DAMAGE := 12.0      # saniye başı
-const TRAP_RESCUE_TIME := 4.0
 const TRAP_RESCUE_RADIUS := 2.0
 const TRAP_SYNC_INTERVAL := 0.1
 
@@ -70,8 +60,7 @@ const STARTING_ITEMS := {
 	"Tank": Type.BOMB, "Visioner": Type.INTEL_SAT, "Runner": Type.BOMB, "Sniper": Type.FLASH, "Medic": Type.HEAL,
 }
 ## Medic sağlığı takım arkadaşına da verebilir: nişan noktasına en yakın, yaralı, menzildeki takım arkadaşı
-const MEDIC_HEAL_RANGE := 6.0      # Medic'e uzaklık
-const MEDIC_AIM_RADIUS := 2.5      # nişan noktasına uzaklık
+## (Medic'e uzaklık "heal_medic_range", nişana uzaklık "heal_medic_aim" — PowerTrees)
 
 const USE_KEY := KEY_Q
 ## Test modu: editörden/debug build'den çalıştırınca açık (F1-F5, bkz _handle_test_key). false yapılırsa tamamen kapanır.
@@ -93,6 +82,9 @@ var reveal_until: Dictionary = {}
 ## Host + client: id → Trap node (ground-placed; tetiklenme/kurtarma host _process'te hesaplanır)
 var _traps: Dictionary = {}
 var _trap_sync_timer := 0.0
+
+## Yerel: "Radar Örtüsü" sis bulutları — içlerindekiler uydu haritasında çizilmez (Minimap hidden_from_satellite)
+var _radar_smokes: Array[Dictionary] = []   # {pos, radius, from, until} (sn)
 
 var _points: Array[Vector3] = []
 var _next_id := 1
@@ -127,8 +119,8 @@ func set_points(points: Array[Vector3]) -> void:
 func _process(delta: float) -> void:
 	if NetworkManager.is_host() and GameManager.state == GameManager.State.IN_GAME:
 		_update_traps(delta)
-	if not NetworkManager.is_host() or GameManager.state != GameManager.State.IN_GAME or _points.is_empty():
-		return
+	if not NetworkManager.is_host() or GameManager.state != GameManager.State.IN_GAME or not GameManager.match_live or _points.is_empty():
+		return  # maç başlamadan (yükleme beklemesi) güç doğmaz
 	_spawn_timer -= delta
 	if _spawn_timer > 0.0:
 		return
@@ -169,7 +161,7 @@ func _update_traps(delta: float) -> void:
 					continue
 				if _team_of(pid) == trap.team_id:
 					continue  # kendi takımı tetikleyemez
-				if (pl as Node3D).global_position.distance_to(pos) <= TRAP_TRIGGER_RADIUS:
+				if (pl as Node3D).global_position.distance_to(pos) <= trap.trigger_radius:
 					_trap_trigger_rpc.rpc(id, pid)
 					break
 		else:
@@ -180,7 +172,7 @@ func _update_traps(delta: float) -> void:
 			trap._dot_timer += delta
 			if trap._dot_timer >= 1.0:
 				trap._dot_timer -= 1.0
-				(trapped as Node).take_damage(TRAP_DOT_DAMAGE, trap.owner_peer, 1)  # kill tuzağı koyana
+				(trapped as Node).take_damage(trap.dot_damage, trap.owner_peer, 1)  # kill tuzağı koyana
 			var rescuer := -1
 			var pos: Vector3 = (trap as Node3D).global_position
 			var trapped_team := _team_of(trap.trapped_peer)
@@ -194,7 +186,7 @@ func _update_traps(delta: float) -> void:
 					rescuer = pid
 					break
 			if rescuer != -1:
-				trap.rescue_ratio = minf(trap.rescue_ratio + delta / TRAP_RESCUE_TIME, 1.0)
+				trap.rescue_ratio = minf(trap.rescue_ratio + delta / trap.rescue_time, 1.0)
 			else:
 				trap.rescue_ratio = 0.0
 			if trap.rescue_ratio >= 1.0:
@@ -205,7 +197,7 @@ func _update_traps(delta: float) -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
-	if k == null or not k.pressed or k.echo or ChatBox.is_typing:
+	if k == null or not k.pressed or k.echo or ChatBox.is_typing or not GameManager.match_live:
 		return
 	if TEST_MODE and _handle_test_key(k.physical_keycode):
 		get_viewport().set_input_as_handled()
@@ -225,7 +217,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 # ─────────────────────────────────────────────
 #  TEST MODU (sadece debug build — editörden çalıştırınca; dışa aktarılmış oyunda kapalı)
-#  1 bomba · 2 sağlık · 3 uydu · 4 takım uydusu · 6 flaş · 8 sis · 9 tuzak → doğrudan envantere (slot doluysa değiştirir)
+#  1 bomba · 2 sağlık · 3 uydu · 6 flaş · 8 sis · 9 tuzak → doğrudan envantere (slot doluysa değiştirir)
 #  7 → kart + kapı konumunu göster/gizle (yerel, minimap + 3D)
 #  5 → önüne rastgele bir güç doğur (yerden almayı denemek için)
 #  0 → önüne DÜŞMAN tuzağı kur (takımsız, team -1 — üstüne basıp yakalanmayı tek başına denemek için)
@@ -233,7 +225,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 ## Rakam tuşları — F tuşları KULLANILMAZ: oyun editör içinde çalışırken F1 yardım, F5 çalıştır, F6 sahne, F7 duraklat,
 ## F8 DURDUR (oyunu kapatıyordu!) editör kısayolları.
-const TEST_KEYS := {KEY_1: Type.BOMB, KEY_2: Type.HEAL, KEY_3: Type.INTEL_SAT, KEY_4: Type.ENEMY_SAT, KEY_6: Type.FLASH, KEY_8: Type.SMOKE, KEY_9: Type.TRAP}
+const TEST_KEYS := {KEY_1: Type.BOMB, KEY_2: Type.HEAL, KEY_3: Type.INTEL_SAT, KEY_6: Type.FLASH, KEY_8: Type.SMOKE, KEY_9: Type.TRAP}
 const TEST_KEY_SPAWN := KEY_5          # önüne rastgele güç
 const TEST_KEY_OBJECTIVES := KEY_7     # kart + kapı göster/gizle
 const TEST_KEY_ENEMY_TRAP := KEY_0     # önüne düşman tuzağı
@@ -486,35 +478,72 @@ func _request_use(aim: Vector3) -> void:
 		return
 	_set_item_rpc.rpc(peer, NONE)
 	var team := _team_of(peer)
+	var m := _m(peer)
 	match type:
 		Type.HEAL:
-			var target: Node = player
-			if player.character_type == "Medic":
-				target = _medic_heal_target(peer, team, player as Node3D, aim)
-			target.health = minf(target.health + HEAL_AMOUNT, target.max_health)
-			target._sync_health.rpc(target.health)
-			if target != player:
-				_medic_heal_rpc.rpc(peer, target.peer_id)
+			_use_heal(peer, team, player, aim, m)
 		Type.BOMB:
 			_throw_bomb(peer, team, player as Node3D, aim, false)
 		Type.FLASH:
 			_throw_bomb(peer, team, player as Node3D, aim, true)
 		Type.SMOKE:
 			_throw_bomb(peer, team, player as Node3D, aim, false, true)
-		Type.INTEL_SAT:
-			# Tüm oyuncular + kart taşıyıcı (kart/kapı konumu GÖSTERİLMEZ) — Minimap._draw_satellite_reveals
-			_reveal_rpc.rpc(team, "all_players", INTEL_DURATION, peer)
-		Type.ENEMY_SAT:
-			_reveal_rpc.rpc(team, "enemies", ENEMY_SAT_DURATION, peer)
+		Type.INTEL_SAT, Type.ENEMY_SAT:
+			# Tek uydu: tüm takımların oyuncuları + kart taşıyıcı (kart/kapı konumu GÖSTERİLMEZ) — Minimap._draw_satellite_reveals
+			_reveal_rpc.rpc(team, "all_players", float(m["sat_duration"]), peer)
 		Type.TRAP:
 			_place_trap(peer, team, player as Node3D)
 
 
-## Medic: nişan noktasına en yakın yaralı takım arkadaşı (Medic'e ≤ MEDIC_HEAL_RANGE, nişana ≤ MEDIC_AIM_RADIUS).
+## Kullananın güç ağacı değerleri (PowerTrees.BASE + açılmış düğümler)
+func _m(peer: int) -> Dictionary:
+	return POWER_TREES.mods_for(peer)
+
+
+## Sağlık (host): Medic hedef seçer; kritik canda "Acil Müdahale" çarpanı, "Yenilenme" ek can 4 sn'ye yayılır,
+## "Grup Şifası" iyileştirilenin yakınındaki takım arkadaşlarına oranında verir.
+func _use_heal(peer: int, team: int, player: Node, aim: Vector3, m: Dictionary) -> void:
+	var target: Node = player
+	if player.character_type == "Medic":
+		target = _medic_heal_target(peer, team, player as Node3D, aim, m)
+	var amount: float = m["heal_amount"]
+	if target.health < target.max_health * HEAL_CRITICAL_RATIO:
+		amount *= float(m["heal_critical"])
+	_heal(target, amount)
+	if float(m["heal_regen"]) > 0.0:
+		_heal_over_time(target, float(m["heal_regen"]))
+	if float(m["heal_group"]) > 0.0:
+		for pid: int in GameManager.active_players:
+			var pl: Variant = GameManager.active_players[pid]
+			if pl == null or not is_instance_valid(pl) or pl == target or pl.is_dead or _team_of(pid) != team:
+				continue
+			if (pl as Node3D).global_position.distance_to((target as Node3D).global_position) <= HEAL_GROUP_RADIUS:
+				_heal(pl, amount * float(m["heal_group"]))
+	if target != player:
+		_medic_heal_rpc.rpc(peer, target.peer_id, int(round(amount)))
+
+
+func _heal(target: Node, amount: float) -> void:
+	if target.is_dead or target.health >= target.max_health:
+		return
+	target.health = minf(target.health + amount, target.max_health)
+	target._sync_health.rpc(target.health)
+
+
+func _heal_over_time(target: Node, total: float) -> void:
+	var ticks := int(HEAL_REGEN_TIME)
+	for i in ticks:
+		await get_tree().create_timer(1.0).timeout
+		if not is_instance_valid(self) or not is_instance_valid(target):
+			return
+		_heal(target, total / ticks)
+
+
+## Medic: nişan noktasına en yakın yaralı takım arkadaşı (Medic'e ≤ heal_medic_range, nişana ≤ heal_medic_aim).
 ## Nişanda kimse yoksa: Medic yaralıysa kendisi, değilse menzildeki en yaralı takım arkadaşı, o da yoksa kendisi.
-func _medic_heal_target(peer: int, team: int, medic: Node3D, aim: Vector3) -> Node:
+func _medic_heal_target(peer: int, team: int, medic: Node3D, aim: Vector3, m: Dictionary) -> Node:
 	var aimed: Node = null
-	var aimed_d := MEDIC_AIM_RADIUS
+	var aimed_d: float = m["heal_medic_aim"]
 	var weakest: Node = null
 	var weakest_ratio := 1.0
 	for pid: int in GameManager.active_players:
@@ -524,7 +553,7 @@ func _medic_heal_target(peer: int, team: int, medic: Node3D, aim: Vector3) -> No
 		if pl.health >= pl.max_health:
 			continue
 		var pos := (pl as Node3D).global_position
-		if pos.distance_to(medic.global_position) > MEDIC_HEAL_RANGE:
+		if pos.distance_to(medic.global_position) > float(m["heal_medic_range"]):
 			continue
 		var d := Vector2(pos.x - aim.x, pos.z - aim.z).length()
 		if d <= aimed_d:
@@ -542,23 +571,25 @@ func _medic_heal_target(peer: int, team: int, medic: Node3D, aim: Vector3) -> No
 
 
 @rpc("authority", "call_local", "reliable")
-func _medic_heal_rpc(medic_peer: int, target_peer: int) -> void:
+func _medic_heal_rpc(medic_peer: int, target_peer: int, amount: int) -> void:
 	var me := NetworkManager.get_local_id()
 	var medic_name: String = NetworkManager.players.get(medic_peer, {}).get("name", "?")
 	var target_name: String = NetworkManager.players.get(target_peer, {}).get("name", "?")
 	var col: Color = INFO[Type.HEAL]["color"]
 	if me == medic_peer:
-		notice.emit(tr("✚ %s iyileştirildi (+%d)") % [target_name, int(HEAL_AMOUNT)], col)
+		notice.emit(tr("✚ %s iyileştirildi (+%d)") % [target_name, amount], col)
 		GameManager.gain_xp(GameManager.XP_HEAL_ALLY, "Takım arkadaşı iyileştirildi")
 	elif me == target_peer:
 		notice.emit(tr("✚ MEDIC %s seni iyileştirdi") % medic_name, col)
 
 
 func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool, smoke: bool = false) -> void:
+	var m := _m(peer)
+	var max_throw: float = m["flash_throw"] if flash else (m["smoke_throw"] if smoke else m["bomb_throw"])
 	var from := player.global_position + Vector3(0, 1.2, 0)
 	var flat := Vector3(aim.x - from.x, 0.0, aim.z - from.z)
-	if flat.length() > BOMB_MAX_THROW:
-		flat = flat.normalized() * BOMB_MAX_THROW
+	if flat.length() > max_throw:
+		flat = flat.normalized() * max_throw
 	var target := Vector3(from.x + flat.x, 0.15, from.z + flat.z)
 	# Duvara çarparsa duvarın önüne düşer
 	var space := player.get_world_3d().direct_space_state
@@ -576,7 +607,9 @@ func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool
 
 
 func _detonate_later(peer: int, team: int, pos: Vector3) -> void:
-	await get_tree().create_timer(BOMB_FLIGHT + BOMB_FUSE).timeout
+	var m := _m(peer)
+	var radius: float = m["bomb_radius"]
+	await get_tree().create_timer(float(m["bomb_flight"]) + float(m["bomb_fuse"])).timeout
 	if not is_instance_valid(self) or GameManager.state != GameManager.State.IN_GAME:
 		return
 	var space := (get_parent() as Node3D).get_world_3d().direct_space_state
@@ -589,14 +622,14 @@ func _detonate_later(peer: int, team: int, pos: Vector3) -> void:
 			continue  # dost ateşi / kendine hasar yok
 		var target_pos := (pl as Node3D).global_position + Vector3(0, 0.9, 0)
 		var d := center.distance_to(target_pos)
-		if d > BOMB_RADIUS:
+		if d > radius:
 			continue
 		# Duvar arkası korunur (oyuncuları yok say, sadece duvar/zemin)
 		var q := PhysicsRayQueryParameters3D.create(center, target_pos, 1)
 		q.exclude = _player_rids()
 		if not space.intersect_ray(q).is_empty():
 			continue
-		var dmg := BOMB_DAMAGE * lerpf(1.0, 0.35, d / BOMB_RADIUS)
+		var dmg := BOMB_DAMAGE * lerpf(1.0, float(m["bomb_edge"]), d / radius)
 		pl.take_damage(dmg, peer, 1)  # Player.DAMAGE_EXPLOSION — çömelme bombadan korumaz
 
 
@@ -614,38 +647,69 @@ func _bomb_rpc(_id: int, from: Vector3, target: Vector3, team: int, thrower: int
 	var pl: Variant = GameManager.active_players.get(thrower)
 	if pl != null and is_instance_valid(pl) and pl.has_method("play_action"):
 		pl.play_action(1)  # Player.Action.TOSS
+	# Atanın güç ağacı değerleri — her peer aynı players listesinden aynı sonucu bulur (RPC'ye ek alan gerekmez)
+	var m := _m(thrower)
 	var bomb: Node3D = BOMB_SCRIPT.new()
 	bomb.is_flash = flash
 	bomb.is_smoke = smoke
-	bomb.smoke_radius = SMOKE_RADIUS
-	bomb.smoke_duration = SMOKE_DURATION
-	var fuse := FLASH_FUSE if flash else (SMOKE_FUSE if smoke else BOMB_FUSE)
-	bomb.setup(from, target, BOMB_FLIGHT, fuse, BOMB_RADIUS, TeamManager.get_color(team))
-	bomb.exploded.connect(_on_bomb_exploded)
+	bomb.smoke_radius = m["smoke_radius"]
+	bomb.smoke_duration = m["smoke_duration"]
+	var flight: float = m["bomb_flight"] if not flash and not smoke else 0.55
+	var fuse: float = m["flash_fuse"] if flash else (m["smoke_fuse"] if smoke else m["bomb_fuse"])
+	bomb.setup(from, target, flight, fuse, m["bomb_radius"], TeamManager.get_color(team))
+	bomb.exploded.connect(_on_bomb_exploded.bind(thrower, team))
 	get_parent().add_child(bomb)
+	if smoke and float(m["smoke_radar"]) > 0.0:
+		var now := Time.get_ticks_msec() / 1000.0
+		var start := now + flight + fuse
+		_radar_smokes.append({"pos": target, "radius": float(m["smoke_radius"]), "from": start,
+			"until": start + float(m["smoke_duration"]) + SMOKE_FADE * 0.5})
+
+
+## HUD kurtarma barı: yakalanmış oyuncunun tuzağının kurtarma süresi (koyanın "Sıkı Kenet" düğümüne göre)
+func trap_rescue_time(trapped_peer: int) -> float:
+	for trap: Variant in _traps.values():
+		if is_instance_valid(trap) and trap.trapped_peer == trapped_peer:
+			return trap.rescue_time
+	return float(POWER_TREES.BASE["trap_rescue"])
+
+
+## "Radar Örtüsü": bu konum aktif bir radar sisinin içinde mi (Minimap uydu çizimi sorar — yerel)
+func hidden_from_satellite(pos: Vector3) -> bool:
+	if _radar_smokes.is_empty():
+		return false
+	var now := Time.get_ticks_msec() / 1000.0
+	_radar_smokes = _radar_smokes.filter(func(s: Dictionary) -> bool: return now < float(s["until"]))
+	for s: Dictionary in _radar_smokes:
+		if now >= float(s["from"]) and Vector2(pos.x - s["pos"].x, pos.z - s["pos"].z).length() <= float(s["radius"]):
+			return true
+	return false
 
 
 ## Patlamanın yerel oyuncuya etkisi (her peer kendisi için, sadece görsel):
 ##  bomba → yakınlığa göre ekran sarsıntısı (hasar/kırmızılık host'tan _sync_health ile gelir)
-##  flaş  → görüş hattı varsa mesafe + bakış yönüne göre körlük (flashed sinyali → HUD), hafif sarsıntı
-func _on_bomb_exploded(pos: Vector3, flash: bool) -> void:
+##  flaş  → görüş hattı varsa mesafe + bakış yönüne göre körlük (flashed sinyali → HUD), hafif sarsıntı.
+##          Atanın ağacı: yarıçap, şiddet, kendine ("Göz Kırpma") / takımına ("Dost Uyarısı") körlük çarpanı.
+func _on_bomb_exploded(pos: Vector3, flash: bool, thrower: int, thrower_team: int) -> void:
 	var me := _local_player()
 	if me == null or me.is_dead:
 		return
+	var m := _m(thrower)
 	var my_pos := (me as Node3D).global_position
 	var d := Vector2(my_pos.x - pos.x, my_pos.z - pos.z).length()
 	var cam := get_viewport().get_camera_3d()
 	if not flash:
 		var shake := clampf(1.0 - d / BOMB_SHAKE_RANGE, 0.0, 1.0)
-		if d < BOMB_RADIUS:
+		if d < float(m["bomb_radius"]):
 			shake = maxf(shake, 0.9)
 		if shake > 0.0 and cam and cam.has_method("add_trauma"):
 			cam.add_trauma(shake * 0.85)
 		return
 
+	var flash_radius: float = m["flash_radius"]
 	if cam and cam.has_method("add_trauma"):
-		cam.add_trauma(clampf(1.0 - d / FLASH_RADIUS, 0.0, 1.0) * 0.3)
-	if d > FLASH_RADIUS:
+		cam.add_trauma(clampf(1.0 - d / flash_radius, 0.0, 1.0) * 0.3)
+	if d > flash_radius:
 		return
 	# Duvar arkasındaysa etkilenmez
 	var eye := my_pos + Vector3(0, 1.5, 0)
@@ -658,8 +722,12 @@ func _on_bomb_exploded(pos: Vector3, flash: bool) -> void:
 	var fwd := -(me as Node3D).global_transform.basis.z
 	var to_flash := Vector3(pos.x - my_pos.x, 0, pos.z - my_pos.z)
 	var facing := 1.0 if to_flash.length() < 0.5 else (Vector3(fwd.x, 0, fwd.z).normalized().dot(to_flash.normalized()) + 1.0) * 0.5
-	var strength := pow(1.0 - d / FLASH_RADIUS, 0.6) * lerpf(0.35, 1.0, facing)
-	flashed.emit(strength)
+	var strength := pow(1.0 - d / flash_radius, 0.6) * lerpf(0.35, 1.0, facing) * float(m["flash_strength"])
+	if NetworkManager.get_local_id() == thrower:
+		strength *= float(m["flash_self"])
+	elif _local_team() == thrower_team:
+		strength *= float(m["flash_team"])
+	flashed.emit(strength)  # "Derin Körlük" 1.0'ı aşabilir → HUD körlüğü daha uzun tutar
 
 
 @rpc("authority", "call_local", "reliable")

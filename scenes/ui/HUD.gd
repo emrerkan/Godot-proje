@@ -102,6 +102,8 @@ func _ready() -> void:
 	GameManager.kill_happened.connect(_on_kill_happened)
 	GameManager.local_player_spawned.connect(_on_local_player_spawned)
 	GameManager.xp_gained.connect(_on_xp_gained)
+	GameManager.warmup_status.connect(_on_warmup_status)
+	GameManager.game_started.connect(_on_match_started)
 
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -584,7 +586,7 @@ func _setup_test_hint() -> void:
 	box.add_theme_constant_override("separation", 2)
 	chip.add_child(box)
 	box.add_child(UITheme.label("TEST MODU", 9, UITheme.ACCENT, UITheme.font_caps))
-	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu   4 Takım uydusu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "5 Önüne güç doğur   Q Kullan"]:
+	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "5 Önüne güç doğur   Q Kullan"]:
 		box.add_child(UITheme.label(line, 11, UITheme.TEXT_DIM))
 	_ignore_mouse_recursive(chip)
 
@@ -1031,12 +1033,32 @@ func _refresh_scoreboard() -> void:
 #  Kart / hedef + uyarı bandı
 # ─────────────────────────────────────────────
 
+## Isınma (diğer oyuncuların yüklemesi bekleniyor): GameManager._load_status_rpc → n/N + kalan süre
+var _warmup_text := ""
+
+
+func _on_warmup_status(loaded: int, total: int, seconds_left: int) -> void:
+	_warmup_text = tr("ISINMA  ·  %d/%d OYUNCU HAZIR  ·  EN FAZLA %d:%02d") % [loaded, total, seconds_left / 60, seconds_left % 60]
+	_update_objective()
+
+
+func _on_match_started() -> void:
+	var was_warmup := not _warmup_text.is_empty()   # migration'da da game_started gelir — orada bant yok
+	_warmup_text = ""
+	_update_objective()
+	if was_warmup:
+		_show_banner("▶  MAÇ BAŞLADI  ·  KARTI BUL", UITheme.SUCCESS)
+
+
 func _update_objective() -> void:
 	var local_id := NetworkManager.get_local_id()
 	var local_team := _get_local_team()
 	var text := ""
 	var col := UITheme.ACCENT
-	if _carrier_peer == -1:
+	if not GameManager.match_live:
+		text = _warmup_text if not _warmup_text.is_empty() else tr("ISINMA  ·  OYUNCULAR BEKLENİYOR")
+		col = UITheme.TEXT
+	elif _carrier_peer == -1:
 		text = tr("◆  KART YERDE  ·  BUL VE AL")
 	elif _carrier_peer == local_id:
 		text = tr("◆  KART SENDE  ·  KAPININ ÇEMBERİNDE %d SN KAL") % int(GameManager.DOOR_UNLOCK_TIME)
@@ -1217,7 +1239,7 @@ func _on_trap_rescue_changed(trapped_peer: int, ratio: float, _rescuer_peer: int
 		return
 	_trap_bar_target = pl as Node3D
 	var trapped_name: String = tr("SEN") if trapped_peer == NetworkManager.get_local_id() else NetworkManager.players.get(trapped_peer, {}).get("name", "?")
-	_trap_bar_lbl.text = tr("KURTARILIYOR · %s · %.1f sn") % [trapped_name, (1.0 - ratio) * _powerups.TRAP_RESCUE_TIME]
+	_trap_bar_lbl.text = tr("KURTARILIYOR · %s · %.1f sn") % [trapped_name, (1.0 - ratio) * _powerups.trap_rescue_time(trapped_peer)]
 	_trap_bar_fill.value = ratio
 	_trap_bar.visible = true
 	_update_trap_bar_position()

@@ -1,7 +1,7 @@
 78098b89c88a74ebe8c20117b8754620
-::res://::1793379142
-CLAUDE.md::TextFile::-1::1793379142::0::1::::<><><>0<>0<><>::
-default_env.tres::Environment::6696662647191849165::1793378095::0::1::::<><><>0<>0<><>::
+::res://::1793396213
+CLAUDE.md::TextFile::-1::1793379969::0::1::::<><><>0<>0<><>::
+default_env.tres::Environment::6696662647191849165::1793383116::0::1::::<><><>0<>0<><>::
 DOKUMANTASYON.md::TextFile::-1::1793201239::0::1::::<><><>0<>0<><>::
 icon.svg::CompressedTexture2D::3864269300686135935::1791462691::1791898819::1::::<><><>0<>0<>e6b9b2ed665b320379262aa861e8dd4f<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
 OYUN_TASARIM_DOKUMANI.md::TextFile::-1::1792936734::0::1::::<><><>0<>0<><>::
@@ -26,7 +26,7 @@ tesst.txt::TextFile::-1::1792259053::0::1::::<><><>0<>0<><>::
 ::res://addons/godot_mcp/Runtime/Tools/::1791898624
 ::res://addons/godot_mcp/tools/::1791898627
 ::res://addons/godot_mcp/ui/::1791898627
-::res://anims/::1793378733
+::res://anims/::1793379178
 Backflip.fbx::PackedScene::9204392349169328720::1793377632::1793377732::1::::<><><>0<>0<>f365faea53271365cedb6ee3a8484822<>res://.godot/imported/Backflip.fbx-5b51e5fab309ceeecbf4f899fef8b1f3.scn::
 Breathing Idle.fbx::PackedScene::6540072514156262424::1791454023::1791898819::1::::<><><>0<>0<>2a113c6b45ac1bff9ee730219903fb24<>res://.godot/imported/Breathing Idle.fbx-00ee10aea8c4798d7675b9b9b440ad62.scn::
 Dying.fbx::PackedScene::6100011304237600514::1792097320::1792098638::1::::<><><>0<>0<>d9f95c0613572ad08a35bf726e500698<>res://.godot/imported/Dying.fbx-eb1c0876693d705bef67ae941daa16fb.scn::
@@ -552,19 +552,19 @@ SurvivalistModel.tscn::PackedScene::6045315616388497817::1792005321::0::1::::<><
 UpperBodyLayer.gd::GDScript::4573514956204456354::1792098399::0::1::::<>SkeletonModifier3D<><>0<>0<><>::
 ::res://scenes/profile/::1793301020
 PlayerProfile.gd::GDScript::7495841198915662343::1793301020::0::1::::PlayerProfile<>RefCounted<><>0<>0<><>::
-::res://scenes/settings/::1793379110
+::res://scenes/settings/::1793382804
 FpsCounter.gd::GDScript::4647926397458315530::1793109971::0::1::::<>CanvasLayer<><>0<>0<><>::
 GameSettings.gd::GDScript::2415301790995857930::1793300826::0::1::::GameSettings<>RefCounted<><>0<>0<><>::
 Lang.gd::GDScript::8106666341045231932::1793300822::0::1::::<>RefCounted<><>0<>0<><>::
-LangEN.gd::GDScript::4404694485949967786::1793379110::0::1::::<>RefCounted<><>0<>0<><>::
-::res://scenes/ui/::1793379109
+LangEN.gd::GDScript::4404694485949967786::1793382804::0::1::::<>RefCounted<><>0<>0<><>::
+::res://scenes/ui/::1793382831
 BlurBackdrop.gdshader::Shader::7215197929924138539::1792161122::0::1::::<><><>0<>0<><>::
 canvas_ui_loading_beam.gdshader::Shader::8617304694960081958::1793302146::0::1::::<><><>0<>0<><>::
 CharacterSelect.gd::GDScript::8797244693588930917::1793300997::0::1::::<>Control<><>0<>0<><>::
 CharacterSelect.tscn::PackedScene::5265227833291186888::1791462691::0::1::::<><><>0<>0<><>::res://scenes/ui/CharacterSelect.gd
 ChatBox.gd::GDScript::4992965310883462549::1793301110::0::1::::ChatBox<>PanelContainer<><>0<>0<><>::
 Crosshair.gd::GDScript::7026228812099379399::1793371116::0::1::::<>Control<><>0<>0<><>::
-HUD.gd::GDScript::8879953225524299369::1793379109::0::1::::<>CanvasLayer<><>0<>0<><>::
+HUD.gd::GDScript::8879953225524299369::1793379967::0::1::::<>CanvasLayer<><>0<>0<><>::
 HUD.tscn::PackedScene::344922376::1791902497::0::1::::<><><>0<>0<><>::res://scenes/ui/HUD.gd
 LoadingScreen.gd::GDScript::2537174481377333505::1793302144::0::1::::<>CanvasLayer<><>0<>0<><>::
 Lobby.gd::GDScript::4296871368415808814::1793301158::0::1::::<>Control<><>0<>0<><>::
@@ -576,7 +576,7 @@ MenuBackground3D.gd::GDScript::3928217606991327291::1793110141::0::1::::<>Textur
 MenuFloor.gdshader::Shader::1612001672391569187::1793108880::0::1::::<><><>0<>0<><>::
 MenuOverlay.gdshader::Shader::1917707799597340858::1793109218::0::1::::<><><>0<>0<><>::
 Minimap.gd::GDScript::469848642242604473::1793301037::0::1::::<>Control<><>0<>0<><>::
-SettingsWindow.gd::GDScript::5973615292798000246::1793301205::0::1::::<>Control<><>0<>0<><>::
+SettingsWindow.gd::GDScript::5973615292798000246::1793382831::0::1::::<>Control<><>0<>0<><>::
 SharpViewport.gd::GDScript::6302344673585518953::1792935663::0::1::::<>TextureRect<><>0<>0<><>::
 UITheme.gd::GDScript::8308980242542175942::1793110091::0::1::::UITheme<>RefCounted<><>0<>0<><>::
 UpgradePage.gd::GDScript::2551666789966317583::1793301015::0::1::::<>VBoxContainer<><>0<>0<><>::

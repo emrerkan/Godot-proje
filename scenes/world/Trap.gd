@@ -11,6 +11,12 @@ const PROXIMITY_SCRIPT := preload("res://scenes/world/ProximityReveal.gd")
 var id := 0
 var team_id := -1          # tuzağı koyan takım (bu takım tetikleyemez)
 var owner_peer := -1       # tuzağı koyan oyuncu — tuzak hasarıyla gelen kill ona yazılır
+## Koyanın güç ağacından (PowerTrees "trap_*") — her peer aynı players listesinden aynı değeri hesaplar
+var trigger_radius := 0.9
+var dot_damage := 12.0
+var rescue_time := 4.0
+var reveal_far := 5.0
+var reveal_near := 2.0
 var armed := true
 var trapped_peer := -1
 var rescue_ratio := 0.0
@@ -27,6 +33,12 @@ func setup(manager: Node, p_id: int, p_team: int, p_owner: int) -> void:
 	id = p_id
 	team_id = p_team
 	owner_peer = p_owner
+	var m: Dictionary = manager.POWER_TREES.mods_for(p_owner)
+	trigger_radius = m["trap_trigger"]
+	dot_damage = m["trap_dot"]
+	rescue_time = m["trap_rescue"]
+	reveal_far = m["trap_reveal_far"]
+	reveal_near = m["trap_reveal_near"]
 
 
 ## Yakından fark edilsin diye: parlak metal (flaşör ışığında gözükür) + çene kenarlarında ince kehribar
@@ -92,8 +104,8 @@ func _ready() -> void:
 	add_child(light)
 
 	var reveal := PROXIMITY_SCRIPT.new()
-	reveal.reveal_far = _manager.TRAP_REVEAL_FAR if _manager else 2.6
-	reveal.reveal_near = _manager.TRAP_REVEAL_NEAR if _manager else 1.3
+	reveal.reveal_far = reveal_far
+	reveal.reveal_near = reveal_near
 	reveal.mesh_hidden_when_far = true
 	add_child(reveal)
 
