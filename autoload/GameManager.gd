@@ -12,7 +12,8 @@ signal card_dropped(drop_pos: Vector3, carrier_team_id: int)
 signal kill_happened(killer_peer_id: int, victim_peer_id: int, method: int)
 signal xp_gained(amount: int, reason: String)  # yerel oyuncu XP kazandı (HUD "+100 XP")
 signal door_unlock_changed(ratio: float, carrier_peer_id: int)  # kapı kilidi ilerlemesi (Door.gd + HUD)
-signal warmup_status(loaded: int, total: int, seconds_left: int)  # ısınma: kaç oyuncu yüklendi (HUD hedef çipi)
+## ısınma: kaç oyuncu yüklendi (HUD hedef çipi); countdown >= 0 → herkes hazır, maç bu kadar sn sonra başlıyor
+signal warmup_status(loaded: int, total: int, seconds_left: int, countdown: int)
 
 ## ─── Kapı kilidi ───
 ## Kart taşıyıcısı kapının çevresindeki çemberde (DOOR_UNLOCK_RADIUS) DOOR_UNLOCK_TIME sn kalırsa kazanır.
@@ -52,10 +53,13 @@ const RETURN_TO_LOBBY_DELAY := 5.0    # maç bitince lobiye otomatik dönüş (H
 ## ─── Yükleme bekleme + ISINMA (CS tarzı) ───
 ## Herkes haritayı yükleyip kendi oyuncusunu doğurunca host'a bildirir (_peer_loaded) ve perdesi kalkar: yüklenen oyuncu
 ## haritada serbestçe dolaşır (ısınma — hasar yok, kart/kapı/güç yok, XP yok; HUD hedef çipi "n/N oyuncu hazır · süre").
-## Maç, HERKES yüklenince _match_go_rpc ile aynı anda başlar: herkes kendi spawn'ına ışınlanır (can/mermi/dayanıklılık dolu).
-## LOAD_WAIT_MAX sn sonunda yüklenemeyenler atılır, maç kalanlarla başlar.
+## HERKES yüklenince ısınma hemen bitmez: MATCH_COUNTDOWN sn geri sayım (herkes hazırlansın), sonra _match_go_rpc ile aynı
+## anda başlar: herkes kendi spawn'ına ışınlanır (can/mermi/dayanıklılık dolu).
+## LOAD_WAIT_MAX sn sonunda yüklenemeyenler atılır, geri sayım kalanlarla başlar.
 const LOAD_WAIT_MAX := 120.0
 const LOAD_STATUS_INTERVAL := 0.5
+const MATCH_COUNTDOWN := 10.0
+var _countdown_left := -1.0           # host: < 0 = geri sayım başlamadı
 var match_live := false               # tüm peer'larda: maç gerçekten başladı mı (Player/PowerupManager okur)
 var menu_notice := ""                 # ana menüde gösterilecek tek seferlik mesaj (yükleme süresi aşımıyla atılma)
 var _local_loaded := false
@@ -160,6 +164,7 @@ func _begin_actual_game_rpc() -> void:
 		_loaded_peers.clear()
 		_load_wait_left = LOAD_WAIT_MAX
 		_load_status_timer = 0.0
+		_countdown_left = -1.0
 	# Sahne HEMEN değişir (geç kalan peer başkalarının spawn RPC'sini eski sahnede kaçırmasın); ağır GLB'yi
 	# ImportedMap iş parçacığında yükler, perde map_ready + kendi oyuncumuz doğana kadar açık kalır.
 	LOADING.open(get_tree(), "YÜKLENİYOR", "Harita hazırlanıyor")
@@ -197,13 +202,24 @@ func _on_peer_loaded(peer_id: int) -> void:
 	_check_all_loaded()
 
 
-## Host: beklenenlerden odada kalan herkes yüklendiyse maçı başlat (yüklerken ayrılan beklenmez)
+## Host: beklenenlerden odada kalan herkes yüklendiyse geri sayımı başlat (yüklerken ayrılan beklenmez)
 func _check_all_loaded() -> void:
-	if not NetworkManager.is_host() or match_live or state != State.IN_GAME:
+	if not NetworkManager.is_host() or match_live or state != State.IN_GAME or _countdown_left >= 0.0:
 		return
 	for pid: int in _expected_loaders:
 		if NetworkManager.players.has(pid) and not _loaded_peers.has(pid):
 			return
+	_start_countdown()
+
+
+func _start_countdown() -> void:
+	_countdown_left = MATCH_COUNTDOWN
+	_load_status_timer = LOAD_STATUS_INTERVAL
+	_send_load_status()
+
+
+## Host: geri sayım bitti → maç herkeste aynı anda başlar
+func _go_all() -> void:
 	if multiplayer.get_peers().is_empty():
 		_match_go_rpc()  # herkes ayrıldı — RPC'siz (bağlı peer yokken rpc hata verir)
 	else:
@@ -219,17 +235,18 @@ func _send_load_status() -> void:
 			total += 1
 			if _loaded_peers.has(pid):
 				loaded += 1
+	var countdown := ceili(_countdown_left) if _countdown_left >= 0.0 else -1
 	if multiplayer.get_peers().is_empty():
-		_load_status_rpc(loaded, total, ceili(_load_wait_left))
+		_load_status_rpc(loaded, total, ceili(_load_wait_left), countdown)
 	else:
-		_load_status_rpc.rpc(loaded, total, ceili(_load_wait_left))
+		_load_status_rpc.rpc(loaded, total, ceili(_load_wait_left), countdown)
 
 
 @rpc("authority", "call_local", "unreliable_ordered")
-func _load_status_rpc(loaded: int, total: int, seconds_left: int) -> void:
+func _load_status_rpc(loaded: int, total: int, seconds_left: int, countdown: int) -> void:
 	if match_live or not _local_loaded:
 		return  # kendi yüklemesi bitmeyenin perdesi "Harita hazırlanıyor" kalır
-	warmup_status.emit(loaded, total, seconds_left)
+	warmup_status.emit(loaded, total, seconds_left, countdown)
 
 
 ## Süre doldu: yüklenemeyenleri at, maçı kalanlarla başlat
@@ -243,7 +260,7 @@ func _load_timeout() -> void:
 		# ENet zaman aşımı (NetworkManager._relax_timeout, 15-30 s) düşürür. Host'tan disconnect_peer YAPILMAZ:
 		# kibar kesme donmuş peer'da "Unable to send packet" spamı, zorla kesme SceneMultiplayer'ı habersiz bırakıyordu.
 		_kicked_from_match.rpc_id(pid, "Harita yüklemesi çok uzun sürdü — oyundan atıldın")
-	_match_go_rpc.rpc()
+	_start_countdown()
 
 
 ## Host → yüklemeyi bitiremeyen client: menüye dön, sebebi ana menüde göster
@@ -678,8 +695,17 @@ func _process(delta: float) -> void:
 	if not match_live:
 		# Yükleme bekleme: host süreyi sayar, durumu yayar, dolunca yüklenemeyenleri atar
 		if NetworkManager.is_host() and _loaded_peers.has(1):
-			_load_wait_left -= delta
 			_load_status_timer -= delta
+			if _countdown_left >= 0.0:
+				# Herkes hazır: son ısınma saniyeleri
+				_countdown_left -= delta
+				if _countdown_left <= 0.0:
+					_go_all()
+				elif _load_status_timer <= 0.0:
+					_load_status_timer = LOAD_STATUS_INTERVAL
+					_send_load_status()
+				return
+			_load_wait_left -= delta
 			if _load_wait_left <= 0.0:
 				_load_timeout()
 			elif _load_status_timer <= 0.0:

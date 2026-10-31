@@ -1,10 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://bullet_3d_scene"]
 
 [ext_resource type="Script" path="res://scenes/weapons/Bullet.gd" id="1_bullet"]
-
-[sub_resource type="SphereMesh" id="SphereMesh_1"]
-radius = 0.1
-height = 0.2
+[ext_resource type="PackedScene" path="res://asset model/mermiler/Mermi_OyunIci_Tracer_Scale.glb" id="2_model"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_1"]
 radius = 0.12
@@ -16,8 +13,7 @@ monitoring = true
 monitorable = false
 script = ExtResource("1_bullet")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-mesh = SubResource("SphereMesh_1")
+[node name="Model" parent="." instance=ExtResource("2_model")]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("SphereShape3D_1")

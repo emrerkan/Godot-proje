@@ -461,6 +461,9 @@ func _equip_default_weapon() -> void:
 	var weapon_scene := preload("res://scenes/weapons/Weapon.tscn")
 	current_weapon = weapon_scene.instantiate()
 	weapon_holder.add_child(current_weapon)
+	# Mermi eldeki tüfeğin namlusundan çıksın (Weapon/Muzzle gövde ortasında kalıyordu)
+	if _hand_rifle and _hand_rifle.rifle:
+		current_weapon.visual_muzzle = _hand_rifle.rifle.get_node_or_null("Muzzle")
 	if is_local:
 		current_weapon.ammo_changed.connect(
 			func(cur: int, tot: int, rel: bool): emit_signal("ammo_changed", cur, tot, rel)

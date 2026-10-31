@@ -45,6 +45,11 @@ var _room_count_lbl: Label
 # Oda kur
 var _room_name_input: LineEdit
 var _password_input: LineEdit
+var _map_option: OptionButton
+var _map_limit_lbl: Label           # "EN FAZLA 3v3v3v3" (haritanın sınırı)
+var _size_buttons: Array[Button] = []   # 2v2v2v2 … 5v5v5v5 (ButtonGroup)
+var _players_lbl: Label             # "12 OYUNCU"
+var _team_size := 0
 var _host_btn: Button
 
 # Kod ile katıl
@@ -83,6 +88,7 @@ func _notification(what: int) -> void:
 		return
 	_refresh_profile_summary()
 	_refresh_room_list()
+	_update_size_options()
 
 
 func _process(_delta: float) -> void:
@@ -461,7 +467,7 @@ func _build_browse_page() -> Control:
 
 func _build_create_page() -> Control:
 	var page := VBoxContainer.new()
-	page.add_theme_constant_override("separation", 14)
+	page.add_theme_constant_override("separation", 12)
 	page.add_child(UITheme.label("Yeni Oda Kur", 20, UITheme.TEXT, UITheme.font_bold))
 	var info := UITheme.label("Odan yerel ağda yayınlanır. Arkadaşların listeden ya da oda kodunla katılabilir.", 13, UITheme.TEXT_DIM)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -474,6 +480,37 @@ func _build_create_page() -> Control:
 	_room_name_input.focus_entered.connect(func() -> void:
 		_room_name_input.placeholder_text = tr("%s'nin Odası") % _get_player_name(tr("Oyuncu")))
 	page.add_child(_field("ODA ADI", _room_name_input))
+
+	# Harita (tam satır) + format (bölümlü düğmeler). Lobby ODA AYARLARI ile aynı kural: harita takım boyutunu sınırlar
+	_map_option = OptionButton.new()
+	for m: Dictionary in NetworkManager.MAPS:
+		_map_option.add_item(m["name"])
+	_map_option.item_selected.connect(func(_i: int) -> void: _update_size_options())
+	_map_option.custom_minimum_size.y = 44
+	_map_option.clip_text = true
+	_map_limit_lbl = UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	page.add_child(_caption_field("HARİTA", _map_limit_lbl, _map_option))
+
+	var seg := HBoxContainer.new()
+	seg.add_theme_constant_override("separation", 6)
+	var group := ButtonGroup.new()
+	for s in range(NetworkManager.TEAM_SIZE_MIN, NetworkManager.TEAM_SIZE_MAX + 1):
+		var b := Button.new()
+		b.text = NetworkManager.get_format_text(s)
+		b.toggle_mode = true
+		b.button_group = group
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size.y = 40
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_override("font", UITheme.font_mono)
+		b.toggled.connect(func(on: bool) -> void:
+			if on:
+				_select_size(s))
+		seg.add_child(b)
+		_size_buttons.append(b)
+	_players_lbl = UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	page.add_child(_caption_field("FORMAT", _players_lbl, seg))
+	_load_room_prefs()
 
 	_password_input = LineEdit.new()
 	_password_input.placeholder_text = "Boş bırakırsan herkese açık olur"
@@ -705,6 +742,61 @@ func _field(caption: String, input: LineEdit, trailing: Control = null) -> Contr
 	return box
 
 
+## Başlık solda, bilgi etiketi sağda; altında kontrol
+func _caption_field(caption: String, info: Label, control: Control) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	var head := HBoxContainer.new()
+	var cap := UITheme.label(caption, 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(cap)
+	head.add_child(info)
+	box.add_child(head)
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(control)
+	return box
+
+
+func _select_size(size: int) -> void:
+	_team_size = size
+	_players_lbl.text = tr("%d OYUNCU") % (size * NetworkManager.TEAM_COUNT)
+	var b := _size_buttons[size - NetworkManager.TEAM_SIZE_MIN]
+	if not b.button_pressed:
+		b.set_pressed_no_signal(true)
+
+
+## Seçili haritanın kaldıramadığı formatlar kapanır (ör. Karantina Hastanesi en fazla 2v2v2v2); seçim sığmıyorsa kırpılır
+func _update_size_options() -> void:
+	var map_max := NetworkManager.get_map_max_team(NetworkManager.MAPS[_map_option.selected]["id"])
+	for i in _size_buttons.size():
+		_size_buttons[i].disabled = NetworkManager.TEAM_SIZE_MIN + i > map_max
+	_map_limit_lbl.text = "" if map_max >= NetworkManager.TEAM_SIZE_MAX \
+		else tr("EN FAZLA %s") % NetworkManager.get_format_text(map_max)
+	_select_size(mini(_team_size, map_max))
+
+
+## Son kurulan odanın harita/format seçimi hatırlanır (user://settings.cfg [room])
+func _load_room_prefs() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	var map_id: String = cfg.get_value("room", "map", NetworkManager.MAPS[0]["id"])
+	_map_option.select(0)
+	for i in NetworkManager.MAPS.size():
+		if NetworkManager.MAPS[i]["id"] == map_id:
+			_map_option.select(i)
+	_team_size = clampi(int(cfg.get_value("room", "team_size", NetworkManager.TEAM_SIZE_MAX)),
+		NetworkManager.TEAM_SIZE_MIN, NetworkManager.TEAM_SIZE_MAX)
+	_update_size_options()
+
+
+func _save_room_prefs(map_id: String, size: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("room", "map", map_id)
+	cfg.set_value("room", "team_size", size)
+	cfg.save(SETTINGS_PATH)
+
+
 func _make_reveal_button(target: LineEdit) -> Button:
 	var b := Button.new()
 	b.text = "Göster"
@@ -860,9 +952,12 @@ func _on_host_pressed() -> void:
 	if r_name.is_empty():
 		r_name = tr("%s'nin Odası") % player_name
 	_save_name(player_name)
+	var map_id: String = NetworkManager.MAPS[_map_option.selected]["id"]
+	var size := _team_size
+	_save_room_prefs(map_id, size)
 	_set_busy(true)
 	_set_status("Sunucu oluşturuluyor...", "busy")
-	NetworkManager.create_server(player_name, r_name, _password_input.text)
+	NetworkManager.create_server(player_name, r_name, _password_input.text, {"map": map_id, "team_size": size})
 
 
 func _on_code_text_changed(new_text: String) -> void:

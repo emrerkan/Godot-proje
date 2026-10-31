@@ -90,7 +90,8 @@ var _chat_last_ms: Dictionary = {}
 # Sunucu / İstemci Kurulum
 # ─────────────────────────────────────────────
 
-func create_server(player_name: String, p_room_name: String = "", p_password: String = "") -> void:
+## p_settings: MainMenu ODA KUR'da seçilen {map, team_size} (yayına ilk andan itibaren doğru girsin diye kurulumda)
+func create_server(player_name: String, p_room_name: String = "", p_password: String = "", p_settings: Dictionary = {}) -> void:
 	local_player_name = player_name
 	room_name         = p_room_name
 	_room_password    = p_password
@@ -108,6 +109,10 @@ func create_server(player_name: String, p_room_name: String = "", p_password: St
 	players[1] = { "name": local_player_name, "team_id": -1, "is_ready": false, "powers": PROFILE.get_powers() }
 	room_settings = _default_settings()
 	room_settings["has_password"] = not p_password.is_empty()
+	if p_settings.has("map"):
+		room_settings["map"] = get_map_info(String(p_settings["map"]))["id"]
+	if p_settings.has("team_size"):
+		room_settings["team_size"] = clampi(int(p_settings["team_size"]), TEAM_SIZE_MIN, get_map_max_team())
 	RoomManager.create_room(p_room_name, p_password)
 	emit_signal("server_created")
 	emit_signal("player_list_updated")

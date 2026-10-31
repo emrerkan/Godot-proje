@@ -31,6 +31,18 @@ func initialize(
 	shooter_peer_id = peer_id
 	shooter_team_id = team_id
 	max_distance = p_max_distance
+	# Model (Mermi_OyunIci_Tracer_Scale.glb) ucu -Z'ye bakar → uçuş yönüne çevir
+	if direction.length_squared() > 0.0001:
+		global_basis = Basis.looking_at(direction, Vector3.UP)
+	_disable_shadows(self)
+
+
+## El feneri mermiden gölge atmasın (koridorda kayan dev gölge)
+func _disable_shadows(node: Node) -> void:
+	for c in node.get_children():
+		if c is GeometryInstance3D:
+			(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_disable_shadows(c)
 
 
 ## Işın taraması: mermi karede 0.5–1.3 m ilerliyor, yeni haritaların duvarları 0.2–0.3 m → Area çakışması duvarı

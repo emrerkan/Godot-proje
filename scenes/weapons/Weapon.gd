@@ -17,6 +17,9 @@ signal fired
 @export var max_distance: float = 60.0
 ## true: mermi duvarlardan geçer (sadece Sniper — Player.WEAPON_CONFIGS "pierce_walls")
 var pierce_walls := false
+## Eldeki tüfeğin namlu ağzı (HandRifle "Muzzle", Player atar). Yoksa / anormal konumdaysa $Muzzle kullanılır.
+var visual_muzzle: Node3D = null
+const VISUAL_MUZZLE_MAX_DIST := 1.4   # gövdeden yatay uzaklık sınırı (animasyon geçişi sapması)
 
 @onready var muzzle: Marker3D = $Muzzle
 @onready var fire_timer: Timer = $FireTimer
@@ -76,6 +79,11 @@ func try_shoot(shooter_peer_id: int, shooter_team_id: int) -> void:
 func _safe_spawn_position() -> Vector3:
 	var muzzle_pos := muzzle.global_position
 	var player := get_parent().get_parent() as Node3D
+	if player and is_instance_valid(visual_muzzle) and visual_muzzle.is_visible_in_tree():
+		var tip := visual_muzzle.global_position
+		var off := Vector2(tip.x - player.global_position.x, tip.z - player.global_position.z)
+		if off.length() < VISUAL_MUZZLE_MAX_DIST:
+			muzzle_pos = tip
 	if pierce_walls or player == null:
 		return muzzle_pos
 	var body_pos := Vector3(player.global_position.x, muzzle_pos.y, player.global_position.z)

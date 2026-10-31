@@ -113,6 +113,7 @@ func _ready() -> void:
 	_setup_vignette()
 	_setup_scores()
 	_setup_objective()
+	_setup_countdown()
 	_setup_kill_feed()
 	_setup_player_card()
 	_setup_item_slot()
@@ -1035,16 +1036,63 @@ func _refresh_scoreboard() -> void:
 
 ## Isınma (diğer oyuncuların yüklemesi bekleniyor): GameManager._load_status_rpc → n/N + kalan süre
 var _warmup_text := ""
+## Herkes hazır → maç başlangıcına geri sayım (ekran ortasında büyük sayı, saniye değişince "vurur")
+var _countdown_box: Control
+var _countdown_num: Label
+var _countdown_shown := -1
 
 
-func _on_warmup_status(loaded: int, total: int, seconds_left: int) -> void:
-	_warmup_text = tr("ISINMA  ·  %d/%d OYUNCU HAZIR  ·  EN FAZLA %d:%02d") % [loaded, total, seconds_left / 60, seconds_left % 60]
+func _setup_countdown() -> void:
+	_countdown_box = VBoxContainer.new()
+	_countdown_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_countdown_box.offset_top = -170
+	_countdown_box.offset_bottom = -170
+	_countdown_box.offset_left = -200
+	_countdown_box.offset_right = 200
+	_countdown_box.add_theme_constant_override("separation", 0)
+	_countdown_box.visible = false
+	_root.add_child(_countdown_box)
+	var cap := UITheme.label("MAÇ BAŞLIYOR", 13, UITheme.TEXT_DIM, UITheme.font_caps)
+	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_countdown_box.add_child(cap)
+	_countdown_num = UITheme.label("", 64, UITheme.TEXT, UITheme.font_mono)
+	_countdown_num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_countdown_num.add_theme_constant_override("outline_size", 6)
+	_countdown_num.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	_countdown_box.add_child(_countdown_num)
+
+
+func _on_warmup_status(loaded: int, total: int, seconds_left: int, countdown: int) -> void:
+	if countdown >= 0:
+		_warmup_text = tr("ISINMA  ·  TÜM OYUNCULAR HAZIR  ·  MAÇ %d SN İÇİNDE BAŞLIYOR") % countdown
+	else:
+		_warmup_text = tr("ISINMA  ·  %d/%d OYUNCU HAZIR  ·  EN FAZLA %d:%02d") % [loaded, total, seconds_left / 60, seconds_left % 60]
 	_update_objective()
+	_show_countdown(countdown)
+
+
+func _show_countdown(n: int) -> void:
+	if _countdown_box == null:
+		return
+	_countdown_box.visible = n > 0
+	if n <= 0 or n == _countdown_shown:
+		return
+	_countdown_shown = n
+	_countdown_num.text = str(n)
+	# Son 3 saniye kehribar
+	_countdown_num.add_theme_color_override("font_color", UITheme.ACCENT if n <= 3 else UITheme.TEXT)
+	_countdown_num.pivot_offset = _countdown_num.size * 0.5
+	_countdown_num.scale = Vector2(1.35, 1.35)
+	_countdown_num.modulate.a = 0.4
+	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_countdown_num, "scale", Vector2.ONE, 0.35)
+	tw.tween_property(_countdown_num, "modulate:a", 1.0, 0.2)
 
 
 func _on_match_started() -> void:
 	var was_warmup := not _warmup_text.is_empty()   # migration'da da game_started gelir — orada bant yok
 	_warmup_text = ""
+	_show_countdown(0)
 	_update_objective()
 	if was_warmup:
 		_show_banner("▶  MAÇ BAŞLADI  ·  KARTI BUL", UITheme.SUCCESS)

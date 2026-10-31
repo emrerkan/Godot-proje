@@ -133,7 +133,9 @@ Test: 3 headless süreçle (host + 2 client, localhost) doğrulandı — yeni ho
 | `start_game()` | Lobby "Oyunu Başlat" (host) | `TeamManager.reset()` → `_start_game_rpc` → CharacterSelect sahnesi |
 | `check_all_characters_selected()` | `NetworkManager._apply_character_selection` | herkes seçtiyse `_begin_actual_game_rpc` |
 | `_begin_actual_game_rpc()` | kendi | `_get_map_scene()` (oda ayarındaki harita, `NetworkManager.MAPS`) yükle → `_spawn_local_player()` (migration'da `_pending_positions`'tan konum) → `_local_loaded` → perde KALKAR (ısınma) → host'a `_peer_loaded` |
-| **Yükleme bekleme + ISINMA (CS tarzı)** | host `_on_peer_loaded` / `_process` | `match_live` false = ISINMA: yüklenen oyuncu serbest dolaşır/ateş eder ama `Player.take_damage` hasar İŞLEMEZ; Q/test tuşları, güç doğuşu, XP tick'leri, kart/kapı YOK. Host `_expected_loaders` (maç başı players) hepsi yüklenince → `_match_go_rpc` (call_local: herkes kendi oyuncusunu `_apply_respawn.rpc(spawn)` ile ışınlar — can/mermi/dayanıklılık dolu, `grant_starting_items`, host `_spawn_card_and_door`, `game_started` → HUD "MAÇ BAŞLADI" bandı). `_load_status_rpc` n/N + kalan süre → `warmup_status` sinyali → HUD hedef çipi "ISINMA · n/N OYUNCU HAZIR · EN FAZLA m:ss". `LOAD_WAIT_MAX` 120 s (host kendisi yüklenince sayar) → `_load_timeout`: yüklenemeyene `_kicked_from_match` RPC (client `menu_notice` + `return_to_menu`, MainMenu `_set_status` gösterir) + sistem sohbeti, maç kalanlarla başlar. Host `disconnect_peer` YAPMAZ (kibar → paket spamı, force → SceneMultiplayer habersiz); donmuş client'ı ENet zaman aşımı düşürür. Yüklemesi bitmeden host bağlantısı kopan client migration'a GİRMEZ → menü (`NetworkManager._on_server_disconnected`). Yüklerken ayrılan beklenmez (`on_player_disconnected` → `_check_all_loaded`). Migration'da bekleme yok (`restore_from_migration` match_live=true). Test: 2 süreç, client `OS.delay_msec` ile dondurulur |
+| **Yükleme bekleme + ISINMA (CS tarzı)** | host `_on_peer_loaded` / `_process` | `match_live` false = ISINMA: yüklenen oyuncu serbest dolaşır/ateş eder ama `Player.take_damage` hasar İŞLEMEZ; Q/test tuşları, güç doğuşu, XP tick'leri, kart/kapı YOK. Host `_expected_loaders` (maç başı players) hepsi yüklenince (veya `_load_timeout` sonrası) → `_start_countdown`: `MATCH_COUNTDOWN` 10 s
+geri sayım (ısınma sürer; `_load_status_rpc`'nin 4. alanı `countdown` → `warmup_status(…, countdown)` → HUD çipi "TÜM OYUNCULAR HAZIR · MAÇ n SN"
++ ekran ortasında büyük sayı `_countdown_box`, son 3 sn kehribar) → `_go_all` → `_match_go_rpc` (call_local: herkes kendi oyuncusunu `_apply_respawn.rpc(spawn)` ile ışınlar — can/mermi/dayanıklılık dolu, `grant_starting_items`, host `_spawn_card_and_door`, `game_started` → HUD "MAÇ BAŞLADI" bandı). `_load_status_rpc` n/N + kalan süre → `warmup_status` sinyali → HUD hedef çipi "ISINMA · n/N OYUNCU HAZIR · EN FAZLA m:ss". `LOAD_WAIT_MAX` 120 s (host kendisi yüklenince sayar) → `_load_timeout`: yüklenemeyene `_kicked_from_match` RPC (client `menu_notice` + `return_to_menu`, MainMenu `_set_status` gösterir) + sistem sohbeti, maç kalanlarla başlar. Host `disconnect_peer` YAPMAZ (kibar → paket spamı, force → SceneMultiplayer habersiz); donmuş client'ı ENet zaman aşımı düşürür. Yüklemesi bitmeden host bağlantısı kopan client migration'a GİRMEZ → menü (`NetworkManager._on_server_disconnected`). Yüklerken ayrılan beklenmez (`on_player_disconnected` → `_check_all_loaded`). Migration'da bekleme yok (`restore_from_migration` match_live=true). Test: 2 süreç, client `OS.delay_msec` ile dondurulur |
 | `_spawn_local_player()` | `_begin_actual_game_rpc`, `restore_from_migration` | Player instantiate, `initialize()`, `_notify_player_spawned.rpc()` broadcast, client ise `_request_active_players.rpc_id(1)` |
 | `handle_card_pickup(peer_id)` | `Card.gd._on_body_entered` (host) veya `request_card_pickup` RPC | `_apply_card_pickup_rpc` broadcast → `card_picked_up` sinyali |
 | `handle_card_drop(pos)` | ölüm sırasında taşıyıcı öldüyse, veya host | `_apply_card_drop_rpc` broadcast → `card_dropped` sinyali |
@@ -284,7 +286,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 
 - `Weapon.try_shoot(shooter_peer, shooter_team)`: ammo/fire_rate/reload kontrolü → `holder.global_transform.basis.z`
   ters yönü (forward) + saçılma açısı → `_spawn_bullet.rpc()` (call_local).
-- `Bullet.initialize(dir, speed, dmg, shooter_peer, shooter_team, max_dist)`: yatay düzlemde hareket.
+- `Bullet.initialize(dir, speed, dmg, shooter_peer, shooter_team, max_dist)`: yatay düzlemde hareket. Görsel `Model` =
+  `asset model/mermiler/Mermi_OyunIci_Tracer_Scale.glb` (uç -Z, ×14 ölçek ~0.6 m, turuncu emissive iz; ışık yok) →
+  `initialize` `Basis.looking_at(dir)` ile yöne çevirir + `_disable_shadows`. Klasördeki `.blend` `importer="skip"` (Blender yolu yok → import takılıyordu).
 - `Bullet._on_body_entered(body)`:
   1. `body.peer_id == shooter_peer_id` → `return` (kendi mermisi, spawn anı self-hit önlenir, queue_free YOK).
   2. `body.team_id == shooter_team_id` → **friendly fire yok**, `queue_free()` (hasarsız yok olur).
@@ -293,6 +297,8 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 - `Weapon.configure(config)`: karakter silah ayarlarını uygular, `ammo_changed` sinyali emit eder.
 - **Duvar:** `Bullet._physics_process` eski→yeni konum ışın taraması (ince duvarı atlama/tunneling yoktu önce): ilk duvarda durur,
   oyuncuda `_on_body_entered`; atan/çömelmiş hariç tutulur; `_done` çift hasarı önler. `pierce_walls` (sadece Sniper, WEAPON_CONFIGS) duvardan geçer.
+  **Doğuş noktası = eldeki tüfeğin namlusu:** `HandRifle.build_rifle_mesh` "Muzzle" Marker3D → Player `_equip_default_weapon`
+  `weapon.visual_muzzle`; görünür ve gövdeye yatay < 1.4 m ise kullanılır, değilse `$Muzzle` (gövde ortası, 0.9 m). Namlu ~1.55 m yükseklikte.
   `Weapon._safe_spawn_position`: duvarın dibinde namlu duvarın arkasına taşabiliyor → gövde→namlu ışını duvara çarparsa mermi gövdeden doğar.
 
 ---
@@ -395,6 +401,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 
 - **MainMenu.gd**: UI tamamen kodla (tscn sadece kök). Sol: logo + operatör adı (`user://settings.cfg`'ye kaydedilir).
   Sağ: sekmeler `browse`/`create`/`code` (`_show_tab`; `RoomManager.start_listening` SADECE browse'da açık) + şifreli oda modalı.
+  ODA KUR: ad + **HARİTA** (tam satır OptionButton, sağda "EN FAZLA …") + **FORMAT** (4 bölümlü toggle düğme `_size_buttons`,
+  sağda "n OYUNCU"; `_update_size_options` haritanın `max_team`'i üstünü kapatır, sayfa 1152×648'e tam sığıyor — satır eklenecekse yer yok,
+  son seçim `settings.cfg [room]`) → `create_server(..., {map, team_size})` (yayına ilk andan doğru girer; Lobby ⚙ ile sonra da değişir).
   Arka plan `MenuBackground3D` (aşağıda). `NetworkManager.create_server/join_server`
   çağırır, `server_created`/`joined_server`/`connection_failed`/`kicked` sinyallerini dinler.
 - **Lobby.gd**: UI tamamen kodla (tscn sadece kök), UITheme paleti + MenuBackground3D (fare feneri `light_color` kendi takımına döner).

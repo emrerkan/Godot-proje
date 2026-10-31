@@ -1,7 +1,7 @@
 ## HandRifle.gd — eldeki tüfek görseli (SkeletonModifier3D, en son çalışır: UpperBodyLayer + SpineTwist sonrası).
 ## Tüfek her kare sağ elde (kabza) durur ve sol ele (ön el) doğru hizalanır → hangi animasyon oynarsa
 ## oynasın iki elin arasında kalır. Sol el ayrılınca (şarjör değiştirme / bomba atma) son geçerli tutuşu
-## sağ ele göre korur. Sadece görsel — mermi Weapon/Muzzle'dan (gövde kökünden) çıkar.
+## sağ ele göre korur. Mermi tüfeğin "Muzzle" marker'ından çıkar (Weapon.visual_muzzle).
 
 extends SkeletonModifier3D
 
@@ -170,4 +170,9 @@ static func build_rifle_mesh() -> Node3D:
 	barrel.position = Vector3(0, 0.035, -0.66)
 	barrel.material_override = metal
 	rifle.add_child(barrel)
+	# Namlu ağzı (namlu ucu z = -0.66 - 0.13) — Weapon mermiyi buradan doğurur (Weapon.visual_muzzle)
+	var tip := Marker3D.new()
+	tip.name = "Muzzle"
+	tip.position = Vector3(0, 0.035, -0.8)
+	rifle.add_child(tip)
 	return rifle
