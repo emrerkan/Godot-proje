@@ -210,6 +210,9 @@ func _relax_timeout(id: int) -> void:
 	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
 	if enet == null:
 		return
+	# İstemci sadece host'a (1) bağlıdır; diğer istemcilerin peer_connected'ı host üzerinden gelir, ENet bağlantısı yok
+	if not multiplayer.is_server() and id != 1:
+		return
 	var p := enet.get_peer(id)
 	if p:
 		p.set_timeout(32, PEER_TIMEOUT_MIN_MS, PEER_TIMEOUT_MAX_MS)

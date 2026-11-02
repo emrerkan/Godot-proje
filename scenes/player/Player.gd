@@ -252,11 +252,11 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 		if is_local:
 			_apply_self_rim(_char_mesh)
 
-	# Tüm billboard label'lar gizlendi — bilgiler ekran HUD'ında gösterilir
+	# Billboard label'lar gizli — bilgiler ekran HUD'ında; tek istisna takım arkadaşının adı
 	health_label.visible  = false
-	name_label.visible    = false
 	ammo_label.visible    = false
 	card_indicator.visible = false
+	_setup_ally_name_label()
 
 	# Kart göstergesi: büyük, okunaklı
 	card_indicator.font_size       = 72
@@ -1010,6 +1010,7 @@ func _apply_death() -> void:
 	if current_weapon:
 		current_weapon.hide()
 	card_indicator.visible = false
+	name_label.visible = false
 
 
 func _hide_corpse_later(token: int, wait: float) -> void:
@@ -1054,6 +1055,7 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 	flashlight.visible = true
 	body_light.visible = is_local
 	card_indicator.visible = false
+	name_label.visible = _is_local_ally()
 	if current_weapon:
 		current_weapon.show()
 		current_weapon.refill_ammo()
@@ -1074,3 +1076,33 @@ func pick_up_card() -> void:
 func drop_card() -> void:
 	has_card = false
 	card_indicator.visible = false
+
+
+# ─────────────────────────────────────────────
+# Takım arkadaşı isim etiketi
+# ─────────────────────────────────────────────
+
+# Yerel oyuncunun takım arkadaşı mı (kendisi ve rakipler hariç)
+func _is_local_ally() -> bool:
+	if is_local:
+		return false
+	var local_team: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
+	return local_team >= 0 and local_team == team_id
+
+
+# Başın üstünde takım sembolü + ad (takım rengi). no_depth_test → duvar arkasında da okunur,
+# Label3D gölgesiz (unshaded) → karanlıkta da görünür. Rakiplere asla gösterilmez.
+func _setup_ally_name_label() -> void:
+	var glyphs: Array = UITheme.TEAM_GLYPHS
+	var glyph: String = glyphs[team_id] if team_id >= 0 and team_id < glyphs.size() else "○"
+	name_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED  # oyuncu adı çevrilmesin
+	name_label.text = "%s %s" % [glyph, NetworkManager.players.get(peer_id, {}).get("name", "Oyuncu")]
+	name_label.modulate = TeamManager.get_color(team_id).lightened(0.25)
+	if UITheme.font_bold:
+		name_label.font = UITheme.font_bold
+	name_label.font_size = 34
+	name_label.outline_size = 10
+	name_label.outline_modulate = Color(0.0, 0.0, 0.0, 0.9)
+	name_label.position = Vector3(0, 2.3, 0)  # kart göstergesinin (2.7) altında
+	name_label.no_depth_test = true
+	name_label.visible = _is_local_ally() and not is_dead

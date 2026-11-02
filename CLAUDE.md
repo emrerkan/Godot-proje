@@ -269,6 +269,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 | `_apply_death()` (call_local RPC) | `_die` | `Death` animasyonu oynar, mesh `_hide_corpse_later` ile anim bitince gizlenir (`_death_token` respawn'da iptal eder); flashlight/body_light/silah gizle, collision disable (deferred), card_indicator gizle |
 | `respawn(pos)` → `_apply_respawn()` (call_local RPC) | `GameManager._schedule_respawn` | can/visibility/collision resetle, `reset_physics_interpolation()`, `_card_pickup_blocked=0.5` |
 | `pick_up_card()` / `drop_card()` | `GameManager._apply_card_pickup_rpc` / `_apply_card_drop_rpc` | `card_indicator` sadece aynı takıma görünür |
+| `_setup_ally_name_label()` / `_is_local_ally()` | `initialize`, `_apply_respawn` (göster), `_apply_death` (gizle) | `NameLabel` (y 2.3): SADECE yerel oyuncunun takım arkadaşlarında "● Ad" takım renginde, `no_depth_test` (duvar arkası), çeviri kapalı; kendisi/rakip görmez |
 
 **Aydınlatma/görünürlük helper'ları (recursive, node ağacında gezer):**
 - `_add_render_layer(node, bit)` — `BODY_LIGHT_LAYER_BIT=20`: BodyLight sadece CharacterMesh+silaha değsin, zemine ışık taşmasın.
