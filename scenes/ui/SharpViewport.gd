@@ -1,7 +1,7 @@
 ## SharpViewport.gd — İçindeki SubViewport'u ekranın GERÇEK piksel çözünürlüğünde çizen TextureRect.
 ##
-## Neden: UI ölçeklemesi (UITheme._apply_scaling, taban 1152×648) altında SubViewportContainer(stretch) 3D görüntüyü
-## mantıksal boyutta (ör. 1152×648) çizip büyütüyordu → 1920×1080'de bulanık. Burada SubViewport boyutu
+## Neden: UI ölçeklemesi (UITheme._apply_scaling, taban 1920×1080) altında SubViewportContainer(stretch) 3D görüntüyü
+## mantıksal boyutta (ör. 1920×1080) çizip ekran boyutuna ölçekliyordu → tabandan farklı çözünürlükte bulanık. Burada SubViewport boyutu
 ## kontrol boyutu × ekran ölçeği olarak tutulur; TextureRect onu aynı alana 1:1 piksel düşecek şekilde çizer.
 ## Kullanım: `extends "res://scenes/ui/SharpViewport.gd"` (MenuBackground3D) veya `preload(...).new()` (CharacterSelect);
 ## 3D sahneyi `viewport`'a ekle. Fare/ışın hesabı için `to_viewport(get_local_mouse_position())`.

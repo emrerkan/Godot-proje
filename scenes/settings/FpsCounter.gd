@@ -9,14 +9,14 @@ func _ready() -> void:
 	layer = 100
 	_lbl = Label.new()
 	_lbl.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	_lbl.offset_left = -90
-	_lbl.offset_right = -8
-	_lbl.offset_top = 4
+	_lbl.offset_left = -150
+	_lbl.offset_right = -13
+	_lbl.offset_top = 7
 	_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_lbl.add_theme_font_size_override("font_size", 12)
+	_lbl.add_theme_font_size_override("font_size", 20)
 	_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	_lbl.add_theme_constant_override("outline_size", 4)
+	_lbl.add_theme_constant_override("outline_size", 7)
 	add_child(_lbl)
 
 

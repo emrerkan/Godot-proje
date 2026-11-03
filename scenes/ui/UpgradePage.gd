@@ -14,10 +14,10 @@ const PLAYER := preload("res://scenes/player/Player.gd")
 const ROLES := {"Tank": "Ön Hat", "Visioner": "Keşif", "Runner": "Hızlı Sızma", "Sniper": "Uzun Menzil", "Medic": "Destek"}
 
 ## Ağaç ızgarası (PowerTrees düğüm pos = sütun, satır)
-const NODE_SIZE := Vector2(126, 56)
-const COL_STEP := 158.0
-const ROW_STEP := 82.0
-const TREE_PAD := Vector2(10, 8)
+const NODE_SIZE := Vector2(210, 93)
+const COL_STEP := 263.0
+const ROW_STEP := 137.0
+const TREE_PAD := Vector2(17, 13)
 
 var _tab_buttons: Dictionary = {}      # "char"/"power" → Button
 var _char_page: VBoxContainer
@@ -49,7 +49,7 @@ var _power_cost_lbl: Label
 
 
 func _ready() -> void:
-	add_theme_constant_override("separation", 12)
+	add_theme_constant_override("separation", 20)
 	_build()
 	_show_tab("char")
 	refresh()
@@ -58,7 +58,7 @@ func _ready() -> void:
 func _build() -> void:
 	# Başlık: sekmeler + XP
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 6)
+	header.add_theme_constant_override("separation", 10)
 	add_child(header)
 	var group := ButtonGroup.new()
 	for t: Array in [["char", "KARAKTER GELİŞİMİ"], ["power", "GÜÇ GELİŞİMİ"]]:
@@ -73,26 +73,26 @@ func _build() -> void:
 
 	var xp_chip := PanelContainer.new()
 	xp_chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	xp_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.ACCENT, 0.1), 10, Color(UITheme.ACCENT, 0.5), 1, 14, 8))
+	xp_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.ACCENT, 0.1), 17, Color(UITheme.ACCENT, 0.5), 1, 23, 13))
 	header.add_child(xp_chip)
 	var xp_box := VBoxContainer.new()
 	xp_box.add_theme_constant_override("separation", 0)
 	xp_chip.add_child(xp_box)
-	_xp_lbl = UITheme.label("", 20, UITheme.ACCENT, UITheme.font_mono)
+	_xp_lbl = UITheme.label("", 33, UITheme.ACCENT, UITheme.font_mono)
 	_xp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	xp_box.add_child(_xp_lbl)
-	_level_lbl = UITheme.label("", 10, UITheme.TEXT_DIM, UITheme.font_caps)
+	_level_lbl = UITheme.label("", 17, UITheme.TEXT_DIM, UITheme.font_caps)
 	_level_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	xp_box.add_child(_level_lbl)
 
 	_char_page = VBoxContainer.new()
-	_char_page.add_theme_constant_override("separation", 12)
+	_char_page.add_theme_constant_override("separation", 20)
 	_char_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(_char_page)
 	_build_char_page(_char_page)
 
 	_power_page = VBoxContainer.new()
-	_power_page.add_theme_constant_override("separation", 12)
+	_power_page.add_theme_constant_override("separation", 20)
 	_power_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(_power_page)
 	_build_power_page(_power_page)
@@ -133,7 +133,7 @@ func refresh() -> void:
 func _build_char_page(page: VBoxContainer) -> void:
 	# Karakter seçici
 	var chars := HBoxContainer.new()
-	chars.add_theme_constant_override("separation", 6)
+	chars.add_theme_constant_override("separation", 10)
 	page.add_child(chars)
 	var group := ButtonGroup.new()
 	for c: String in PROFILE.CHARACTERS:
@@ -146,16 +146,16 @@ func _build_char_page(page: VBoxContainer) -> void:
 
 	# Karakter özeti: temel → yükseltilmiş değerler
 	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.03), 12, UITheme.BORDER, 1, 16, 12))
+	card.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.03), 20, UITheme.BORDER, 1, 27, 20))
 	page.add_child(card)
 	var card_box := VBoxContainer.new()
-	card_box.add_theme_constant_override("separation", 8)
+	card_box.add_theme_constant_override("separation", 13)
 	card.add_child(card_box)
-	_role_lbl = UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	_role_lbl = UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	card_box.add_child(_role_lbl)
 	_summary = GridContainer.new()
 	_summary.columns = 5
-	_summary.add_theme_constant_override("h_separation", 18)
+	_summary.add_theme_constant_override("h_separation", 30)
 	card_box.add_child(_summary)
 
 	# Stat satırları
@@ -165,45 +165,45 @@ func _build_char_page(page: VBoxContainer) -> void:
 	var fill := Control.new()
 	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	page.add_child(fill)
-	_cost_lbl = UITheme.label("", 12, UITheme.TEXT_DIM)
+	_cost_lbl = UITheme.label("", 20, UITheme.TEXT_DIM)
 	page.add_child(_cost_lbl)
 
 
 func _build_stat_row(stat: String) -> Control:
 	var info: Dictionary = PROFILE.STAT_INFO[stat]
 	var row := PanelContainer.new()
-	row.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.025), 10, UITheme.BORDER, 1, 14, 8))
+	row.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.025), 17, UITheme.BORDER, 1, 23, 13))
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 12)
+	h.add_theme_constant_override("separation", 20)
 	row.add_child(h)
 
-	var glyph := UITheme.label(info["glyph"], 18, UITheme.ACCENT, UITheme.font_bold)
-	glyph.custom_minimum_size = Vector2(22, 0)
+	var glyph := UITheme.label(info["glyph"], 30, UITheme.ACCENT, UITheme.font_bold)
+	glyph.custom_minimum_size = Vector2(37, 0)
 	glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	h.add_child(glyph)
 
 	var name_box := VBoxContainer.new()
 	name_box.add_theme_constant_override("separation", 0)
-	name_box.custom_minimum_size = Vector2(170, 0)
+	name_box.custom_minimum_size = Vector2(283, 0)
 	h.add_child(name_box)
-	name_box.add_child(UITheme.label(info["name"], 12, UITheme.TEXT, UITheme.font_caps))
-	var bonus := UITheme.label("", 11, UITheme.TEXT_DIM)
+	name_box.add_child(UITheme.label(info["name"], 20, UITheme.TEXT, UITheme.font_caps))
+	var bonus := UITheme.label("", 18, UITheme.TEXT_DIM)
 	name_box.add_child(bonus)
 
 	var pips_box := HBoxContainer.new()
-	pips_box.add_theme_constant_override("separation", 4)
+	pips_box.add_theme_constant_override("separation", 7)
 	pips_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pips_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(pips_box)
 	var pips: Array[Panel] = []
 	for i in PROFILE.MAX_LEVEL:
 		var p := Panel.new()
-		p.custom_minimum_size = Vector2(26, 8)
+		p.custom_minimum_size = Vector2(43, 13)
 		pips_box.add_child(p)
 		pips.append(p)
 
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(150, 34)
+	btn.custom_minimum_size = Vector2(250, 57)
 	btn.theme_type_variation = "PrimaryButton"
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -245,7 +245,7 @@ func _refresh_char() -> void:
 		for i in PROFILE.MAX_LEVEL:
 			var on := i < lv
 			(r["pips"][i] as Panel).add_theme_stylebox_override("panel",
-				UITheme.style(UITheme.ACCENT if on else Color(1, 1, 1, 0.08), 3))
+				UITheme.style(UITheme.ACCENT if on else Color(1, 1, 1, 0.08), 5))
 		(r["bonus"] as Label).text = PROFILE.stat_bonus_text(stat, lv) if lv > 0 else "Yükseltilmedi"
 		var btn: Button = r["btn"]
 		if lv >= PROFILE.MAX_LEVEL:
@@ -273,12 +273,12 @@ func _refresh_summary(levels: Dictionary) -> void:
 	for e: Array in entries:
 		var box := VBoxContainer.new()
 		box.add_theme_constant_override("separation", 0)
-		box.add_child(UITheme.label(e[0], 10, UITheme.TEXT_DIM, UITheme.font_caps))
+		box.add_child(UITheme.label(e[0], 17, UITheme.TEXT_DIM, UITheme.font_caps))
 		var changed: bool = absf(float(e[2]) - float(e[1])) > 0.001
-		var val := UITheme.label(tr(String(e[3])) % e[2], 17, UITheme.ACCENT if changed else UITheme.TEXT, UITheme.font_bold)
+		var val := UITheme.label(tr(String(e[3])) % e[2], 28, UITheme.ACCENT if changed else UITheme.TEXT, UITheme.font_bold)
 		box.add_child(val)
 		if changed:
-			box.add_child(UITheme.label(tr("temel %s") % (tr(String(e[3])) % e[1]), 10, UITheme.TEXT_DIM))
+			box.add_child(UITheme.label(tr("temel %s") % (tr(String(e[3])) % e[1]), 17, UITheme.TEXT_DIM))
 		_summary.add_child(box)
 
 
@@ -289,13 +289,13 @@ func _refresh_summary(levels: Dictionary) -> void:
 func _build_power_page(page: VBoxContainer) -> void:
 	# Güç seçici
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
+	row.add_theme_constant_override("separation", 10)
 	page.add_child(row)
 	var group := ButtonGroup.new()
 	for t: String in POWER_TREES.TREE_ORDER:
 		var b := _tab_button("", group)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.add_theme_font_size_override("font_size", 12)   # 6 sekme 948 px'e sığsın
+		b.add_theme_font_size_override("font_size", 20)   # 6 sekme 1580 px'e sığsın
 		b.clip_text = true
 		b.pressed.connect(_select_tree.bind(t))
 		row.add_child(b)
@@ -303,14 +303,14 @@ func _build_power_page(page: VBoxContainer) -> void:
 	(_tree_buttons[_tree] as Button).button_pressed = true
 
 	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 12)
+	body.add_theme_constant_override("separation", 20)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	page.add_child(body)
 
 	# Ağaç
 	var tree_panel := PanelContainer.new()
 	tree_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tree_panel.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.025), 12, UITheme.BORDER, 1, 12, 12))
+	tree_panel.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.025), 20, UITheme.BORDER, 1, 20, 20))
 	body.add_child(tree_panel)
 	var center := CenterContainer.new()
 	tree_panel.add_child(center)
@@ -321,42 +321,42 @@ func _build_power_page(page: VBoxContainer) -> void:
 
 	# Detay
 	var detail := PanelContainer.new()
-	detail.custom_minimum_size = Vector2(290, 0)
-	detail.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.04), 12, UITheme.BORDER, 1, 16, 14))
-	UITheme.add_brackets(detail, UITheme.FRAME, 10)
+	detail.custom_minimum_size = Vector2(483, 0)
+	detail.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.04), 20, UITheme.BORDER, 1, 27, 23))
+	UITheme.add_brackets(detail, UITheme.FRAME, 17)
 	body.add_child(detail)
 	var d := VBoxContainer.new()
-	d.add_theme_constant_override("separation", 8)
+	d.add_theme_constant_override("separation", 13)
 	detail.add_child(d)
-	_d_title = UITheme.label("", 10, UITheme.TEXT_DIM, UITheme.font_caps)
+	_d_title = UITheme.label("", 17, UITheme.TEXT_DIM, UITheme.font_caps)
 	d.add_child(_d_title)
-	_d_name = UITheme.label("", 20, UITheme.TEXT, UITheme.font_bold)
+	_d_name = UITheme.label("", 33, UITheme.TEXT, UITheme.font_bold)
 	d.add_child(_d_name)
-	_d_desc = UITheme.label("", 12, UITheme.TEXT_DIM)
+	_d_desc = UITheme.label("", 20, UITheme.TEXT_DIM)
 	_d_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_d_desc.custom_minimum_size = Vector2(258, 0)
+	_d_desc.custom_minimum_size = Vector2(430, 0)
 	d.add_child(_d_desc)
 	var sep := HSeparator.new()
 	sep.add_theme_stylebox_override("separator", UITheme.style(UITheme.BORDER, 0))
 	d.add_child(sep)
 	_d_effects = VBoxContainer.new()
-	_d_effects.add_theme_constant_override("separation", 4)
+	_d_effects.add_theme_constant_override("separation", 7)
 	d.add_child(_d_effects)
 	var fill := Control.new()
 	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	d.add_child(fill)
-	_d_status = UITheme.label("", 11, UITheme.TEXT_DIM)
+	_d_status = UITheme.label("", 18, UITheme.TEXT_DIM)
 	_d_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.add_child(_d_status)
 	_d_buy = Button.new()
-	_d_buy.custom_minimum_size = Vector2(0, 40)
+	_d_buy.custom_minimum_size = Vector2(0, 67)
 	_d_buy.theme_type_variation = "PrimaryButton"
 	_d_buy.focus_mode = Control.FOCUS_NONE
 	_d_buy.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_d_buy.pressed.connect(_buy_power)
 	d.add_child(_d_buy)
 
-	_power_cost_lbl = UITheme.label("", 12, UITheme.TEXT_DIM)
+	_power_cost_lbl = UITheme.label("", 20, UITheme.TEXT_DIM)
 	page.add_child(_power_cost_lbl)
 	_rebuild_tree()
 
@@ -394,14 +394,14 @@ func _rebuild_tree() -> void:
 		var box := VBoxContainer.new()
 		box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		box.alignment = BoxContainer.ALIGNMENT_CENTER
-		box.add_theme_constant_override("separation", 1)
+		box.add_theme_constant_override("separation", 2)
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(box)
-		var name_lbl := UITheme.label(n["name"], 12, UITheme.TEXT, UITheme.font_bold)
+		var name_lbl := UITheme.label(n["name"], 20, UITheme.TEXT, UITheme.font_bold)
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(name_lbl)
-		var status_lbl := UITheme.label("", 10, UITheme.TEXT_DIM, UITheme.font_mono)
+		var status_lbl := UITheme.label("", 17, UITheme.TEXT_DIM, UITheme.font_mono)
 		status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		status_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(status_lbl)
@@ -457,8 +457,8 @@ func _refresh_power() -> void:
 		var selected: bool = n["id"] == _selected
 		var bg := Color(1, 1, 1, 0.13) if state == "owned" else (Color(1, 1, 1, 0.05) if state == "open" else Color(0, 0, 0, 0.25))
 		var border := UITheme.FRAME if selected else (Color(1, 1, 1, 0.55) if state != "locked" else Color(1, 1, 1, 0.1))
-		var st := UITheme.style(bg, 4, border, 2 if selected else 1, 6, 4)
-		var st_hover := UITheme.style(bg.lightened(0.15) if state != "locked" else bg, 4, UITheme.FRAME, 2 if selected else 1, 6, 4)
+		var st := UITheme.style(bg, 7, border, 3 if selected else 1, 10, 7)
+		var st_hover := UITheme.style(bg.lightened(0.15) if state != "locked" else bg, 7, UITheme.FRAME, 3 if selected else 1, 10, 7)
 		var btn: Button = nb["btn"]
 		for s: String in ["normal", "pressed", "focus", "disabled"]:
 			btn.add_theme_stylebox_override(s, st)
@@ -511,15 +511,15 @@ func _refresh_detail(owned: Dictionary, cost: int, xp: int) -> void:
 		if not POWER_TREES.LABELS.has(key):
 			continue
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 6)
-		var lbl := UITheme.label(String(POWER_TREES.LABELS[key][0]), 12, UITheme.TEXT_DIM)
+		row.add_theme_constant_override("separation", 10)
+		var lbl := UITheme.label(String(POWER_TREES.LABELS[key][0]), 20, UITheme.TEXT_DIM)
 		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(lbl)
-		var old_lbl := UITheme.label(POWER_TREES.format_value(key, float(before[key])), 12, UITheme.TEXT_DIM, UITheme.font_mono)
+		var old_lbl := UITheme.label(POWER_TREES.format_value(key, float(before[key])), 20, UITheme.TEXT_DIM, UITheme.font_mono)
 		old_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		row.add_child(old_lbl)
-		row.add_child(UITheme.label("→", 12, UITheme.TEXT_DIM))
-		var new_lbl := UITheme.label(POWER_TREES.format_value(key, float(n["set"][key])), 13, UITheme.TEXT, UITheme.font_mono)
+		row.add_child(UITheme.label("→", 20, UITheme.TEXT_DIM))
+		var new_lbl := UITheme.label(POWER_TREES.format_value(key, float(n["set"][key])), 22, UITheme.TEXT, UITheme.font_mono)
 		new_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		row.add_child(new_lbl)
 		_d_effects.add_child(row)
@@ -552,7 +552,7 @@ func _draw_links() -> void:
 		var b := _node_pos(n) + Vector2(0, NODE_SIZE.y * 0.5)
 		var state := _node_state(n)
 		var col := Color(1, 1, 1, 0.75) if state == "owned" else (Color(1, 1, 1, 0.4) if state == "open" else Color(1, 1, 1, 0.14))
-		var w := 2.0 if state == "owned" else 1.5
+		var w := 3.0 if state == "owned" else 2.5
 		var pts: PackedVector2Array
 		if is_equal_approx(a.y, b.y):
 			pts = PackedVector2Array([a, b])
@@ -561,6 +561,6 @@ func _draw_links() -> void:
 			pts = PackedVector2Array([a, Vector2(mid, a.y), Vector2(mid, b.y), b])
 		for i in pts.size() - 1:
 			if state == "locked":
-				_canvas.draw_dashed_line(pts[i], pts[i + 1], col, w, 5.0)
+				_canvas.draw_dashed_line(pts[i], pts[i + 1], col, w, 8.0)
 			else:
 				_canvas.draw_line(pts[i], pts[i + 1], col, w)

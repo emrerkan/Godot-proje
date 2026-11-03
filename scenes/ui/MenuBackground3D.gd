@@ -30,6 +30,13 @@ var light_color: Color = UITheme.ACCENT:
 		if _mouse_light:
 			_mouse_light.light_color = v
 
+## MainMenu OYNA maddeleri: fener fareyi bırakıp maddenin ekrandaki noktasına kilitlenir ("fenerle oraya tutmak")
+const BASE_ENERGY := 14.0
+const FOCUS_ENERGY := 20.0
+const FOCUS_FOLLOW := 4.0
+var _focus_active := false
+var _focus_point := Vector2.ZERO   # global (canvas) koordinat
+
 var _vp: SubViewport
 var _cam: Camera3D
 var _mouse_light: SpotLight3D
@@ -87,7 +94,7 @@ func _ready() -> void:
 	# Fareyi takip eden el feneri (yukarıdan, hafif önden)
 	_mouse_light = SpotLight3D.new()
 	_mouse_light.light_color = light_color
-	_mouse_light.light_energy = 14.0
+	_mouse_light.light_energy = BASE_ENERGY
 	_mouse_light.spot_range = 24.0
 	_mouse_light.spot_angle = 15.0
 	_mouse_light.spot_attenuation = 0.8
@@ -165,15 +172,28 @@ func _process(delta: float) -> void:
 		_update_soldier(w, delta)
 
 
+func focus_light(global_point: Vector2) -> void:
+	_focus_active = true
+	_focus_point = global_point
+
+
+func release_light() -> void:
+	_focus_active = false
+
+
 func _update_mouse_light(delta: float) -> void:
 	if _cam == null:
 		return
-	var mp := to_viewport(get_local_mouse_position())
+	# Menü maddesine kilitliyse oraya (biraz daha yavaş "savrularak"), değilse fareye
+	var focused := _focus_active
+	var local := get_global_transform().affine_inverse() * _focus_point if focused else get_local_mouse_position()
+	var mp := to_viewport(local)
 	var from := _cam.project_ray_origin(mp)
 	var dir := _cam.project_ray_normal(mp)
 	if absf(dir.y) > 0.001:
 		var hit := from + dir * (-from.y / dir.y)
-		_mouse_target = _mouse_target.lerp(hit, 1.0 - exp(-6.0 * delta))
+		_mouse_target = _mouse_target.lerp(hit, 1.0 - exp(-(FOCUS_FOLLOW if focused else 6.0) * delta))
+	_mouse_light.light_energy = lerpf(_mouse_light.light_energy, FOCUS_ENERGY if focused else BASE_ENERGY, 1.0 - exp(-5.0 * delta))
 	_mouse_light.position = _mouse_target + Vector3(0, 8.0, 2.5)
 	_mouse_light.look_at(_mouse_target, Vector3.UP)
 

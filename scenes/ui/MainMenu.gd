@@ -1,7 +1,9 @@
 ## MainMenu.gd
-## Giriş ekranı: solda oyun kimliği + oyuncu adı, sağda sekmeli panel
-## (Odalar / Oda Kur / Kod ile Katıl) ve şifreli odalar için modal.
-## UI tamamen kodla kurulur; görünüm UITheme autoload'undaki temadan gelir.
+## Giriş ekranı (BF1 düzeni): solda oyun kimliği + operatör kartı, sağ üstte gezinme `OYNA | PROFİL | AYARLAR`.
+## OYNA alt menüyü açar (ODALAR / ODA KUR / KOD İLE KATIL); madde üzerine gelince fener oraya tutulur
+## (2D: canvas_ui_menu_beam.gdshader lekesi, 3D: MenuBackground3D fareyi bırakıp maddeye kilitlenir).
+## Maddeye tıklayınca ekranı kaplamayan cam panel açılır, arka plan bulanıklaşır (BlurBackdrop).
+## UI tamamen kodla kurulur; görünüm UITheme temasından gelir. Değerler 1920×1080 tabanına göre (UITheme.BASE_RESOLUTION).
 ## Arka plan MenuBackground3D: taktik ızgara zeminde fenerli askerler devriye gezer + fareyi takip eden fener
 ## (üstünde MenuOverlay.gdshader vinyeti).
 
@@ -13,14 +15,23 @@ const CALLSIGNS: Array[String] = ["Kurt", "Gölge", "Baykuş", "Şahin", "Kobra"
 
 const MENU_BACKGROUND := preload("res://scenes/ui/MenuBackground3D.gd")
 const MENU_OVERLAY := preload("res://scenes/ui/MenuOverlay.gdshader")
+const MENU_BEAM := preload("res://scenes/ui/canvas_ui_menu_beam.gdshader")
+const BLUR_BACKDROP := preload("res://scenes/ui/BlurBackdrop.gdshader")
 const UPGRADE_PAGE := preload("res://scenes/ui/UpgradePage.gd")
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const SETTINGS_WINDOW := preload("res://scenes/ui/SettingsWindow.gd")
 const GAME_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
+
+## OYNA alt menüsü: [anahtar, metin, panel başlığı] — anahtar = _pages anahtarı
+const PLAY_ITEMS := [["browse", "ODALAR"], ["create", "ODA KUR"], ["code", "KOD İLE KATIL"]]
+## Oyun paneli genişliği sayfaya göre (yükseklik: odalar sabit, diğerleri içerik kadar) — ekranı kaplamasın
+const PLAY_CARD_SIZE := {"browse": Vector2(1150, 760), "create": Vector2(1000, 0), "code": Vector2(680, 0)}
+const TOAST_TIME := 5.0
+
 var _settings_window: Control
 var _menu_bg_setting := true
 
-# Profil (sol alttaki operatör kartı → PROFİL penceresi)
+# Profil (üst menü PROFİL → bulanık pencere)
 var _profile_level_lbl: Label
 var _profile_xp_lbl: Label
 var _profile_modal: Control
@@ -29,11 +40,28 @@ var _profile_page: Node
 var _profile_blur: ShaderMaterial
 var _background: Node = null
 
+# Üst gezinme + OYNA alt menüsü
+var _nav_play: Button
+var _play_menu: VBoxContainer
+var _play_open := false
+var _play_items: Dictionary = {}    # anahtar → {"button", "beam" (ShaderMaterial), "marker"}
+var _rooms_badge: Label             # ODALAR yanında bulunan oda sayısı
+
+# Oyun paneli (bulanık arka plan + cam kart; sayfalar burada)
+var _play_modal: Control
+var _play_blur: ShaderMaterial
+var _play_card: PanelContainer
+var _play_crumb: Label
+
 var _name_input: LineEdit
 var _status_lbl: Label
-var _tab_buttons: Dictionary = {}   # tab adı → Button
-var _pages: Dictionary = {}         # tab adı → Control
+var _pages: Dictionary = {}         # sayfa adı → Control
 var _current_tab := ""
+
+# Panel kapalıyken durum mesajları (bağlantı hatası, maçtan atılma) alt ortada bildirim olarak
+var _toast: PanelContainer
+var _toast_lbl: Label
+var _toast_tween: Tween
 
 # Odalar
 var _room_list: VBoxContainer
@@ -76,6 +104,7 @@ func _ready() -> void:
 	_build_ui()
 	_name_input.text = _load_name()
 	_show_tab("browse")
+	_update_listening()
 	# Maçtan atılarak dönüldüyse (yükleme süresi aşımı) sebebi göster
 	if not GameManager.menu_notice.is_empty():
 		_set_status(tr(GameManager.menu_notice), "error")
@@ -93,18 +122,25 @@ func _notification(what: int) -> void:
 
 func _process(_delta: float) -> void:
 	# "Taranıyor" göstergesi nabız gibi yanıp söner
-	if _scan_dot and _current_tab == "browse":
+	if _scan_dot and _play_modal.visible and _current_tab == "browse":
 		_scan_dot.modulate.a = 0.35 + 0.65 * (0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0))
 
 
+## ESC sırası: şifre modalı → oyun paneli → profil → OYNA alt menüsü (ayarlar penceresi kendi ESC'sini yönetir)
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and _profile_modal.visible:
-		_close_profile()
-		get_viewport().set_input_as_handled()
+	if not event.is_action_pressed("ui_cancel"):
 		return
-	if event.is_action_pressed("ui_cancel") and _modal.visible:
+	if _modal.visible:
 		_close_modal()
-		get_viewport().set_input_as_handled()
+	elif _play_modal.visible:
+		_close_play_panel()
+	elif _profile_modal.visible:
+		_close_profile()
+	elif _play_open:
+		_set_play_open(false)
+	else:
+		return
+	get_viewport().set_input_as_handled()
 
 
 # ─────────────────────────────────────────────
@@ -125,19 +161,27 @@ func _build_ui() -> void:
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 56)
-	margin.add_theme_constant_override("margin_right", 56)
-	margin.add_theme_constant_override("margin_top", 44)
-	margin.add_theme_constant_override("margin_bottom", 36)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_theme_constant_override("margin_left", 93)
+	margin.add_theme_constant_override("margin_right", 93)
+	margin.add_theme_constant_override("margin_top", 73)
+	margin.add_theme_constant_override("margin_bottom", 60)
 	add_child(margin)
 
 	var columns := HBoxContainer.new()
-	columns.add_theme_constant_override("separation", 48)
+	columns.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	columns.add_theme_constant_override("separation", 80)
 	margin.add_child(columns)
 
 	columns.add_child(_build_brand_column())
-	columns.add_child(_build_main_panel())
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	columns.add_child(gap)
+	columns.add_child(_build_nav_column())
 
+	_build_toast()
+	_build_play_modal()
 	_build_password_modal()
 	_build_profile_modal()
 	_settings_window = SETTINGS_WINDOW.new()
@@ -147,6 +191,7 @@ func _build_ui() -> void:
 
 ## AYARLAR (grafik / kontrol / ses / oyun) — SettingsWindow kendi ESC/kapama mantığını yönetir
 func _open_settings() -> void:
+	_set_play_open(false)
 	_menu_bg_setting = bool(GAME_SETTINGS.get_value("menu_background"))
 	_settings_window.open()
 
@@ -161,73 +206,96 @@ func _on_settings_closed() -> void:
 		move_child(_background, idx)
 
 
-## PROFİL penceresi: bulanık arka plan + ortada UpgradePage (karakter başına yükseltme). Dışına tık / ✕ / ESC kapatır.
-func _build_profile_modal() -> void:
-	_profile_modal = Control.new()
-	_profile_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_profile_modal.visible = false
-	add_child(_profile_modal)
+## Bulanık tam ekran katman + ortalayıcı. Dışına (bulanık alana) sol tık `on_close`'u çağırır.
+## Dönüş: [katman, blur ShaderMaterial, CenterContainer]
+func _make_blur_layer(on_close: Callable) -> Array:
+	var layer := Control.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.visible = false
+	add_child(layer)
 
 	var blur := ColorRect.new()
 	blur.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	blur.mouse_filter = Control.MOUSE_FILTER_STOP
-	_profile_blur = ShaderMaterial.new()
-	_profile_blur.shader = preload("res://scenes/ui/BlurBackdrop.gdshader")
-	blur.material = _profile_blur
+	var mat := ShaderMaterial.new()
+	mat.shader = BLUR_BACKDROP
+	blur.material = mat
 	blur.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			_close_profile())
-	_profile_modal.add_child(blur)
+			on_close.call())
+	layer.add_child(blur)
 
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_profile_modal.add_child(center)
+	layer.add_child(center)
+	return [layer, mat, center]
 
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(1000, 640)
-	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.97), 14, Color(UITheme.ACCENT, 0.35), 1, 26, 20))
-	UITheme.add_brackets(card, UITheme.FRAME, 20)
-	center.add_child(card)
-	_profile_card = card
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
-	card.add_child(box)
 
+## Panel başlığı: solda küçük kehribar başlık, sağda ✕
+func _modal_head(title: Label, on_close: Callable) -> Control:
 	var head := HBoxContainer.new()
-	box.add_child(head)
-	var title := UITheme.label("PROFİL", 12, UITheme.ACCENT, UITheme.font_caps)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(title)
 	var close := Button.new()
 	close.text = "✕"
 	close.theme_type_variation = "GhostButton"
 	close.focus_mode = Control.FOCUS_NONE
-	close.pressed.connect(_close_profile)
+	close.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	close.pressed.connect(on_close)
 	head.add_child(close)
+	return head
 
+
+func _fade_layer(layer: Control, mat: ShaderMaterial, card: Control, show: bool) -> void:
+	var tw := create_tween().set_parallel(true)
+	if show:
+		layer.visible = true
+		card.modulate.a = 0.0
+		tw.tween_method(func(v: float) -> void: mat.set_shader_parameter("amount", v), 0.0, 1.0, 0.18)
+		tw.tween_property(card, "modulate:a", 1.0, 0.16)
+	else:
+		tw.tween_method(func(v: float) -> void: mat.set_shader_parameter("amount", v), 1.0, 0.0, 0.14)
+		tw.tween_property(card, "modulate:a", 0.0, 0.12)
+		tw.chain().tween_callback(func() -> void: layer.visible = false)
+
+
+## PROFİL penceresi: bulanık arka plan + ortada UpgradePage (karakter başına yükseltme). Dışına tık / ✕ / ESC kapatır.
+func _build_profile_modal() -> void:
+	var parts := _make_blur_layer(_close_profile)
+	_profile_modal = parts[0]
+	_profile_blur = parts[1]
+
+	# UpgradePage ~1000 px yüksek → başlık satırı yok, kenar payı ince (1080'e sığsın); ✕ ekranın sağ üstünde
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(1667, 0)
+	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.97), 23, Color(UITheme.ACCENT, 0.35), 1, 43, 20))
+	UITheme.add_brackets(card, UITheme.FRAME, 33)
+	(parts[2] as Control).add_child(card)
+	_profile_card = card
 	_profile_page = UPGRADE_PAGE.new()
-	(_profile_page as Control).size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(_profile_page)
+	card.add_child(_profile_page)
+
+	var close := _modal_head(Label.new(), _close_profile)
+	close.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	close.offset_left = -100
+	close.offset_right = -23
+	close.offset_top = 17
+	_profile_modal.add_child(close)
 
 
 func _open_profile() -> void:
+	_set_play_open(false)
 	_profile_page.refresh()
-	_profile_modal.visible = true
-	_profile_card.modulate.a = 0.0
-	var tw := create_tween().set_parallel(true)
-	tw.tween_method(func(v: float) -> void: _profile_blur.set_shader_parameter("amount", v), 0.0, 1.0, 0.18)
-	tw.tween_property(_profile_card, "modulate:a", 1.0, 0.16)
+	_fade_layer(_profile_modal, _profile_blur, _profile_card, true)
 
 
 func _close_profile() -> void:
 	if not _profile_modal.visible:
 		return
 	_refresh_profile_summary()
-	var tw := create_tween().set_parallel(true)
-	tw.tween_method(func(v: float) -> void: _profile_blur.set_shader_parameter("amount", v), 1.0, 0.0, 0.14)
-	tw.tween_property(_profile_card, "modulate:a", 0.0, 0.12)
-	tw.chain().tween_callback(func() -> void: _profile_modal.visible = false)
+	_fade_layer(_profile_modal, _profile_blur, _profile_card, false)
 
 
 func _refresh_profile_summary() -> void:
@@ -238,22 +306,22 @@ func _refresh_profile_summary() -> void:
 
 func _build_brand_column() -> Control:
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(360, 0)
+	col.custom_minimum_size = Vector2(600, 0)
 	col.add_theme_constant_override("separation", 0)
 
-	col.add_child(UITheme.label("TACTICAL", 34, UITheme.TEXT, UITheme.font_title))
-	var dark := UITheme.label("DARK", 72, UITheme.ACCENT, UITheme.font_title)
-	dark.add_theme_constant_override("line_spacing", -12)
+	col.add_child(UITheme.label("TACTICAL", 57, UITheme.TEXT, UITheme.font_title))
+	var dark := UITheme.label("DARK", 120, UITheme.ACCENT, UITheme.font_title)
+	dark.add_theme_constant_override("line_spacing", -20)
 	col.add_child(dark)
 	# Logo altı kehribar çizgi (yazısız — kullanıcı isteğiyle etiketler kaldırıldı)
 	var bar := ColorRect.new()
 	bar.color = UITheme.ACCENT
-	bar.custom_minimum_size = Vector2(56, 3)
+	bar.custom_minimum_size = Vector2(93, 5)
 	bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	col.add_child(bar)
-	col.add_child(_spacer(14))
+	col.add_child(_spacer(23))
 
-	var tagline := UITheme.label("Zifiri karanlıkta yalnızca el fenerin var.\nKartı bul, kapıya ulaştır, takımını zafere taşı.", 14, UITheme.TEXT_DIM)
+	var tagline := UITheme.label("Zifiri karanlıkta yalnızca el fenerin var.\nKartı bul, kapıya ulaştır, takımını zafere taşı.", 23, UITheme.TEXT_DIM)
 	tagline.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(tagline)
 
@@ -261,154 +329,278 @@ func _build_brand_column() -> Control:
 	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(fill)
 
-	# Oyuncu adı kartı
+	# Operatör kartı: ad + profil özeti (PROFİL butonu üst menüde)
 	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 12, UITheme.BORDER, 1, 18, 16))
-	UITheme.add_brackets(card, UITheme.FRAME, 10)
+	card.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 20, UITheme.BORDER, 1, 30, 27))
+	UITheme.add_brackets(card, UITheme.FRAME, 17)
 	col.add_child(card)
 	var card_box := VBoxContainer.new()
-	card_box.add_theme_constant_override("separation", 8)
+	card_box.add_theme_constant_override("separation", 13)
 	card.add_child(card_box)
-	card_box.add_child(UITheme.label("OPERATÖR ADI", 11, UITheme.TEXT_DIM, UITheme.font_caps))
+	card_box.add_child(UITheme.label("OPERATÖR ADI", 18, UITheme.TEXT_DIM, UITheme.font_caps))
 
 	var name_row := HBoxContainer.new()
-	name_row.add_theme_constant_override("separation", 8)
+	name_row.add_theme_constant_override("separation", 13)
 	card_box.add_child(name_row)
 	_name_input = LineEdit.new()
 	_name_input.placeholder_text = "Oyuncu adı"
 	_name_input.max_length = NAME_MAX_LEN
 	_name_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_name_input.add_theme_font_override("font", UITheme.font_bold)
-	_name_input.add_theme_font_size_override("font_size", 17)
+	_name_input.add_theme_font_size_override("font_size", 28)
 	_name_input.text_changed.connect(func(_t: String) -> void: _set_status(""))
 	name_row.add_child(_name_input)
 	var dice := Button.new()
 	dice.text = "↻"
 	dice.tooltip_text = "Rastgele isim"
-	dice.custom_minimum_size = Vector2(46, 0)
-	dice.add_theme_font_size_override("font_size", 18)
+	dice.custom_minimum_size = Vector2(77, 0)
+	dice.add_theme_font_size_override("font_size", 30)
 	dice.pressed.connect(func() -> void: _name_input.text = _random_name())
 	name_row.add_child(dice)
 
-	# Profil özeti + PROFİL butonu (karakter yükseltmeleri ayrı pencerede — oda paneli sadece oyun bulmak için)
-	card_box.add_child(_spacer(4))
+	card_box.add_child(_spacer(7))
 	var prof_row := HBoxContainer.new()
-	prof_row.add_theme_constant_override("separation", 10)
+	prof_row.add_theme_constant_override("separation", 17)
 	card_box.add_child(prof_row)
-	var prof_info := VBoxContainer.new()
-	prof_info.add_theme_constant_override("separation", 0)
-	prof_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	prof_row.add_child(prof_info)
-	_profile_level_lbl = UITheme.label("", 10, UITheme.TEXT_DIM, UITheme.font_caps)
-	prof_info.add_child(_profile_level_lbl)
-	_profile_xp_lbl = UITheme.label("", 16, UITheme.ACCENT, UITheme.font_mono)
-	prof_info.add_child(_profile_xp_lbl)
-	var prof_btn := Button.new()
-	prof_btn.text = "PROFİL"
-	prof_btn.theme_type_variation = "PrimaryButton"
-	prof_btn.custom_minimum_size = Vector2(110, 0)
-	prof_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	prof_btn.pressed.connect(_open_profile)
-	prof_row.add_child(prof_btn)
+	_profile_level_lbl = UITheme.label("", 17, UITheme.TEXT_DIM, UITheme.font_caps)
+	_profile_level_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_profile_level_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	prof_row.add_child(_profile_level_lbl)
+	_profile_xp_lbl = UITheme.label("", 27, UITheme.ACCENT, UITheme.font_mono)
+	prof_row.add_child(_profile_xp_lbl)
 	_refresh_profile_summary()
-
-	col.add_child(_spacer(10))
-	var foot := HBoxContainer.new()
-	col.add_child(foot)
-	var ver := UITheme.label("LAN  ·  PORT %d  ·  v0.1" % NetworkManager.PORT, 10, Color(UITheme.TEXT_DIM, 0.6), UITheme.font_caps)
-	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ver.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	foot.add_child(ver)
-	var settings_btn := Button.new()
-	settings_btn.text = "⚙  AYARLAR"
-	settings_btn.theme_type_variation = "GhostButton"
-	settings_btn.focus_mode = Control.FOCUS_NONE
-	settings_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	settings_btn.pressed.connect(_open_settings)
-	foot.add_child(settings_btn)
 	return col
 
 
-func _build_main_panel() -> Control:
-	var panel := PanelContainer.new()
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 14, UITheme.BORDER, 1, 0, 0))
-	UITheme.add_brackets(panel, UITheme.FRAME, 18)
+## Sağ üst: OYNA | PROFİL | AYARLAR + OYNA'nın açtığı alt menü (sağa yaslı)
+func _build_nav_column() -> Control:
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(600, 0)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_theme_constant_override("separation", 0)
+
+	var nav := HBoxContainer.new()
+	nav.alignment = BoxContainer.ALIGNMENT_END
+	nav.add_theme_constant_override("separation", 7)
+	col.add_child(nav)
+	_nav_play = _nav_button("OYNA", func() -> void: _set_play_open(not _play_open))
+	_nav_play.toggle_mode = true
+	nav.add_child(_nav_play)
+	nav.add_child(_nav_divider())
+	nav.add_child(_nav_button("PROFİL", _open_profile))
+	nav.add_child(_nav_divider())
+	nav.add_child(_nav_button("AYARLAR", _open_settings))
+
+	col.add_child(_spacer(47))
+	_play_menu = VBoxContainer.new()
+	_play_menu.add_theme_constant_override("separation", 10)
+	_play_menu.visible = false
+	col.add_child(_play_menu)
+	for item: Array in PLAY_ITEMS:
+		_play_menu.add_child(_build_play_item(item[0], item[1]))
+	return col
+
+
+func _nav_button(text: String, on_press: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.theme_type_variation = "TabButton"
+	b.focus_mode = Control.FOCUS_NONE
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.add_theme_font_size_override("font_size", 27)
+	b.pressed.connect(on_press)
+	return b
+
+
+func _nav_divider() -> Label:
+	var l := UITheme.label("|", 27, Color(UITheme.TEXT_DIM, 0.3))
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
+
+
+## Alt menü maddesi: [▸ işareti][metin][oda sayısı] — arkasında fener lekesi (show_behind_parent ColorRect)
+func _build_play_item(key: String, text: String) -> Control:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_theme_constant_override("separation", 7)
+
+	var marker := UITheme.label("▸", 40, UITheme.ACCENT)
+	marker.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	marker.modulate.a = 0.0
+	row.add_child(marker)
+
+	var b := Button.new()
+	b.text = text
+	b.flat = true
+	b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.add_theme_font_override("font", UITheme.font_caps)
+	b.add_theme_font_size_override("font_size", 43)
+	b.add_theme_color_override("font_color", Color(UITheme.TEXT_DIM, 0.85))
+	for state: String in ["font_hover_color", "font_focus_color", "font_hover_pressed_color"]:
+		b.add_theme_color_override(state, Color.WHITE)
+	b.add_theme_color_override("font_pressed_color", UITheme.ACCENT)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.pressed.connect(_open_play_panel.bind(key))
+	row.add_child(b)
+
+	# Fener lekesi: yazıdan geniş, sola doğru (fener sağ üstten gelir gibi) taşar; tıklamaları engellemez
+	var beam := ColorRect.new()
+	beam.show_behind_parent = true
+	beam.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	beam.set_anchors_preset(Control.PRESET_FULL_RECT)
+	beam.offset_left = -200
+	beam.offset_right = 67
+	beam.offset_top = -37
+	beam.offset_bottom = 37
+	var mat := ShaderMaterial.new()
+	mat.shader = MENU_BEAM
+	beam.material = mat
+	b.add_child(beam)
+
+	if key == "browse":
+		_rooms_badge = UITheme.label("", 22, UITheme.ACCENT, UITheme.font_mono)
+		_rooms_badge.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		row.add_child(_rooms_badge)
+
+	_play_items[key] = {"button": b, "beam": mat, "marker": marker}
+	b.mouse_entered.connect(_set_item_lit.bind(key, true))
+	b.mouse_exited.connect(_set_item_lit.bind(key, false))
+	b.focus_entered.connect(_set_item_lit.bind(key, true))
+	b.focus_exited.connect(_set_item_lit.bind(key, false))
+	return row
+
+
+## Fener maddeye döner / maddeden ayrılır: 2D leke + işaret + 3D arka plan feneri maddeye kilitlenir
+func _set_item_lit(key: String, lit: bool) -> void:
+	var item: Dictionary = _play_items[key]
+	var b: Button = item["button"]
+	# Fare hâlâ üstündeyse odak kaybı söndürmesin (ve tersi)
+	if not lit and (b.has_focus() or b.is_hovered()):
+		return
+	var mat: ShaderMaterial = item["beam"]
+	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	# Parametre hiç atanmadıysa get_shader_parameter null döner → son değer sözlükte tutulur
+	tw.tween_method(func(v: float) -> void:
+		item["level"] = v
+		mat.set_shader_parameter("intensity", v),
+		float(item.get("level", 0.0)), 1.0 if lit else 0.0, 0.22 if lit else 0.35)
+	tw.tween_property(item["marker"], "modulate:a", 1.0 if lit else 0.0, 0.18)
+	if _background and _background.has_method("focus_light"):
+		if lit:
+			_background.focus_light(b.get_global_rect().get_center())
+		else:
+			_background.release_light()
+
+
+func _set_play_open(open: bool) -> void:
+	if _play_open == open:
+		return
+	_play_open = open
+	_nav_play.set_pressed_no_signal(open)
+	_update_listening()
+	if open:
+		_refresh_room_list()
+		_play_menu.visible = true
+		# Maddeler sırayla belirir (yukarıdan aşağı, kısa gecikmeyle)
+		var i := 0
+		for row: Control in _play_menu.get_children():
+			row.modulate.a = 0.0
+			create_tween().tween_property(row, "modulate:a", 1.0, 0.2).set_delay(0.05 * i)
+			i += 1
+		(_play_items["browse"]["button"] as Button).grab_focus()
+	else:
+		for key: String in _play_items:
+			(_play_items[key]["button"] as Button).release_focus()
+		_play_menu.visible = false
+		if _background and _background.has_method("release_light"):
+			_background.release_light()
+
+
+## Oda keşfi: OYNA alt menüsü ya da oyun paneli açıkken dinle (liste panel açılmadan dolsun, ODALAR sayacı canlı)
+func _update_listening() -> void:
+	if _play_open or (_play_modal and _play_modal.visible):
+		RoomManager.start_listening()
+	else:
+		RoomManager.stop_listening()
+
+
+# ─────────────────────────────────────────────
+#  Oyun paneli (Odalar / Oda Kur / Kod ile Katıl)
+# ─────────────────────────────────────────────
+
+func _build_play_modal() -> void:
+	var parts := _make_blur_layer(_close_play_panel)
+	_play_modal = parts[0]
+	_play_blur = parts[1]
+
+	_play_card = PanelContainer.new()
+	_play_card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.9), 23, UITheme.BORDER, 1, 43, 33))
+	UITheme.add_brackets(_play_card, UITheme.FRAME, 30)
+	(parts[2] as Control).add_child(_play_card)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 0)
-	panel.add_child(box)
+	box.add_theme_constant_override("separation", 20)
+	_play_card.add_child(box)
+	_play_crumb = UITheme.label("", 20, UITheme.ACCENT, UITheme.font_caps)
+	box.add_child(_modal_head(_play_crumb, _close_play_panel))
 
-	# Sekmeler
-	var tab_margin := MarginContainer.new()
-	tab_margin.add_theme_constant_override("margin_left", 14)
-	tab_margin.add_theme_constant_override("margin_right", 14)
-	tab_margin.add_theme_constant_override("margin_top", 10)
-	box.add_child(tab_margin)
-	var tab_row := HBoxContainer.new()
-	tab_row.add_theme_constant_override("separation", 4)
-	tab_margin.add_child(tab_row)
-
-	var group := ButtonGroup.new()
-	for tab: Array in [["browse", "ODALAR"], ["create", "ODA KUR"], ["code", "KOD İLE KATIL"]]:
-		var b := Button.new()
-		b.text = tab[1]
-		b.toggle_mode = true
-		b.button_group = group
-		b.theme_type_variation = "TabButton"
-		b.focus_mode = Control.FOCUS_NONE
-		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		b.pressed.connect(_show_tab.bind(tab[0]))
-		tab_row.add_child(b)
-		_tab_buttons[tab[0]] = b
-
-	box.add_child(HSeparator.new())
-
-	# Sayfalar
-	var pages_margin := MarginContainer.new()
-	pages_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	for side: String in ["left", "right"]:
-		pages_margin.add_theme_constant_override("margin_" + side, 24)
-	pages_margin.add_theme_constant_override("margin_top", 20)
-	pages_margin.add_theme_constant_override("margin_bottom", 12)
-	box.add_child(pages_margin)
-
+	var pages_box := VBoxContainer.new()
+	pages_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(pages_box)
 	_pages["browse"] = _build_browse_page()
 	_pages["create"] = _build_create_page()
 	_pages["code"]   = _build_code_page()
 	for key: String in _pages:
-		pages_margin.add_child(_pages[key])
+		(_pages[key] as Control).size_flags_vertical = Control.SIZE_EXPAND_FILL
+		pages_box.add_child(_pages[key])
 
-	# Durum satırı
-	var status_margin := MarginContainer.new()
-	status_margin.add_theme_constant_override("margin_left", 24)
-	status_margin.add_theme_constant_override("margin_right", 24)
-	status_margin.add_theme_constant_override("margin_bottom", 16)
-	box.add_child(status_margin)
-	_status_lbl = UITheme.label("", 13, UITheme.TEXT_DIM)
-	_status_lbl.custom_minimum_size = Vector2(0, 20)
-	status_margin.add_child(_status_lbl)
-	return panel
+	_status_lbl = UITheme.label("", 22, UITheme.TEXT_DIM)
+	_status_lbl.custom_minimum_size = Vector2(0, 33)
+	_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_status_lbl)
+
+
+func _open_play_panel(which: String) -> void:
+	_show_tab(which)
+	if not _play_modal.visible:
+		_fade_layer(_play_modal, _play_blur, _play_card, true)
+	_update_listening()
+	# İlk alana odak — klavyeyle doğrudan yazılabilsin
+	match which:
+		"create": _room_name_input.grab_focus()
+		"code": _code_input.grab_focus()
+
+
+func _close_play_panel() -> void:
+	if not _play_modal.visible:
+		return
+	_fade_layer(_play_modal, _play_blur, _play_card, false)
+	_set_status("")
+	# Alt menü açık kalır; odak geri gelsin (klavyeyle gezinme kopmasın)
+	if _play_open:
+		(_play_items[_current_tab]["button"] as Button).grab_focus()
+	_update_listening.call_deferred()
 
 
 func _build_browse_page() -> Control:
 	var page := VBoxContainer.new()
-	page.add_theme_constant_override("separation", 14)
+	page.add_theme_constant_override("separation", 23)
 
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 10)
+	header.add_theme_constant_override("separation", 17)
 	page.add_child(header)
 	var title_box := VBoxContainer.new()
-	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_theme_constant_override("separation", 3)
 	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title_box)
-	title_box.add_child(UITheme.label("Yerel Ağdaki Odalar", 20, UITheme.TEXT, UITheme.font_bold))
+	title_box.add_child(UITheme.label("Yerel Ağdaki Odalar", 33, UITheme.TEXT, UITheme.font_bold))
 	var scan_row := HBoxContainer.new()
-	scan_row.add_theme_constant_override("separation", 6)
+	scan_row.add_theme_constant_override("separation", 10)
 	title_box.add_child(scan_row)
-	_scan_dot = UITheme.label("●", 10, UITheme.SUCCESS)
+	_scan_dot = UITheme.label("●", 17, UITheme.SUCCESS)
 	scan_row.add_child(_scan_dot)
-	_room_count_lbl = UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	_room_count_lbl = UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	scan_row.add_child(_room_count_lbl)
 
 	var refresh := Button.new()
@@ -428,7 +620,7 @@ func _build_browse_page() -> Control:
 	stack.add_child(_room_scroll)
 	_room_list = VBoxContainer.new()
 	_room_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_room_list.add_theme_constant_override("separation", 8)
+	_room_list.add_theme_constant_override("separation", 13)
 	_room_scroll.add_child(_room_list)
 
 	# Boş durum
@@ -437,62 +629,73 @@ func _build_browse_page() -> Control:
 	stack.add_child(empty)
 	_empty_state = empty
 	var empty_box := VBoxContainer.new()
-	empty_box.add_theme_constant_override("separation", 6)
+	empty_box.add_theme_constant_override("separation", 10)
 	empty.add_child(empty_box)
-	var icon := UITheme.label("◎", 44, Color(UITheme.ACCENT, 0.5))
+	var icon := UITheme.label("◎", 73, Color(UITheme.ACCENT, 0.5))
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	empty_box.add_child(icon)
-	var e1 := UITheme.label("Henüz oda bulunamadı", 17, UITheme.TEXT, UITheme.font_bold)
+	var e1 := UITheme.label("Henüz oda bulunamadı", 28, UITheme.TEXT, UITheme.font_bold)
 	e1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	empty_box.add_child(e1)
-	var e2 := UITheme.label("Aynı ağdaki odalar burada otomatik belirir.", 13, UITheme.TEXT_DIM)
+	var e2 := UITheme.label("Aynı ağdaki odalar burada otomatik belirir.", 22, UITheme.TEXT_DIM)
 	e2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	empty_box.add_child(e2)
-	empty_box.add_child(_spacer(8))
+	empty_box.add_child(_spacer(13))
 	var e_btns := HBoxContainer.new()
 	e_btns.alignment = BoxContainer.ALIGNMENT_CENTER
-	e_btns.add_theme_constant_override("separation", 10)
+	e_btns.add_theme_constant_override("separation", 17)
 	empty_box.add_child(e_btns)
 	var go_create := Button.new()
 	go_create.text = "Oda Kur"
 	go_create.theme_type_variation = "PrimaryButton"
-	go_create.pressed.connect(_show_tab.bind("create"))
+	go_create.pressed.connect(_open_play_panel.bind("create"))
 	e_btns.add_child(go_create)
 	var go_code := Button.new()
 	go_code.text = "Kod ile Katıl"
-	go_code.pressed.connect(_show_tab.bind("code"))
+	go_code.pressed.connect(_open_play_panel.bind("code"))
 	e_btns.add_child(go_code)
 	return page
 
 
 func _build_create_page() -> Control:
 	var page := VBoxContainer.new()
-	page.add_theme_constant_override("separation", 12)
-	page.add_child(UITheme.label("Yeni Oda Kur", 20, UITheme.TEXT, UITheme.font_bold))
-	var info := UITheme.label("Odan yerel ağda yayınlanır. Arkadaşların listeden ya da oda kodunla katılabilir.", 13, UITheme.TEXT_DIM)
+	page.add_theme_constant_override("separation", 20)
+	page.add_child(UITheme.label("Yeni Oda Kur", 33, UITheme.TEXT, UITheme.font_bold))
+	var info := UITheme.label("Odan yerel ağda yayınlanır. Arkadaşların listeden ya da oda kodunla katılabilir.", 22, UITheme.TEXT_DIM)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	page.add_child(info)
-	page.add_child(_spacer(4))
-
+	# Oda adı + şifre yan yana (panel kısa kalsın — ekranı kaplamasın)
+	var id_row := HBoxContainer.new()
+	id_row.add_theme_constant_override("separation", 20)
+	page.add_child(id_row)
 	_room_name_input = LineEdit.new()
 	_room_name_input.max_length = 32
 	_room_name_input.text_submitted.connect(func(_t: String) -> void: _on_host_pressed())
 	_room_name_input.focus_entered.connect(func() -> void:
 		_room_name_input.placeholder_text = tr("%s'nin Odası") % _get_player_name(tr("Oyuncu")))
-	page.add_child(_field("ODA ADI", _room_name_input))
+	var name_field := _field("ODA ADI", _room_name_input)
+	name_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	id_row.add_child(name_field)
+	_password_input = LineEdit.new()
+	_password_input.placeholder_text = "Herkese açık"
+	_password_input.secret = true
+	_password_input.text_submitted.connect(func(_t: String) -> void: _on_host_pressed())
+	var pw_field := _field("ŞİFRE  (OPSİYONEL)", _password_input, _make_reveal_button(_password_input))
+	pw_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	id_row.add_child(pw_field)
 
 	# Harita (tam satır) + format (bölümlü düğmeler). Lobby ODA AYARLARI ile aynı kural: harita takım boyutunu sınırlar
 	_map_option = OptionButton.new()
 	for m: Dictionary in NetworkManager.MAPS:
 		_map_option.add_item(m["name"])
 	_map_option.item_selected.connect(func(_i: int) -> void: _update_size_options())
-	_map_option.custom_minimum_size.y = 44
+	_map_option.custom_minimum_size.y = 73
 	_map_option.clip_text = true
-	_map_limit_lbl = UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	_map_limit_lbl = UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	page.add_child(_caption_field("HARİTA", _map_limit_lbl, _map_option))
 
 	var seg := HBoxContainer.new()
-	seg.add_theme_constant_override("separation", 6)
+	seg.add_theme_constant_override("separation", 10)
 	var group := ButtonGroup.new()
 	for s in range(NetworkManager.TEAM_SIZE_MIN, NetworkManager.TEAM_SIZE_MAX + 1):
 		var b := Button.new()
@@ -500,7 +703,7 @@ func _build_create_page() -> Control:
 		b.toggle_mode = true
 		b.button_group = group
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size.y = 40
+		b.custom_minimum_size.y = 67
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_override("font", UITheme.font_mono)
 		b.toggled.connect(func(on: bool) -> void:
@@ -508,25 +711,16 @@ func _build_create_page() -> Control:
 				_select_size(s))
 		seg.add_child(b)
 		_size_buttons.append(b)
-	_players_lbl = UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	_players_lbl = UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	page.add_child(_caption_field("FORMAT", _players_lbl, seg))
 	_load_room_prefs()
 
-	_password_input = LineEdit.new()
-	_password_input.placeholder_text = "Boş bırakırsan herkese açık olur"
-	_password_input.secret = true
-	_password_input.text_submitted.connect(func(_t: String) -> void: _on_host_pressed())
-	page.add_child(_field("ŞİFRE  (OPSİYONEL)", _password_input, _make_reveal_button(_password_input)))
-
-	var fill := Control.new()
-	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	page.add_child(fill)
-
+	page.add_child(_spacer(7))
 	_host_btn = Button.new()
 	_host_btn.text = "ODAYI KUR"
 	_host_btn.theme_type_variation = "PrimaryButton"
-	_host_btn.custom_minimum_size = Vector2(0, 50)
-	_host_btn.add_theme_font_size_override("font_size", 16)
+	_host_btn.custom_minimum_size = Vector2(0, 83)
+	_host_btn.add_theme_font_size_override("font_size", 27)
 	_host_btn.pressed.connect(_on_host_pressed)
 	page.add_child(_host_btn)
 	return page
@@ -534,19 +728,19 @@ func _build_create_page() -> Control:
 
 func _build_code_page() -> Control:
 	var page := VBoxContainer.new()
-	page.add_theme_constant_override("separation", 14)
-	page.add_child(UITheme.label("Kod ile Katıl", 20, UITheme.TEXT, UITheme.font_bold))
-	var info := UITheme.label("Oda sahibinden 7 haneli oda kodunu iste. Yerel test için IP adresi de yazabilirsin.", 13, UITheme.TEXT_DIM)
+	page.add_theme_constant_override("separation", 23)
+	page.add_child(UITheme.label("Kod ile Katıl", 33, UITheme.TEXT, UITheme.font_bold))
+	var info := UITheme.label("Oda sahibinden 7 haneli oda kodunu iste. Yerel test için IP adresi de yazabilirsin.", 22, UITheme.TEXT_DIM)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	page.add_child(info)
-	page.add_child(_spacer(4))
+	page.add_child(_spacer(7))
 
 	_code_input = LineEdit.new()
 	_code_input.placeholder_text = "ABCD234"
 	_code_input.max_length = 15
 	_code_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_code_input.add_theme_font_override("font", UITheme.font_mono)
-	_code_input.add_theme_font_size_override("font_size", 28)
+	_code_input.add_theme_font_size_override("font_size", 47)
 	_code_input.text_changed.connect(_on_code_text_changed)
 	_code_input.text_submitted.connect(func(_t: String) -> void: _on_join_code_pressed())
 	page.add_child(_field("ODA KODU", _code_input))
@@ -557,15 +751,12 @@ func _build_code_page() -> Control:
 	_code_pw_input.text_submitted.connect(func(_t: String) -> void: _on_join_code_pressed())
 	page.add_child(_field("ŞİFRE", _code_pw_input, _make_reveal_button(_code_pw_input)))
 
-	var fill := Control.new()
-	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	page.add_child(fill)
-
+	page.add_child(_spacer(13))
 	_join_btn = Button.new()
 	_join_btn.text = "KATIL"
 	_join_btn.theme_type_variation = "PrimaryButton"
-	_join_btn.custom_minimum_size = Vector2(0, 50)
-	_join_btn.add_theme_font_size_override("font_size", 16)
+	_join_btn.custom_minimum_size = Vector2(0, 83)
+	_join_btn.add_theme_font_size_override("font_size", 27)
 	_join_btn.pressed.connect(_on_join_code_pressed)
 	page.add_child(_join_btn)
 	return page
@@ -584,18 +775,18 @@ func _build_password_modal() -> void:
 	_modal.add_child(center)
 
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(380, 0)
-	var card_style := UITheme.style(UITheme.SURFACE_2, 16, Color(UITheme.ACCENT, 0.3), 1, 24, 22)
+	card.custom_minimum_size = Vector2(633, 0)
+	var card_style := UITheme.style(UITheme.SURFACE_2, 27, Color(UITheme.ACCENT, 0.3), 1, 40, 37)
 	card_style.shadow_color = Color(0, 0, 0, 0.5)
-	card_style.shadow_size = 30
+	card_style.shadow_size = 50
 	card.add_theme_stylebox_override("panel", card_style)
 	center.add_child(card)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
+	box.add_theme_constant_override("separation", 20)
 	card.add_child(box)
-	box.add_child(UITheme.label("🔒  ŞİFRELİ ODA", 12, UITheme.ACCENT, UITheme.font_caps))
-	_modal_room_lbl = UITheme.label("", 20, UITheme.TEXT, UITheme.font_bold)
+	box.add_child(UITheme.label("🔒  ŞİFRELİ ODA", 20, UITheme.ACCENT, UITheme.font_caps))
+	_modal_room_lbl = UITheme.label("", 33, UITheme.TEXT, UITheme.font_bold)
 	_modal_room_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oda adı kullanıcı metni
 	box.add_child(_modal_room_lbl)
 
@@ -605,11 +796,11 @@ func _build_password_modal() -> void:
 	_modal_pw_input.text_submitted.connect(func(_t: String) -> void: _on_modal_join())
 	box.add_child(_modal_pw_input)
 
-	_modal_status = UITheme.label("", 12, UITheme.DANGER)
+	_modal_status = UITheme.label("", 20, UITheme.DANGER)
 	box.add_child(_modal_status)
 
 	var btns := HBoxContainer.new()
-	btns.add_theme_constant_override("separation", 10)
+	btns.add_theme_constant_override("separation", 17)
 	btns.alignment = BoxContainer.ALIGNMENT_END
 	box.add_child(btns)
 	var cancel := Button.new()
@@ -620,9 +811,39 @@ func _build_password_modal() -> void:
 	var join := Button.new()
 	join.text = "KATIL"
 	join.theme_type_variation = "PrimaryButton"
-	join.custom_minimum_size = Vector2(120, 0)
+	join.custom_minimum_size = Vector2(200, 0)
 	join.pressed.connect(_on_modal_join)
 	btns.add_child(join)
+
+
+## Alt ortada cam bildirim — panel kapalıyken gelen durum mesajları (bağlantı hatası, maçtan atılma) burada görünür
+func _build_toast() -> void:
+	_toast = PanelContainer.new()
+	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE_2, UITheme.RADIUS, UITheme.BORDER, 1, 33, 17))
+	_toast.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_toast.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_toast.offset_bottom = -67
+	_toast.modulate.a = 0.0
+	add_child(_toast)
+	_toast_lbl = UITheme.label("", 23, UITheme.TEXT)
+	_toast.add_child(_toast_lbl)
+
+
+func _show_toast(text: String, col: Color) -> void:
+	_toast_lbl.text = text
+	_toast_lbl.add_theme_color_override("font_color", col)
+	# Genişlik metne göre değişir — ortada kalsın
+	_toast.reset_size()
+	_toast.offset_left = -_toast.size.x * 0.5
+	_toast.offset_right = _toast.size.x * 0.5
+	if _toast_tween:
+		_toast_tween.kill()
+	_toast_tween = create_tween()
+	_toast_tween.tween_property(_toast, "modulate:a", 1.0, 0.2)
+	_toast_tween.tween_interval(TOAST_TIME)
+	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.6)
 
 
 func _build_room_row(code: String, room: Dictionary) -> Control:
@@ -638,37 +859,37 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 	var full := count >= max_players
 
 	var row := PanelContainer.new()
-	row.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE_2, 12, UITheme.BORDER, 1, 16, 12))
+	row.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE_2, 20, UITheme.BORDER, 1, 27, 20))
 
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 14)
+	h.add_theme_constant_override("separation", 23)
 	row.add_child(h)
 
 	# Simge kutusu
 	var icon_box := PanelContainer.new()
-	icon_box.custom_minimum_size = Vector2(40, 40)
+	icon_box.custom_minimum_size = Vector2(67, 67)
 	icon_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	icon_box.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.ACCENT, 0.1), 10))
-	var icon := UITheme.label("🔒" if has_pw else "◆", 16, UITheme.ACCENT)
+	icon_box.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.ACCENT, 0.1), 17))
+	var icon := UITheme.label("🔒" if has_pw else "◆", 27, UITheme.ACCENT)
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	icon_box.add_child(icon)
 	h.add_child(icon_box)
 
 	var info := VBoxContainer.new()
-	info.add_theme_constant_override("separation", 2)
+	info.add_theme_constant_override("separation", 3)
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(info)
-	var name_lbl := UITheme.label(room_name, 16, UITheme.TEXT, UITheme.font_bold)
+	var name_lbl := UITheme.label(room_name, 27, UITheme.TEXT, UITheme.font_bold)
 	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oda adı kullanıcı metni
 	info.add_child(name_lbl)
 	var sub := (tr("KOD  %s  ·  ŞİFRELİ") if has_pw else tr("KOD  %s")) % code
-	info.add_child(UITheme.label(sub, 10, UITheme.TEXT_DIM, UITheme.font_caps))
+	info.add_child(UITheme.label(sub, 17, UITheme.TEXT_DIM, UITheme.font_caps))
 	# Özellik çipleri: durum · format · harita
 	var chips := HBoxContainer.new()
-	chips.add_theme_constant_override("separation", 6)
+	chips.add_theme_constant_override("separation", 10)
 	info.add_child(chips)
 	chips.add_child(_room_chip("● OYUNDA" if in_game else "● BEKLEMEDE", UITheme.DANGER if in_game else UITheme.SUCCESS))
 	chips.add_child(_room_chip(NetworkManager.get_format_text(team_size), UITheme.ACCENT))
@@ -676,21 +897,21 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 
 	# Doluluk
 	var cap_box := VBoxContainer.new()
-	cap_box.add_theme_constant_override("separation", 4)
-	cap_box.custom_minimum_size = Vector2(80, 0)
+	cap_box.add_theme_constant_override("separation", 7)
+	cap_box.custom_minimum_size = Vector2(133, 0)
 	cap_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(cap_box)
-	var cap_lbl := UITheme.label("%d / %d" % [count, max_players], 13,
+	var cap_lbl := UITheme.label("%d / %d" % [count, max_players], 22,
 		UITheme.DANGER if full else UITheme.TEXT, UITheme.font_bold)
 	cap_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	cap_box.add_child(cap_lbl)
 	var cap_bar := ProgressBar.new()
 	cap_bar.show_percentage = false
-	cap_bar.custom_minimum_size = Vector2(0, 4)
+	cap_bar.custom_minimum_size = Vector2(0, 7)
 	cap_bar.max_value = max_players
 	cap_bar.value = count
 	if full:
-		cap_bar.add_theme_stylebox_override("fill", UITheme.style(UITheme.DANGER, 4))
+		cap_bar.add_theme_stylebox_override("fill", UITheme.style(UITheme.DANGER, 7))
 	cap_box.add_child(cap_bar)
 
 	var btn := Button.new()
@@ -699,7 +920,7 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 	btn.disabled = full or in_game
 	btn.tooltip_text = "Oyun devam ediyor — bitince katılabilirsin" if in_game else ""
 	btn.theme_type_variation = "PrimaryButton"
-	btn.custom_minimum_size = Vector2(96, 40)
+	btn.custom_minimum_size = Vector2(160, 67)
 	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	btn.pressed.connect(_on_room_join_btn.bind(code, room_name, room_ip, has_pw))
@@ -713,27 +934,28 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 
 func _room_chip(text: String, color: Color) -> Control:
 	var chip := PanelContainer.new()
-	chip.add_theme_stylebox_override("panel", UITheme.style(Color(color, 0.12), 6, Color.TRANSPARENT, 0, 7, 1))
-	chip.add_child(UITheme.label(text, 9, color, UITheme.font_caps))
+	chip.add_theme_stylebox_override("panel", UITheme.style(Color(color, 0.12), 10, Color.TRANSPARENT, 0, 12, 2))
+	chip.add_child(UITheme.label(text, 15, color, UITheme.font_caps))
 	return chip
 
 
 func _spacer(h: float) -> Control:
 	var c := Control.new()
 	c.custom_minimum_size = Vector2(0, h)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return c
 
 
 func _field(caption: String, input: LineEdit, trailing: Control = null) -> Control:
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	box.add_child(UITheme.label(caption, 11, UITheme.TEXT_DIM, UITheme.font_caps))
-	input.custom_minimum_size.y = 44
+	box.add_theme_constant_override("separation", 10)
+	box.add_child(UITheme.label(caption, 18, UITheme.TEXT_DIM, UITheme.font_caps))
+	input.custom_minimum_size.y = 73
 	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	input.text_changed.connect(func(_t: String) -> void: _set_status(""))
 	if trailing:
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
+		row.add_theme_constant_override("separation", 13)
 		row.add_child(input)
 		row.add_child(trailing)
 		box.add_child(row)
@@ -745,9 +967,9 @@ func _field(caption: String, input: LineEdit, trailing: Control = null) -> Contr
 ## Başlık solda, bilgi etiketi sağda; altında kontrol
 func _caption_field(caption: String, info: Label, control: Control) -> Control:
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
+	box.add_theme_constant_override("separation", 10)
 	var head := HBoxContainer.new()
-	var cap := UITheme.label(caption, 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	var cap := UITheme.label(caption, 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(cap)
 	head.add_child(info)
@@ -803,13 +1025,14 @@ func _make_reveal_button(target: LineEdit) -> Button:
 	b.toggle_mode = true
 	b.theme_type_variation = "GhostButton"
 	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(76, 0)
+	b.custom_minimum_size = Vector2(127, 0)
 	b.toggled.connect(func(on: bool) -> void:
 		target.secret = not on
 		b.text = "Gizle" if on else "Göster")
 	return b
 
 
+## Durum: panel açıkken panelin altında, kapalıyken alt ortada bildirim (boş metin bildirimi tetiklemez)
 func _set_status(text: String, kind: String = "info") -> void:
 	if _status_lbl == null:
 		return
@@ -820,6 +1043,8 @@ func _set_status(text: String, kind: String = "info") -> void:
 		"ok":    col = UITheme.SUCCESS
 		"busy":  col = UITheme.ACCENT
 	_status_lbl.add_theme_color_override("font_color", col)
+	if not text.is_empty() and not _play_modal.visible:
+		_show_toast(text, col)
 
 
 func _set_busy(busy: bool) -> void:
@@ -831,6 +1056,8 @@ func _set_busy(busy: bool) -> void:
 func _get_player_name(fallback: String = "") -> String:
 	var n := _name_input.text.strip_edges()
 	if n.is_empty() and fallback.is_empty():
+		# Ad kutusu bulanık panelin arkasında kalmasın — paneli kapat, ada odaklan
+		_close_play_panel()
 		_set_status("Önce bir operatör adı gir.", "error")
 		_name_input.grab_focus()
 	return n if not n.is_empty() else fallback
@@ -857,25 +1084,28 @@ func _save_name(player_name: String) -> void:
 
 
 # ─────────────────────────────────────────────
-#  Sekmeler
+#  Sayfalar
 # ─────────────────────────────────────────────
 
 func _show_tab(which: String) -> void:
+	_play_crumb.text = tr("OYNA  /  %s") % tr(_play_item_text(which))
 	if _current_tab == which:
 		return
 	_current_tab = which
 	for key: String in _pages:
 		(_pages[key] as Control).visible = (key == which)
-	# set_pressed_no_signal ButtonGroup'taki diğerlerini kapatmıyor — hepsini elle ayarla
-	for key: String in _tab_buttons:
-		(_tab_buttons[key] as Button).set_pressed_no_signal(key == which)
+	_play_card.custom_minimum_size = PLAY_CARD_SIZE[which]
+	_play_card.reset_size()
 	_set_status("")
-	# Oda keşfi sadece Odalar sekmesinde açık
 	if which == "browse":
-		RoomManager.start_listening()
 		_refresh_room_list()
-	else:
-		RoomManager.stop_listening()
+
+
+func _play_item_text(key: String) -> String:
+	for item: Array in PLAY_ITEMS:
+		if item[0] == key:
+			return item[1]
+	return ""
 
 
 # ─────────────────────────────────────────────
@@ -900,6 +1130,8 @@ func _refresh_room_list() -> void:
 	var rooms := RoomManager.discovered_rooms
 	_empty_state.visible = rooms.is_empty()
 	_room_scroll.visible = not rooms.is_empty()
+	if _rooms_badge:
+		_rooms_badge.text = "" if rooms.is_empty() else str(rooms.size())
 	if not RoomManager.is_listening():
 		_room_count_lbl.text = "DİNLEME PORTU MEŞGUL · TEKRAR DENENİYOR..."
 	else:

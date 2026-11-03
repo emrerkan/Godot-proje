@@ -15,7 +15,7 @@ const NODE_NAME := "LoadingScreen"
 const LAYER := 120
 const MIN_SHOW := 0.6          # sn — çok kısa yüklemede göz kırpma olmasın
 const FADE_TIME := 0.35
-const BAR_WIDTH := 420.0
+const BAR_WIDTH := 700.0
 const SEGMENT := 0.28          # belirsiz modda kayan parçanın oranı
 const TIP_INTERVAL := 5.5      # sn — ipucu değişimi
 const TIP_FADE := 0.4
@@ -126,7 +126,7 @@ func _init() -> void:
 
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.offset_bottom = -70   # alttaki ipucu paneline yer
+	center.offset_bottom = -117   # alttaki ipucu paneline yer
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(center)
 	var box := VBoxContainer.new()
@@ -134,39 +134,39 @@ func _init() -> void:
 	center.add_child(box)
 
 	# Logo (MainMenu._build_brand_column ile aynı ölçü/renk, ortalı)
-	var t1 := UITheme.label("TACTICAL", 34, UITheme.TEXT, UITheme.font_title)
+	var t1 := UITheme.label("TACTICAL", 57, UITheme.TEXT, UITheme.font_title)
 	t1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(t1)
-	var t2 := UITheme.label("DARK", 72, UITheme.ACCENT, UITheme.font_title)
+	var t2 := UITheme.label("DARK", 120, UITheme.ACCENT, UITheme.font_title)
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	t2.add_theme_constant_override("line_spacing", -12)
+	t2.add_theme_constant_override("line_spacing", -20)
 	box.add_child(t2)
 	var logo_bar := ColorRect.new()
 	logo_bar.color = UITheme.ACCENT
-	logo_bar.custom_minimum_size = Vector2(56, 3)
+	logo_bar.custom_minimum_size = Vector2(93, 5)
 	var logo_bar_wrap := CenterContainer.new()
 	logo_bar_wrap.add_child(logo_bar)
 	box.add_child(logo_bar_wrap)
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 46)
+	gap.custom_minimum_size = Vector2(0, 77)
 	box.add_child(gap)
 
 	# Durum satırı: "YÜKLENİYOR..." ······ 42%
 	var row := HBoxContainer.new()
 	row.custom_minimum_size = Vector2(BAR_WIDTH, 0)
 	box.add_child(row)
-	_title = UITheme.label("", 13, UITheme.TEXT, UITheme.font_caps)
+	_title = UITheme.label("", 22, UITheme.TEXT, UITheme.font_caps)
 	_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # metni tr() + nokta animasyonuyla kendimiz kurarız
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_title)
-	_pct = UITheme.label("", 13, UITheme.ACCENT, UITheme.font_mono)
+	_pct = UITheme.label("", 22, UITheme.ACCENT, UITheme.font_mono)
 	row.add_child(_pct)
 	var gap2 := Control.new()
-	gap2.custom_minimum_size = Vector2(0, 8)
+	gap2.custom_minimum_size = Vector2(0, 13)
 	box.add_child(gap2)
 
 	_bar_bg = Control.new()
-	_bar_bg.custom_minimum_size = Vector2(BAR_WIDTH, 3)
+	_bar_bg.custom_minimum_size = Vector2(BAR_WIDTH, 5)
 	_bar_bg.clip_contents = true
 	var track := ColorRect.new()
 	track.color = Color(1, 1, 1, 0.1)
@@ -174,35 +174,35 @@ func _init() -> void:
 	_bar_bg.add_child(track)
 	_bar_fill = ColorRect.new()
 	_bar_fill.color = UITheme.ACCENT
-	_bar_fill.size = Vector2(0, 3)
+	_bar_fill.size = Vector2(0, 5)
 	_bar_bg.add_child(_bar_fill)
 	box.add_child(_bar_bg)
 	var gap3 := Control.new()
-	gap3.custom_minimum_size = Vector2(0, 8)
+	gap3.custom_minimum_size = Vector2(0, 13)
 	box.add_child(gap3)
-	_sub = UITheme.label("", 12, UITheme.TEXT_DIM, UITheme.font_caps)
+	_sub = UITheme.label("", 20, UITheme.TEXT_DIM, UITheme.font_caps)
 	box.add_child(_sub)
 
 	# İpucu: altta braketli cam panel
 	var tip_anchor := CenterContainer.new()
 	tip_anchor.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	tip_anchor.offset_top = -132
-	tip_anchor.offset_bottom = -44
+	tip_anchor.offset_top = -220
+	tip_anchor.offset_bottom = -73
 	tip_anchor.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(tip_anchor)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(560, 0)
-	panel.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, UITheme.RADIUS, UITheme.BORDER, 1, 20, 12))
+	panel.custom_minimum_size = Vector2(933, 0)
+	panel.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, UITheme.RADIUS, UITheme.BORDER, 1, 33, 20))
 	UITheme.add_brackets(panel)
 	tip_anchor.add_child(panel)
 	_tip_panel = panel
 	var tbox := VBoxContainer.new()
-	tbox.add_theme_constant_override("separation", 6)
+	tbox.add_theme_constant_override("separation", 10)
 	panel.add_child(tbox)
-	tbox.add_child(UITheme.label("◆  TAKTİK İPUCU", 11, UITheme.ACCENT, UITheme.font_caps))
-	_tip = UITheme.label("", 14, UITheme.TEXT)
+	tbox.add_child(UITheme.label("◆  TAKTİK İPUCU", 18, UITheme.ACCENT, UITheme.font_caps))
+	_tip = UITheme.label("", 23, UITheme.TEXT)
 	_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_tip.custom_minimum_size = Vector2(520, 0)
+	_tip.custom_minimum_size = Vector2(867, 0)
 	tbox.add_child(_tip)
 
 

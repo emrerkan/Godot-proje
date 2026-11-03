@@ -8,7 +8,7 @@ extends Control
 signal closed
 
 const SETTINGS := preload("res://scenes/settings/GameSettings.gd")
-const CARD_SIZE := Vector2(820, 590)   # UITheme taban 1152×648'e sığar
+const CARD_SIZE := Vector2(1367, 983)   # UITheme taban 1920×1080'e sığar
 
 var _draft: Dictionary = {}
 var _refreshers: Array[Callable] = []   # taslak değişince (profil/varsayılan) kontrolleri günceller
@@ -78,12 +78,12 @@ func _build() -> void:
 	add_child(center)
 	_card = PanelContainer.new()
 	_card.custom_minimum_size = CARD_SIZE
-	_card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.96), 12, UITheme.BORDER, 1, 24, 18))
-	UITheme.add_brackets(_card, UITheme.FRAME, 18)
+	_card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.96), 20, UITheme.BORDER, 1, 40, 30))
+	UITheme.add_brackets(_card, UITheme.FRAME, 30)
 	center.add_child(_card)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
+	box.add_theme_constant_override("separation", 17)
 	_card.add_child(box)
 
 	# Başlık
@@ -93,8 +93,8 @@ func _build() -> void:
 	tbox.add_theme_constant_override("separation", 0)
 	tbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(tbox)
-	tbox.add_child(UITheme.label("SİSTEM", 10, UITheme.TEXT_DIM, UITheme.font_caps))
-	tbox.add_child(UITheme.label("AYARLAR", 24, UITheme.TEXT, UITheme.font_title))
+	tbox.add_child(UITheme.label("SİSTEM", 17, UITheme.TEXT_DIM, UITheme.font_caps))
+	tbox.add_child(UITheme.label("AYARLAR", 40, UITheme.TEXT, UITheme.font_title))
 	var x := Button.new()
 	x.text = "✕"
 	x.theme_type_variation = "GhostButton"
@@ -104,7 +104,7 @@ func _build() -> void:
 
 	# Sekmeler
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 4)
+	tabs.add_theme_constant_override("separation", 7)
 	box.add_child(tabs)
 	var group := ButtonGroup.new()
 	for t: Array in [["graphics", "GRAFİK"], ["controls", "KONTROLLER"], ["audio", "SES"], ["game", "OYUN"]]:
@@ -131,7 +131,7 @@ func _build() -> void:
 	# Alt şerit
 	box.add_child(HSeparator.new())
 	var foot := HBoxContainer.new()
-	foot.add_theme_constant_override("separation", 10)
+	foot.add_theme_constant_override("separation", 17)
 	box.add_child(foot)
 	var reset := Button.new()
 	reset.text = "VARSAYILAN"
@@ -141,7 +141,7 @@ func _build() -> void:
 		_draft = SETTINGS.DEFAULTS.duplicate(true)
 		_refresh_all())
 	foot.add_child(reset)
-	_dirty_lbl = UITheme.label("", 11, UITheme.ACCENT, UITheme.font_caps)
+	_dirty_lbl = UITheme.label("", 18, UITheme.ACCENT, UITheme.font_caps)
 	_dirty_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_dirty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_dirty_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -149,14 +149,14 @@ func _build() -> void:
 	var cancel := Button.new()
 	cancel.text = "KAPAT"
 	cancel.focus_mode = Control.FOCUS_NONE
-	cancel.custom_minimum_size = Vector2(120, 0)
+	cancel.custom_minimum_size = Vector2(200, 0)
 	cancel.pressed.connect(close)
 	foot.add_child(cancel)
 	var apply := Button.new()
 	apply.text = "UYGULA"
 	apply.theme_type_variation = "PrimaryButton"
 	apply.focus_mode = Control.FOCUS_NONE
-	apply.custom_minimum_size = Vector2(150, 40)
+	apply.custom_minimum_size = Vector2(250, 67)
 	apply.pressed.connect(_on_apply)
 	foot.add_child(apply)
 
@@ -168,7 +168,7 @@ func _page(parent: Control, builder: Callable) -> Control:
 	parent.add_child(scroll)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 10)
 	scroll.add_child(col)
 	builder.call(col)
 	return scroll
@@ -268,19 +268,19 @@ func _build_controls(col: VBoxContainer) -> void:
 			["R", "Şarjör değiştir"], ["Q", "Özel gücü kullan"], ["Enter / T", "Sohbet / takım sohbeti"],
 			["TAB", "Skor tablosu"], ["ESC", "Menü"]]:
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 14)
+		row.add_theme_constant_override("separation", 23)
 		col.add_child(row)
 		var key := PanelContainer.new()
-		key.custom_minimum_size = Vector2(134, 0)  # "V / Right click" (EN) sığsın
-		key.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.06), 4, UITheme.BORDER, 1, 10, 4))
-		var kl := UITheme.label(k[0], 12, UITheme.TEXT, UITheme.font_mono)
+		key.custom_minimum_size = Vector2(223, 0)  # "V / Right click" (EN) sığsın
+		key.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.06), 7, UITheme.BORDER, 1, 17, 7))
+		var kl := UITheme.label(k[0], 20, UITheme.TEXT, UITheme.font_mono)
 		kl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		key.add_child(kl)
 		row.add_child(key)
-		var dl := UITheme.label(k[1], 13, UITheme.TEXT_DIM)
+		var dl := UITheme.label(k[1], 22, UITheme.TEXT_DIM)
 		dl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(dl)
-	col.add_child(UITheme.label("Tuş atama (değiştirme) ileride eklenecek.", 11, Color(UITheme.TEXT_DIM, 0.7)))
+	col.add_child(UITheme.label("Tuş atama (değiştirme) ileride eklenecek.", 18, Color(UITheme.TEXT_DIM, 0.7)))
 
 
 func _build_audio(col: VBoxContainer) -> void:
@@ -291,7 +291,7 @@ func _build_audio(col: VBoxContainer) -> void:
 			func() -> float: return float(_draft[key]) * 100.0,
 			func(v: float) -> void: _draft[key] = v / 100.0,
 			func(v: float) -> String: return "%d%%" % int(v))
-	var note := UITheme.label("Not: oyunda henüz ses efekti/müzik yok. Ses kanalları hazır — sesler eklendiğinde bu ayarlar geçerli olacak.", 11, Color(UITheme.TEXT_DIM, 0.8))
+	var note := UITheme.label("Not: oyunda henüz ses efekti/müzik yok. Ses kanalları hazır — sesler eklendiğinde bu ayarlar geçerli olacak.", 18, Color(UITheme.TEXT_DIM, 0.8))
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(note)
 
@@ -317,26 +317,26 @@ func _build_game(col: VBoxContainer) -> void:
 func _section(col: VBoxContainer, title: String) -> void:
 	if col.get_child_count() > 0:
 		var sp := Control.new()
-		sp.custom_minimum_size = Vector2(0, 6)
+		sp.custom_minimum_size = Vector2(0, 10)
 		col.add_child(sp)
-	col.add_child(UITheme.label(title, 10, UITheme.TEXT_DIM, UITheme.font_caps))
+	col.add_child(UITheme.label(title, 17, UITheme.TEXT_DIM, UITheme.font_caps))
 
 
 func _row(col: VBoxContainer, title: String, desc: String, control: Control) -> void:
 	var row := PanelContainer.new()
-	row.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.03), 4, Color(1, 1, 1, 0.06), 1, 14, 7))
+	row.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.03), 7, Color(1, 1, 1, 0.06), 1, 23, 12))
 	col.add_child(row)
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 16)
+	h.add_theme_constant_override("separation", 27)
 	row.add_child(h)
 	var txt := VBoxContainer.new()
 	txt.add_theme_constant_override("separation", 0)
 	txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(txt)
-	txt.add_child(UITheme.label(title, 14, UITheme.TEXT))
+	txt.add_child(UITheme.label(title, 23, UITheme.TEXT))
 	if not desc.is_empty():
-		txt.add_child(UITheme.label(desc, 11, UITheme.TEXT_DIM))
-	control.custom_minimum_size.x = maxf(control.custom_minimum_size.x, 260)
+		txt.add_child(UITheme.label(desc, 18, UITheme.TEXT_DIM))
+	control.custom_minimum_size.x = maxf(control.custom_minimum_size.x, 433)
 	control.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(control)
 
@@ -357,7 +357,7 @@ func _option(col: VBoxContainer, title: String, desc: String, items: Array, gett
 func _slider(col: VBoxContainer, title: String, desc: String, mn: float, mx: float, step: float,
 		getter: Callable, setter: Callable, fmt: Callable, custom_on_change := false) -> HSlider:
 	var wrap := HBoxContainer.new()
-	wrap.add_theme_constant_override("separation", 10)
+	wrap.add_theme_constant_override("separation", 17)
 	var s := HSlider.new()
 	s.min_value = mn
 	s.max_value = mx
@@ -367,8 +367,8 @@ func _slider(col: VBoxContainer, title: String, desc: String, mn: float, mx: flo
 	s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_style_slider(s)
 	wrap.add_child(s)
-	var val := UITheme.label("", 13, UITheme.TEXT, UITheme.font_mono)
-	val.custom_minimum_size = Vector2(56, 0)
+	var val := UITheme.label("", 22, UITheme.TEXT, UITheme.font_mono)
+	val.custom_minimum_size = Vector2(93, 0)
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	wrap.add_child(val)
 	s.value_changed.connect(func(v: float) -> void:
@@ -398,12 +398,12 @@ func _check(col: VBoxContainer, title: String, desc: String, getter: Callable, s
 
 
 func _style_slider(s: HSlider) -> void:
-	var track := UITheme.style(Color(1, 1, 1, 0.12), 2)
-	track.content_margin_top = 2
-	track.content_margin_bottom = 2
-	var fill := UITheme.style(Color(1, 1, 1, 0.85), 2)
-	fill.content_margin_top = 2
-	fill.content_margin_bottom = 2
+	var track := UITheme.style(Color(1, 1, 1, 0.12), 3)
+	track.content_margin_top = 3
+	track.content_margin_bottom = 3
+	var fill := UITheme.style(Color(1, 1, 1, 0.85), 3)
+	fill.content_margin_top = 3
+	fill.content_margin_bottom = 3
 	s.add_theme_stylebox_override("slider", track)
 	s.add_theme_stylebox_override("grabber_area", fill)
 	s.add_theme_stylebox_override("grabber_area_highlight", fill)

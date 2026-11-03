@@ -13,10 +13,10 @@ extends Control
 
 const SETTINGS := preload("res://scenes/settings/GameSettings.gd")
 
-const MIN_GAP := 4.0
-const MAX_GAP := 70.0
-const TICK_LEN := 7.0
-const KICK := 7.0
+const MIN_GAP := 6.7     # px, 1920×1080 tuval
+const MAX_GAP := 117.0
+const TICK_LEN := 11.7
+const KICK := 11.7
 
 ## HUD her kare ayarlar: menü/oyun sonu açıkken false
 var allowed := true
@@ -87,7 +87,7 @@ func _process(delta: float) -> void:
 	if not show:
 		return
 
-	_kick = maxf(_kick - delta * 40.0, 0.0)
+	_kick = maxf(_kick - delta * 66.7, 0.0)
 	if _reload_t >= 0.0:
 		_reload_t = minf(_reload_t + delta / _reload_time, 1.0)
 
@@ -113,14 +113,14 @@ func _draw() -> void:
 	for dir: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
 		var a := c + dir * g
 		var b := c + dir * (g + TICK_LEN)
-		draw_line(a, b, outline, 4.0, true)
-		draw_line(a, b, col, 2.0, true)
+		draw_line(a, b, outline, 7.0, true)
+		draw_line(a, b, col, 3.0, true)
 
-	draw_circle(c, 2.6, outline)
-	draw_circle(c, 1.5, col)
+	draw_circle(c, 4.3, outline)
+	draw_circle(c, 2.5, col)
 
 	# Şarjör dolum halkası
 	if _reload_t >= 0.0:
-		var r := g + TICK_LEN + 6.0
-		draw_arc(c, r, 0.0, TAU, 40, Color(1, 1, 1, 0.12), 3.0, true)
-		draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * _reload_t, 40, UITheme.ACCENT, 3.0, true)
+		var r := g + TICK_LEN + 10.0
+		draw_arc(c, r, 0.0, TAU, 40, Color(1, 1, 1, 0.12), 5.0, true)
+		draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * _reload_t, 40, UITheme.ACCENT, 5.0, true)

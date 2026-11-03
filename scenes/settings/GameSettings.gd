@@ -156,7 +156,7 @@ static func apply_all(tree: SceneTree) -> void:
 		RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW,
 		RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][clampi(sh, 0, 3)])
 
-	# Arayüz ölçeği (UITheme taban 1152×648 — 1'in üstü ekrana sığmaz)
+	# Arayüz ölçeği (UITheme taban 1920×1080 — 1'in üstü ekrana sığmaz)
 	root.content_scale_factor = clampf(float(get_value("ui_scale")), 0.8, 1.0)
 
 	_apply_audio()

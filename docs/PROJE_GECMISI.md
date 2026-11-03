@@ -68,7 +68,7 @@
     yapılara (`design/gdd/`, `production/`, `project.yaml`, diğer agent'lar) bağlı — bkz. `docs/claude_turkce/README.md`.
 
 19. **Tam ekran ölçekleme:** project.godot'da stretch kapalıydı → UI tam ekranda küçük kalıp aralar açılıyordu. `UITheme._apply_scaling`
-    kodla canvas_items + expand, taban 1152×648 (editör açık olduğundan project.godot yerine kod).
+    kodla canvas_items + expand, taban 1152×648 (editör açık olduğundan project.godot yerine kod; #42'de 1920×1080'e geçildi).
     Kullanıcı: **asıl hedef ekran 1920×1080.** 3D kısımlar (menü arka planı, karakter önizlemeleri) mantıksal boyutta çizilip
     büyütüldüğü için bulanıktı → `SharpViewport.gd` ile gerçek pikselde. Karakter seçimi 648 yüksekliğe sığmıyordu (690) → sıkılaştırıldı.
     Hâlâ "bulanık" denince: kesirli ölçek (×1.67) → root `snap_2d_transforms/vertices_to_pixel`, font `HINTING_NORMAL` +
@@ -178,6 +178,14 @@
     **Isınma** (kullanıcı: "yüklenenler gelene kadar haritada oynayabilsin"): perde yüklenince kalkar, oyuncu dolaşır/zıplar/ateş eder,
     HASAR YOK (seçilen varsayılan — istenirse hasarlı ısınma + anında respawn eklenebilir), kart/kapı/güç yok, hedef çipinde
     "ISINMA · n/N OYUNCU HAZIR · süre". Herkes gelince herkes kendi spawn'ına ışınlanır (can/mermi dolu) ve maç başlar.
+42. **Ölçek tabanı 1920×1080 + BF1 ana menü** (2026-11-02). Kullanıcı kuralı: **ölçekleme referansı HEP 1920×1080**.
+    `UITheme.BASE_RESOLUTION` 1152×648 → 1920×1080; tüm UI piksel değerleri ×5/3 (1 px çizgiler 1 kaldı, 3D/Label3D değerleri
+    dokunulmadı). Görünüm aynı, 1080p'de ölçek ×1.0 → yazılar keskin. Ana menü: kullanıcı "açılışta dev panel boğucu" dedi →
+    sağ üstte `OYNA | PROFİL | AYARLAR` (PROFİL operatör kartından buraya taşındı — kullanıcı onayı), OYNA alt menüsü
+    (ODALAR / ODA KUR / KOD İLE KATIL), maddeye gelince "fenerle tutma" (2D leke + toz shader + 3D menü feneri maddeye kilitlenir),
+    tıklayınca ekranı kaplamayan bulanık arka planlı panel. Profil penceresi önceden de ekrana sığmıyordu (~1140 px) → başlık
+    satırı kaldırıldı, ✕ ekran köşesine (~1040 px). Doğrulama: önce/sonra ekran görüntüleri (menü, lobi, karakter seçimi, ayarlar,
+    profil). HUD oyunda görsel olarak kontrol EDİLMEDİ (değerler ×5/3, kullanıcı oyunda bakmalı).
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 

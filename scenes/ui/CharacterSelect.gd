@@ -30,7 +30,7 @@ const COL_CARD_HOVER := Color(0.13, 0.145, 0.16, 0.72)
 const COL_TEXT       := UITheme.TEXT
 const COL_TEXT_DIM   := UITheme.TEXT_DIM
 const COL_TRACK      := Color(1, 1, 1, 0.07)
-const CARD_RADIUS := 12
+const CARD_RADIUS := 20
 
 var _local_selected: String = ""
 var _confirmed: bool = false
@@ -71,17 +71,17 @@ func _init_fonts() -> void:
 	_font_title = FontVariation.new()
 	_font_title.base_font = base
 	_font_title.variation_embolden = 0.9
-	_font_title.spacing_glyph = 6
+	_font_title.spacing_glyph = 10
 
 	_font_bold = FontVariation.new()
 	_font_bold.base_font = base
 	_font_bold.variation_embolden = 0.7
-	_font_bold.spacing_glyph = 2
+	_font_bold.spacing_glyph = 3
 
 	_font_caps = FontVariation.new()
 	_font_caps.base_font = base
 	_font_caps.variation_embolden = 0.35
-	_font_caps.spacing_glyph = 3
+	_font_caps.spacing_glyph = 5
 
 
 # ─────────────────────────────────────────────
@@ -121,7 +121,7 @@ func _build_ui() -> void:
 	glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	glow.stretch_mode = TextureRect.STRETCH_SCALE
 	glow.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	glow.offset_bottom = 160
+	glow.offset_bottom = 267
 	add_child(glow)
 
 	# Süzülen duman katmanı (ana menüyle aynı shader — "Sis & Cam" kimliği), kartlar saydam olduğu için arkadan sezilir
@@ -139,19 +139,19 @@ func _build_ui() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side: String in ["left", "right"]:
-		margin.add_theme_constant_override("margin_" + side, 40)
-	margin.add_theme_constant_override("margin_top", 14)
-	margin.add_theme_constant_override("margin_bottom", 14)
+		margin.add_theme_constant_override("margin_" + side, 67)
+	margin.add_theme_constant_override("margin_top", 23)
+	margin.add_theme_constant_override("margin_bottom", 23)
 	add_child(margin)
 
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 12)
+	root.add_theme_constant_override("separation", 20)
 	margin.add_child(root)
 
 	root.add_child(_build_header(team_id))
 
 	var cards_row := HBoxContainer.new()
-	cards_row.add_theme_constant_override("separation", 16)
+	cards_row.add_theme_constant_override("separation", 27)
 	cards_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	cards_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(cards_row)
@@ -164,32 +164,32 @@ func _build_ui() -> void:
 
 func _build_header(team_id: int) -> Control:
 	var header := VBoxContainer.new()
-	header.add_theme_constant_override("separation", 4)
+	header.add_theme_constant_override("separation", 7)
 
-	var eyebrow := _make_label("TAKTİK HAZIRLIK", 12, COL_TEXT_DIM, _font_caps)
+	var eyebrow := _make_label("TAKTİK HAZIRLIK", 20, COL_TEXT_DIM, _font_caps)
 	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	header.add_child(eyebrow)
 
-	var title := _make_label("KARAKTERİNİ SEÇ", 30, COL_TEXT, _font_title)
+	var title := _make_label("KARAKTERİNİ SEÇ", 50, COL_TEXT, _font_title)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	header.add_child(title)
 
 	# Takım rozeti (pill)
 	var chip := PanelContainer.new()
-	var chip_style := _rounded_style(Color(_team_color, 0.14), 20)
+	var chip_style := _rounded_style(Color(_team_color, 0.14), 33)
 	chip_style.border_color = Color(_team_color, 0.6)
 	chip_style.set_border_width_all(1)
-	chip_style.content_margin_left  = 16
-	chip_style.content_margin_right = 16
-	chip_style.content_margin_top   = 4
-	chip_style.content_margin_bottom = 4
+	chip_style.content_margin_left  = 27
+	chip_style.content_margin_right = 27
+	chip_style.content_margin_top   = 7
+	chip_style.content_margin_bottom = 7
 	chip.add_theme_stylebox_override("panel", chip_style)
 
 	var chip_row := HBoxContainer.new()
-	chip_row.add_theme_constant_override("separation", 8)
+	chip_row.add_theme_constant_override("separation", 13)
 	chip.add_child(chip_row)
 
-	chip_row.add_child(_make_label(tr("%s TAKIM") % UITheme.team_tag(team_id), 12, _team_color, _font_caps))
+	chip_row.add_child(_make_label(tr("%s TAKIM") % UITheme.team_tag(team_id), 20, _team_color, _font_caps))
 
 	var chip_wrap := CenterContainer.new()
 	chip_wrap.add_child(chip)
@@ -199,45 +199,45 @@ func _build_header(team_id: int) -> Control:
 
 func _build_footer() -> Control:
 	var footer := VBoxContainer.new()
-	footer.add_theme_constant_override("separation", 10)
+	footer.add_theme_constant_override("separation", 17)
 
 	# Takım arkadaşlarının seçimleri — _refresh_roster ile doldurulur
 	_roster_row = HBoxContainer.new()
 	_roster_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_roster_row.add_theme_constant_override("separation", 8)
+	_roster_row.add_theme_constant_override("separation", 13)
 	footer.add_child(_roster_row)
 
 	var action_row := HBoxContainer.new()
 	action_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	action_row.add_theme_constant_override("separation", 22)
+	action_row.add_theme_constant_override("separation", 37)
 	footer.add_child(action_row)
 
 	# Genel ilerleme (tüm oyuncular)
 	var progress_box := VBoxContainer.new()
-	progress_box.add_theme_constant_override("separation", 5)
-	progress_box.custom_minimum_size = Vector2(240, 0)
+	progress_box.add_theme_constant_override("separation", 8)
+	progress_box.custom_minimum_size = Vector2(400, 0)
 	progress_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	action_row.add_child(progress_box)
 
-	_status_lbl = _make_label("", 12, COL_TEXT_DIM, _font_caps)
+	_status_lbl = _make_label("", 20, COL_TEXT_DIM, _font_caps)
 	progress_box.add_child(_status_lbl)
 
-	_progress = _make_bar(UITheme.ACCENT, 4)
+	_progress = _make_bar(UITheme.ACCENT, 7)
 	progress_box.add_child(_progress)
 
 	_confirm_btn = Button.new()
 	_confirm_btn.text = "ONAYLA"
-	_confirm_btn.custom_minimum_size = Vector2(230, 48)
+	_confirm_btn.custom_minimum_size = Vector2(383, 80)
 	_confirm_btn.disabled = true
 	_confirm_btn.focus_mode = Control.FOCUS_NONE
 	_confirm_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_confirm_btn.add_theme_font_override("font", _font_bold)
-	_confirm_btn.add_theme_font_size_override("font_size", 16)
+	_confirm_btn.add_theme_font_size_override("font_size", 27)
 	_confirm_btn.pressed.connect(_on_confirm)
 	action_row.add_child(_confirm_btn)
 
-	var hint := _make_label("Çift tık: seç ve onayla", 11, Color(COL_TEXT_DIM, 0.7))
-	hint.custom_minimum_size = Vector2(240, 0)
+	var hint := _make_label("Çift tık: seç ve onayla", 18, Color(COL_TEXT_DIM, 0.7))
+	hint.custom_minimum_size = Vector2(400, 0)
 	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	action_row.add_child(hint)
 
@@ -250,7 +250,7 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	var char_color: Color = char_data["color"]
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(196, 0)
+	panel.custom_minimum_size = Vector2(327, 0)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.gui_input.connect(_on_card_input.bind(char_name))
 	panel.mouse_entered.connect(_on_card_hover.bind(char_name, true))
@@ -262,11 +262,11 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 
 	# ── 3D önizleme (üst köşeleri yuvarlak maske ile kırpılır) ──
 	var mask := Panel.new()
-	mask.custom_minimum_size = Vector2(0, 150)  # ekran 1152×648 tabana sığsın (UITheme.BASE_RESOLUTION)
+	mask.custom_minimum_size = Vector2(0, 250)  # ekran 1920×1080 tabana sığsın (UITheme.BASE_RESOLUTION)
 	mask.clip_children = CanvasItem.CLIP_CHILDREN_ONLY
 	var mask_style := _rounded_style(Color.WHITE, 0)
-	mask_style.corner_radius_top_left  = CARD_RADIUS - 2
-	mask_style.corner_radius_top_right = CARD_RADIUS - 2
+	mask_style.corner_radius_top_left  = CARD_RADIUS - 3
+	mask_style.corner_radius_top_right = CARD_RADIUS - 3
 	mask.add_theme_stylebox_override("panel", mask_style)
 	vbox.add_child(mask)
 
@@ -298,19 +298,19 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	fade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	fade.stretch_mode = TextureRect.STRETCH_SCALE
 	fade.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	fade.offset_top = -56
+	fade.offset_top = -93
 	mask.add_child(fade)
 
 	# Sağ üst durum rozeti (ALINDI / SEN)
 	var badge := PanelContainer.new()
 	badge.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	badge.offset_left  = -86
-	badge.offset_right = -10
-	badge.offset_top   = 10
+	badge.offset_left  = -143
+	badge.offset_right = -17
+	badge.offset_top   = 17
 	badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	badge.visible = false
 	mask.add_child(badge)
-	var badge_lbl := _make_label("", 10, Color.WHITE, _font_caps)
+	var badge_lbl := _make_label("", 17, Color.WHITE, _font_caps)
 	badge_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	badge.add_child(badge_lbl)
 
@@ -318,57 +318,57 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	var up_count := PROFILE.upgrade_count(char_name)
 	var max_count := PROFILE.STATS.size() * PROFILE.MAX_LEVEL
 	var lv_badge := PanelContainer.new()
-	lv_badge.position = Vector2(10, 10)
+	lv_badge.position = Vector2(17, 17)
 	var lv_col: Color = UITheme.ACCENT if up_count > 0 else COL_TEXT_DIM
-	lv_badge.add_theme_stylebox_override("panel", UITheme.style(Color(0, 0, 0, 0.62), 6, Color(lv_col, 0.7), 1, 8, 3))
+	lv_badge.add_theme_stylebox_override("panel", UITheme.style(Color(0, 0, 0, 0.62), 10, Color(lv_col, 0.7), 1, 13, 5))
 	mask.add_child(lv_badge)
 	var lv_box := HBoxContainer.new()
-	lv_box.add_theme_constant_override("separation", 4)
+	lv_box.add_theme_constant_override("separation", 7)
 	lv_badge.add_child(lv_box)
-	lv_box.add_child(_make_label("SV", 9, Color(lv_col, 0.8), _font_caps))
-	lv_box.add_child(_make_label(str(up_count), 14, lv_col, _font_bold))
+	lv_box.add_child(_make_label("SV", 15, Color(lv_col, 0.8), _font_caps))
+	lv_box.add_child(_make_label(str(up_count), 23, lv_col, _font_bold))
 
 	# ── İsim / rol / statlar ──
 	var content_margin := MarginContainer.new()
-	content_margin.add_theme_constant_override("margin_left",   14)
-	content_margin.add_theme_constant_override("margin_right",  14)
-	content_margin.add_theme_constant_override("margin_top",    2)
-	content_margin.add_theme_constant_override("margin_bottom", 12)
+	content_margin.add_theme_constant_override("margin_left",   23)
+	content_margin.add_theme_constant_override("margin_right",  23)
+	content_margin.add_theme_constant_override("margin_top",    3)
+	content_margin.add_theme_constant_override("margin_bottom", 20)
 	content_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(content_margin)
 
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 6)
+	content.add_theme_constant_override("separation", 10)
 	content_margin.add_child(content)
 
-	content.add_child(_make_label(char_name.to_upper(), 18, COL_TEXT, _font_bold))
+	content.add_child(_make_label(char_name.to_upper(), 30, COL_TEXT, _font_bold))
 
 	var role_row := HBoxContainer.new()
-	role_row.add_theme_constant_override("separation", 8)
+	role_row.add_theme_constant_override("separation", 13)
 	content.add_child(role_row)
 	var accent := ColorRect.new()
 	accent.color = char_color
-	accent.custom_minimum_size = Vector2(18, 2)
+	accent.custom_minimum_size = Vector2(30, 3)
 	accent.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	role_row.add_child(accent)
-	role_row.add_child(_make_label(tr(char_data["role"] as String).to_upper(), 10, char_color, _font_caps))
+	role_row.add_child(_make_label(tr(char_data["role"] as String).to_upper(), 17, char_color, _font_caps))
 
 	# Seviye ilerlemesi: "SEVİYE 3 / 25" + ince çubuk
 	var lv_row := HBoxContainer.new()
 	content.add_child(lv_row)
-	var lv_lbl := _make_label("SEVİYE", 9, COL_TEXT_DIM, _font_caps)
+	var lv_lbl := _make_label("SEVİYE", 15, COL_TEXT_DIM, _font_caps)
 	lv_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lv_row.add_child(lv_lbl)
-	lv_row.add_child(_make_label("%d / %d" % [up_count, max_count], 10, lv_col, _font_bold))
-	var lv_bar := _make_bar(UITheme.ACCENT, 3)
+	lv_row.add_child(_make_label("%d / %d" % [up_count, max_count], 17, lv_col, _font_bold))
+	var lv_bar := _make_bar(UITheme.ACCENT, 5)
 	lv_bar.value = float(up_count) / float(max_count)
 	content.add_child(lv_bar)
 
 	var stats_box := VBoxContainer.new()
-	stats_box.add_theme_constant_override("separation", 7)
+	stats_box.add_theme_constant_override("separation", 12)
 	content.add_child(stats_box)
 	var spacer_top := Control.new()
-	spacer_top.custom_minimum_size = Vector2(0, 2)
+	spacer_top.custom_minimum_size = Vector2(0, 3)
 	stats_box.add_child(spacer_top)
 
 	# Profil yükseltmeleri (bu karakter için) — yükseltilmiş değer vurgulu
@@ -379,26 +379,26 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 		var value: float = snappedf(float(stats[stat_name]) * float(stat_mult[stat_name]), 0.1)
 		var boosted: bool = float(stat_mult[stat_name]) > 1.0
 		var stat_col := VBoxContainer.new()
-		stat_col.add_theme_constant_override("separation", 3)
+		stat_col.add_theme_constant_override("separation", 5)
 		stats_box.add_child(stat_col)
 
 		var label_row := HBoxContainer.new()
 		stat_col.add_child(label_row)
-		var name_lbl := _make_label(tr(stat_name).to_upper(), 9, COL_TEXT_DIM, _font_caps)
+		var name_lbl := _make_label(tr(stat_name).to_upper(), 15, COL_TEXT_DIM, _font_caps)
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label_row.add_child(name_lbl)
-		#label_row.add_child(_make_label("%g" % value, 10, COL_TEXT, _font_bold))
-		label_row.add_child(_make_label(str(value), 10, UITheme.ACCENT if boosted else COL_TEXT, _font_bold))
+		#label_row.add_child(_make_label("%g" % value, 17, COL_TEXT, _font_bold))
+		label_row.add_child(_make_label(str(value), 17, UITheme.ACCENT if boosted else COL_TEXT, _font_bold))
 
-		var bar := _make_bar(char_color, 5)
+		var bar := _make_bar(char_color, 8)
 		bar.value = minf(value / (STAT_MAX[stat_name] as float), 1.0)
 		stat_col.add_child(bar)
 
 	# ── Alt şerit: durum ──
 	var footer := PanelContainer.new()
-	footer.custom_minimum_size = Vector2(0, 34)
+	footer.custom_minimum_size = Vector2(0, 57)
 	vbox.add_child(footer)
-	var footer_lbl := _make_label("", 11, COL_TEXT_DIM, _font_caps)
+	var footer_lbl := _make_label("", 18, COL_TEXT_DIM, _font_caps)
 	footer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	footer_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	footer.add_child(footer_lbl)
@@ -592,35 +592,35 @@ func _refresh_roster() -> void:
 		var ch_color := _get_char_color(ch)
 
 		var chip := PanelContainer.new()
-		var style := _rounded_style(Color(1, 1, 1, 0.045), 8)
-		style.content_margin_left   = 12
-		style.content_margin_right  = 12
-		style.content_margin_top    = 5
-		style.content_margin_bottom = 5
-		style.border_width_left = 3
+		var style := _rounded_style(Color(1, 1, 1, 0.045), 13)
+		style.content_margin_left   = 20
+		style.content_margin_right  = 20
+		style.content_margin_top    = 8
+		style.content_margin_bottom = 8
+		style.border_width_left = 5
 		style.border_color = ch_color if not ch.is_empty() else Color(1, 1, 1, 0.12)
 		chip.add_theme_stylebox_override("panel", style)
 
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
+		row.add_theme_constant_override("separation", 13)
 		chip.add_child(row)
 
 		var player_name: String = pdata.get("name", "???")
 		if pid == local_id:
 			player_name = tr("%s (Sen)") % player_name
-		var pname_lbl := _make_label(player_name, 12, COL_TEXT)
+		var pname_lbl := _make_label(player_name, 20, COL_TEXT)
 		pname_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı çevrilmesin
 		row.add_child(pname_lbl)
 		if ch.is_empty():
-			row.add_child(_make_label("seçiyor…", 11, COL_TEXT_DIM))
+			row.add_child(_make_label("seçiyor…", 18, COL_TEXT_DIM))
 		else:
-			row.add_child(_make_label(ch.to_upper(), 11, ch_color, _font_caps))
+			row.add_child(_make_label(ch.to_upper(), 18, ch_color, _font_caps))
 			# Seçtiği karakterin seviyesi (host'a seçimle gönderilen yükseltmelerden)
 			var lv := 0
 			var ups: Dictionary = pdata.get("upgrades", {})
 			for s: String in ups:
 				lv += int(ups[s])
-			row.add_child(_make_label(tr("SV %d") % lv, 10, UITheme.ACCENT if lv > 0 else COL_TEXT_DIM, _font_caps))
+			row.add_child(_make_label(tr("SV %d") % lv, 17, UITheme.ACCENT if lv > 0 else COL_TEXT_DIM, _font_caps))
 		_roster_row.add_child(chip)
 
 
@@ -642,18 +642,18 @@ func _update_card_visuals() -> void:
 		var is_taken_other: bool = (taken.has(char_name) and not is_mine)
 		var is_hover: bool       = (_hovered == char_name and not is_taken_other and not _confirmed)
 
-		# Kart çerçevesi — kenar kalınlığı sabit (2px), içerik kaymasın diye sadece renk değişir
+		# Kart çerçevesi — kenar kalınlığı sabit (3px), içerik kaymasın diye sadece renk değişir
 		var style := _rounded_style(COL_CARD_HOVER if is_hover else COL_CARD, CARD_RADIUS)
-		style.set_border_width_all(2)
-		style.set_content_margin_all(2)
+		style.set_border_width_all(3)
+		style.set_content_margin_all(3)
 		if is_mine:
 			style.border_color = char_color
 			style.shadow_color = Color(char_color, 0.45)
-			style.shadow_size  = 18
+			style.shadow_size  = 30
 		elif is_pending:
 			style.border_color = Color(char_color, 0.85)
 			style.shadow_color = Color(char_color, 0.25)
-			style.shadow_size  = 12
+			style.shadow_size  = 20
 		elif is_hover:
 			style.border_color = Color(char_color, 0.4)
 		else:
@@ -662,8 +662,8 @@ func _update_card_visuals() -> void:
 
 		# Alt şerit
 		var footer_style := _rounded_style(Color(1, 1, 1, 0.03), 0)
-		footer_style.corner_radius_bottom_left  = CARD_RADIUS - 2
-		footer_style.corner_radius_bottom_right = CARD_RADIUS - 2
+		footer_style.corner_radius_bottom_left  = CARD_RADIUS - 3
+		footer_style.corner_radius_bottom_right = CARD_RADIUS - 3
 		if is_mine:
 			footer_style.bg_color = char_color
 			footer_lbl.text = "✓  KİLİTLENDİ"
@@ -683,11 +683,11 @@ func _update_card_visuals() -> void:
 		# Rozet: başkası aldıysa onun adı
 		badge.visible = is_taken_other
 		if is_taken_other:
-			var badge_style := _rounded_style(Color(0, 0, 0, 0.65), 10)
-			badge_style.content_margin_left  = 8
-			badge_style.content_margin_right = 8
-			badge_style.content_margin_top    = 3
-			badge_style.content_margin_bottom = 3
+			var badge_style := _rounded_style(Color(0, 0, 0, 0.65), 17)
+			badge_style.content_margin_left  = 13
+			badge_style.content_margin_right = 13
+			badge_style.content_margin_top    = 5
+			badge_style.content_margin_bottom = 5
 			badge.add_theme_stylebox_override("panel", badge_style)
 			badge_lbl.text = String(taken[char_name]).to_upper()
 
@@ -747,14 +747,14 @@ func _make_bar(fill_color: Color, height: int) -> ProgressBar:
 
 
 func _style_confirm_button(accent: Color) -> void:
-	var normal := _rounded_style(accent.darkened(0.15), 24)
-	var hover  := _rounded_style(accent, 24)
-	var pressed := _rounded_style(accent.darkened(0.3), 24)
-	var disabled := _rounded_style(Color(1, 1, 1, 0.06), 24)
+	var normal := _rounded_style(accent.darkened(0.15), 40)
+	var hover  := _rounded_style(accent, 40)
+	var pressed := _rounded_style(accent.darkened(0.3), 40)
+	var disabled := _rounded_style(Color(1, 1, 1, 0.06), 40)
 	disabled.border_color = Color(1, 1, 1, 0.1)
 	disabled.set_border_width_all(1)
 	hover.shadow_color = Color(accent, 0.4)
-	hover.shadow_size = 12
+	hover.shadow_size = 20
 	_confirm_btn.add_theme_stylebox_override("normal", normal)
 	_confirm_btn.add_theme_stylebox_override("hover", hover)
 	_confirm_btn.add_theme_stylebox_override("pressed", pressed)

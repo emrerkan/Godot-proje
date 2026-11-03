@@ -16,7 +16,7 @@ seviyeleri yollar → host `players[peer]["upgrades"]` (sanitize) → herkes ayn
 XP: `GameManager.gain_xp(amount, reason)` YEREL (her peer kendine): `_announce_kill_rpc` (kill/taşıyıcı bonusu),
 `_apply_card_pickup_rpc`, `_process` (hayatta kalma/kart taşıma tick'leri), `_end_game_rpc` (maç+zafer, `match_xp`),
 PowerupManager `_set_item_rpc(..., picked_up)` ve `_medic_heal_rpc`. `xp_gained` → HUD `_xp_feed`. UI: MainMenu sol alttaki operatör
-kartında profil seviyesi + XP + **PROFİL** butonu → `_open_profile()` bulanık modal (`_profile_modal`, ESC/✕/dışına tık kapatır)
+kartında profil seviyesi + XP; sağ üst gezinmedeki **PROFİL** → `_open_profile()` bulanık modal (`_profile_modal`, ESC/✕/dışına tık kapatır)
 içinde `UpgradePage.gd` (oda sekmeleri sadece oyun bulmak için — profil oraya konmayacak, kullanıcı isteği); CharacterSelect kartları yükseltilmiş değer + "SV n". Kurallar/fikir havuzu: docs/PROJE_GECMISI.md §5.
 **Güç ağaçları (HESAP GENELİ)** — `scenes/profile/PowerTrees.gd` (statik, preload): `TREES` (bomb/heal/sat/flash/smoke/trap; düğüm
 id/req/pos/`set`), `BASE` değerler, `mods(owned)` = BASE + düğüm `set`'leri (tanım sırasıyla — sonraki öncekini ezer), `mods_for(peer)`
@@ -59,9 +59,9 @@ yükseklik taramasını `SCAN_ROWS_PER_FRAME` satırda bir fizik karesine böler
 
 `scenes/ui/UITheme.gd` (**class_name, statik — autoload DEĞİL**): `UITheme.apply(get_tree())` (Main.gd + MainMenu._ready)
 kodla Theme kurup `root.theme`'e atar (sahne geçişlerinde korunur, tüm sahneler etkilenir). **Ekran ölçekleme de burada**
-(`_apply_scaling`): root `content_scale_mode=CANVAS_ITEMS`, `aspect=EXPAND`, taban `BASE_RESOLUTION` 1152×648 — UI tüm
-çözünürlüklerde orantılı (project.godot'da stretch ayarı YOK, kodla yapılıyor). Yeni UI 1152×648'e göre tasarlanır
-(ekran bu yüksekliğe SIĞMALI — `get_combined_minimum_size()` ile ölç; hedef ekran 1920×1080 = ×1.67).
+(`_apply_scaling`): root `content_scale_mode=CANVAS_ITEMS`, `aspect=EXPAND`, taban `BASE_RESOLUTION` **1920×1080** (kullanıcı kuralı: ölçek referansı HEP 1920×1080; 2026-11 öncesi 1152×648 idi, tüm UI ×5/3 dönüştürüldü) — UI tüm
+çözünürlüklerde orantılı (project.godot'da stretch ayarı YOK, kodla yapılıyor). Yeni UI 1920×1080 piksel değerleriyle tasarlanır (1080p'de ölçek ×1.0 = keskin; 1 px çizgiler 1 kalır)
+(ekran 1080 yüksekliğe SIĞMALI — `get_combined_minimum_size()` ile ölç).
 **UI içinde 3D gösterirken `SubViewportContainer` KULLANMA** → `scenes/ui/SharpViewport.gd` (TextureRect; SubViewport'u
 gerçek ekran pikselinde çizer, yoksa ölçeklemede bulanık). MenuBackground3D bundan türer, CharacterSelect önizlemeleri kullanır. Palet sabitleri
 (`ACCENT` el feneri sarısı, `SURFACE*`, `TEXT_DIM`...), `style()`/`label()` helper'ları, fontlar (`font_bold/title/caps`).
@@ -400,10 +400,16 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 
 ## scenes/ui/ — menü/lobi/karakter seçimi/HUD
 
-- **MainMenu.gd**: UI tamamen kodla (tscn sadece kök). Sol: logo + operatör adı (`user://settings.cfg`'ye kaydedilir).
-  Sağ: sekmeler `browse`/`create`/`code` (`_show_tab`; `RoomManager.start_listening` SADECE browse'da açık) + şifreli oda modalı.
-  ODA KUR: ad + **HARİTA** (tam satır OptionButton, sağda "EN FAZLA …") + **FORMAT** (4 bölümlü toggle düğme `_size_buttons`,
-  sağda "n OYUNCU"; `_update_size_options` haritanın `max_team`'i üstünü kapatır, sayfa 1152×648'e tam sığıyor — satır eklenecekse yer yok,
+- **MainMenu.gd** (BF1 düzeni): UI tamamen kodla (tscn sadece kök). Sol: logo + operatör kartı (ad `user://settings.cfg`, profil seviyesi/XP).
+  Sağ üst gezinme `OYNA | PROFİL | AYARLAR` (`_nav_button`, TabButton). OYNA → `_set_play_open` alt menü (`PLAY_ITEMS` ODALAR/ODA KUR/KOD İLE KATIL,
+  sağa yaslı, sırayla belirir; ODALAR yanında `_rooms_badge` oda sayısı). Madde hover/odak → `_set_item_lit`: arkasında
+  `canvas_ui_menu_beam.gdshader` fener lekesi + toz (`intensity` tween) + `▸` + `MenuBackground3D.focus_light(nokta)` (3D fener fareyi
+  bırakıp maddeye kilitlenir, `release_light`). Maddeye tık → `_open_play_panel(key)`: `_make_blur_layer` (BlurBackdrop) + cam kart
+  (`PLAY_CARD_SIZE` sayfaya göre, ekranı kaplamaz), başlık "OYNA / …", sayfalar `_pages` + `_status_lbl`. Panel kapalıyken `_set_status`
+  → alt orta `_toast`. ESC sırası: şifre modalı → oyun paneli → profil → alt menü. Oda keşfi (`_update_listening`) alt menü veya panel açıkken.
+  PROFİL penceresi başlıksız (UpgradePage ~1000 px), ✕ ekranın sağ üstünde.
+  ODA KUR: ad + şifre yan yana + **HARİTA** (tam satır OptionButton, sağda "EN FAZLA …") + **FORMAT** (4 bölümlü toggle düğme `_size_buttons`,
+  sağda "n OYUNCU"; `_update_size_options` haritanın `max_team`'i üstünü kapatır, panel ~810 px,
   son seçim `settings.cfg [room]`) → `create_server(..., {map, team_size})` (yayına ilk andan doğru girer; Lobby ⚙ ile sonra da değişir).
   Arka plan `MenuBackground3D` (aşağıda). `NetworkManager.create_server/join_server`
   çağırır, `server_created`/`joined_server`/`connection_failed`/`kicked` sinyallerini dinler.

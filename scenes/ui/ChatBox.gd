@@ -38,20 +38,20 @@ var _style_closed: StyleBoxFlat
 
 
 func _ready() -> void:
-	_style_open = UITheme.style(Color(UITheme.BG, 0.82), 12, UITheme.BORDER, 1, 12, 10)
-	_style_closed = UITheme.style(Color.TRANSPARENT, 12, Color.TRANSPARENT, 0, 12, 10)
+	_style_open = UITheme.style(Color(UITheme.BG, 0.82), 20, UITheme.BORDER, 1, 20, 17)
+	_style_closed = UITheme.style(Color.TRANSPARENT, 20, Color.TRANSPARENT, 0, 20, 17)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
+	box.add_theme_constant_override("separation", 13)
 	add_child(box)
 
 	if mode == Mode.LOBBY:
 		var head := HBoxContainer.new()
 		box.add_child(head)
-		var cap := UITheme.label("SOHBET", 10, UITheme.TEXT_DIM, UITheme.font_caps)
+		var cap := UITheme.label("SOHBET", 17, UITheme.TEXT_DIM, UITheme.font_caps)
 		cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		head.add_child(cap)
-		head.add_child(UITheme.label("TAB: KANAL", 9, Color(UITheme.TEXT_DIM, 0.6), UITheme.font_caps))
+		head.add_child(UITheme.label("TAB: KANAL", 15, Color(UITheme.TEXT_DIM, 0.6), UITheme.font_caps))
 
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
@@ -66,27 +66,27 @@ func _ready() -> void:
 		_log.fit_content = true
 		_log.scroll_active = false
 		_log.size_flags_vertical = Control.SIZE_SHRINK_END
-		_log.add_theme_constant_override("outline_size", 4)
+		_log.add_theme_constant_override("outline_size", 7)
 		_log.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	else:
 		_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_log.add_theme_font_size_override("normal_font_size", 13)
+	_log.add_theme_font_size_override("normal_font_size", 22)
 	_log.add_theme_font_override("bold_font", UITheme.font_bold)
-	_log.add_theme_font_size_override("bold_font_size", 13)
-	_log.add_theme_constant_override("line_separation", 3)
+	_log.add_theme_font_size_override("bold_font_size", 22)
+	_log.add_theme_constant_override("line_separation", 5)
 	_log.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	_log.mouse_filter = Control.MOUSE_FILTER_PASS if mode == Mode.LOBBY else Control.MOUSE_FILTER_IGNORE
 	box.add_child(_log)
 
 	_input_row = HBoxContainer.new()
-	_input_row.add_theme_constant_override("separation", 6)
+	_input_row.add_theme_constant_override("separation", 10)
 	box.add_child(_input_row)
 
 	_channel_btn = Button.new()
-	_channel_btn.custom_minimum_size = Vector2(78, 0)
+	_channel_btn.custom_minimum_size = Vector2(130, 0)
 	_channel_btn.focus_mode = Control.FOCUS_NONE
 	_channel_btn.add_theme_font_override("font", UITheme.font_caps)
-	_channel_btn.add_theme_font_size_override("font_size", 10)
+	_channel_btn.add_theme_font_size_override("font_size", 17)
 	_channel_btn.tooltip_text = "Kanal değiştir (Tab)"
 	_channel_btn.pressed.connect(_toggle_channel)
 	_input_row.add_child(_channel_btn)
@@ -95,7 +95,7 @@ func _ready() -> void:
 	_line.max_length = NetworkManager.CHAT_MAX_LEN
 	_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_line.placeholder_text = "Mesaj yaz…  (Enter)"
-	_line.add_theme_font_size_override("font_size", 13)
+	_line.add_theme_font_size_override("font_size", 22)
 	_line.context_menu_enabled = false
 	_line.text_submitted.connect(_on_submit)
 	_line.focus_entered.connect(func() -> void: is_typing = true)
@@ -103,7 +103,7 @@ func _ready() -> void:
 	_input_row.add_child(_line)
 
 	if mode == Mode.GAME:
-		_hint = UITheme.label("ENTER: GÖNDER  ·  TAB: KANAL  ·  ESC: KAPAT", 9, Color(UITheme.TEXT_DIM, 0.7), UITheme.font_caps)
+		_hint = UITheme.label("ENTER: GÖNDER  ·  TAB: KANAL  ·  ESC: KAPAT", 15, Color(UITheme.TEXT_DIM, 0.7), UITheme.font_caps)
 		box.add_child(_hint)
 
 	NetworkManager.chat_received.connect(_on_chat_received)
@@ -228,7 +228,7 @@ func _update_channel_btn() -> void:
 	var team_id: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
 	var col := TeamManager.get_color(team_id) if _channel == "team" else UITheme.TEXT
 	_channel_btn.text = "TAKIM" if _channel == "team" else "HERKES"
-	var st := UITheme.style(Color(col, 0.14), 8, Color(col, 0.5), 1, 8, 6)
+	var st := UITheme.style(Color(col, 0.14), 13, Color(col, 0.5), 1, 13, 10)
 	for key: String in ["normal", "hover", "pressed"]:
 		_channel_btn.add_theme_stylebox_override(key, st)
 	for key: String in ["font_color", "font_hover_color", "font_pressed_color"]:

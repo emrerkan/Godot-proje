@@ -270,33 +270,33 @@ func _on_flashed(strength: float) -> void:
 
 func _setup_scores() -> void:
 	var panel := PanelContainer.new()
-	panel.position = Vector2(16, 16)
-	panel.custom_minimum_size = Vector2(200, 0)
-	panel.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.78), 12, UITheme.BORDER, 1, 12, 10))
+	panel.position = Vector2(27, 27)
+	panel.custom_minimum_size = Vector2(333, 0)
+	panel.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.78), 20, UITheme.BORDER, 1, 20, 17))
 	_root.add_child(panel)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 5)
+	box.add_theme_constant_override("separation", 8)
 	panel.add_child(box)
-	box.add_child(UITheme.label("TAKIM SKORU", 10, UITheme.TEXT_DIM, UITheme.font_caps))
+	box.add_child(UITheme.label("TAKIM SKORU", 17, UITheme.TEXT_DIM, UITheme.font_caps))
 
 	for i in range(4):
 		var color := TeamManager.get_color(i)
 		var row_panel := PanelContainer.new()
-		row_panel.add_theme_stylebox_override("panel", UITheme.style(Color.TRANSPARENT, 6, Color.TRANSPARENT, 0, 6, 2))
+		row_panel.add_theme_stylebox_override("panel", UITheme.style(Color.TRANSPARENT, 10, Color.TRANSPARENT, 0, 10, 3))
 		box.add_child(row_panel)
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
+		row.add_theme_constant_override("separation", 13)
 		row_panel.add_child(row)
 		var strip := ColorRect.new()
 		strip.color = color
-		strip.custom_minimum_size = Vector2(3, 16)
+		strip.custom_minimum_size = Vector2(5, 27)
 		strip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(strip)
-		var name_lbl := UITheme.label(UITheme.team_tag(i), 12, color, UITheme.font_caps)
+		var name_lbl := UITheme.label(UITheme.team_tag(i), 20, color, UITheme.font_caps)
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_lbl)
-		var value := UITheme.label("0", 15, UITheme.TEXT, UITheme.font_bold)
+		var value := UITheme.label("0", 25, UITheme.TEXT, UITheme.font_bold)
 		row.add_child(value)
 		_score_rows.append({"panel": row_panel, "value": value, "name": name_lbl})
 	_ignore_mouse_recursive(panel)
@@ -305,44 +305,44 @@ func _setup_scores() -> void:
 func _setup_objective() -> void:
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	col.offset_left = -260
-	col.offset_right = 260
-	col.offset_top = 16
-	col.offset_bottom = 16
-	col.add_theme_constant_override("separation", 10)
+	col.offset_left = -433
+	col.offset_right = 433
+	col.offset_top = 27
+	col.offset_bottom = 27
+	col.add_theme_constant_override("separation", 17)
 	_root.add_child(col)
 
 	var wrap := CenterContainer.new()
 	col.add_child(wrap)
 	_objective_chip = PanelContainer.new()
 	wrap.add_child(_objective_chip)
-	_objective_lbl = UITheme.label("", 13, UITheme.ACCENT, UITheme.font_caps)
+	_objective_lbl = UITheme.label("", 22, UITheme.ACCENT, UITheme.font_caps)
 	_objective_chip.add_child(_objective_lbl)
 
 	# Kapı kilidi ilerlemesi (biri kilit bölgesindeyken herkese görünür)
 	var unlock_wrap := CenterContainer.new()
 	col.add_child(unlock_wrap)
 	_unlock_panel = PanelContainer.new()
-	_unlock_panel.custom_minimum_size = Vector2(360, 0)
+	_unlock_panel.custom_minimum_size = Vector2(600, 0)
 	_unlock_panel.visible = false
 	unlock_wrap.add_child(_unlock_panel)
 	var ubox := VBoxContainer.new()
-	ubox.add_theme_constant_override("separation", 6)
+	ubox.add_theme_constant_override("separation", 10)
 	_unlock_panel.add_child(ubox)
 	var urow := HBoxContainer.new()
 	ubox.add_child(urow)
-	_unlock_lbl = UITheme.label("", 12, UITheme.ACCENT, UITheme.font_caps)
+	_unlock_lbl = UITheme.label("", 20, UITheme.ACCENT, UITheme.font_caps)
 	_unlock_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	urow.add_child(_unlock_lbl)
-	_unlock_time_lbl = UITheme.label("", 14, UITheme.ACCENT, UITheme.font_mono)
+	_unlock_time_lbl = UITheme.label("", 23, UITheme.ACCENT, UITheme.font_mono)
 	urow.add_child(_unlock_time_lbl)
 	_unlock_bar = ProgressBar.new()
 	_unlock_bar.show_percentage = false
 	_unlock_bar.max_value = 1.0
-	_unlock_bar.custom_minimum_size = Vector2(0, 6)
-	_unlock_fill = UITheme.style(UITheme.ACCENT, 3)
+	_unlock_bar.custom_minimum_size = Vector2(0, 10)
+	_unlock_fill = UITheme.style(UITheme.ACCENT, 5)
 	_unlock_bar.add_theme_stylebox_override("fill", _unlock_fill)
-	_unlock_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.08), 3))
+	_unlock_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.08), 5))
 	ubox.add_child(_unlock_bar)
 	_build_carrier_bar()
 	GameManager.door_unlock_changed.connect(_on_door_unlock_changed)
@@ -352,7 +352,7 @@ func _setup_objective() -> void:
 	_alert_chip = PanelContainer.new()
 	_alert_chip.modulate.a = 0.0
 	alert_wrap.add_child(_alert_chip)
-	_alert_lbl = UITheme.label("", 17, UITheme.TEXT, UITheme.font_bold)
+	_alert_lbl = UITheme.label("", 28, UITheme.TEXT, UITheme.font_bold)
 	_alert_chip.add_child(_alert_lbl)
 	_ignore_mouse_recursive(col)
 
@@ -360,10 +360,10 @@ func _setup_objective() -> void:
 func _setup_kill_feed() -> void:
 	_kill_feed_root = VBoxContainer.new()
 	_kill_feed_root.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_kill_feed_root.offset_left = -340
-	_kill_feed_root.offset_right = -16
-	_kill_feed_root.offset_top = 16
-	_kill_feed_root.add_theme_constant_override("separation", 6)
+	_kill_feed_root.offset_left = -567
+	_kill_feed_root.offset_right = -27
+	_kill_feed_root.offset_top = 27
+	_kill_feed_root.add_theme_constant_override("separation", 10)
 	_kill_feed_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_kill_feed_root)
 
@@ -371,86 +371,86 @@ func _setup_kill_feed() -> void:
 func _setup_player_card() -> void:
 	var card := PanelContainer.new()
 	card.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	card.offset_left = 16
-	card.offset_top = -16
-	card.offset_bottom = -16
+	card.offset_left = 27
+	card.offset_top = -27
+	card.offset_bottom = -27
 	card.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	card.custom_minimum_size = Vector2(340, 0)
-	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 12, UITheme.BORDER, 1, 16, 12))
-	UITheme.add_brackets(card, UITheme.FRAME, 10)
+	card.custom_minimum_size = Vector2(567, 0)
+	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 20, UITheme.BORDER, 1, 27, 20))
+	UITheme.add_brackets(card, UITheme.FRAME, 17)
 	_root.add_child(card)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
+	box.add_theme_constant_override("separation", 17)
 	card.add_child(box)
 
 	# Üst satır: karakter + takım
 	var top := HBoxContainer.new()
 	box.add_child(top)
-	_char_lbl = UITheme.label("—", 14, UITheme.TEXT, UITheme.font_caps)
+	_char_lbl = UITheme.label("—", 23, UITheme.TEXT, UITheme.font_caps)
 	_char_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_char_lbl)
-	_team_chip_lbl = UITheme.label("", 10, UITheme.TEXT_DIM, UITheme.font_caps)
+	_team_chip_lbl = UITheme.label("", 17, UITheme.TEXT_DIM, UITheme.font_caps)
 	top.add_child(_team_chip_lbl)
 
 	var stats := HBoxContainer.new()
-	stats.add_theme_constant_override("separation", 18)
+	stats.add_theme_constant_override("separation", 30)
 	box.add_child(stats)
 
 	# Can
 	var hp_box := VBoxContainer.new()
-	hp_box.add_theme_constant_override("separation", 4)
+	hp_box.add_theme_constant_override("separation", 7)
 	hp_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stats.add_child(hp_box)
-	hp_box.add_child(UITheme.label("CAN", 10, UITheme.TEXT_DIM, UITheme.font_caps))
+	hp_box.add_child(UITheme.label("CAN", 17, UITheme.TEXT_DIM, UITheme.font_caps))
 	var hp_row := HBoxContainer.new()
-	hp_row.add_theme_constant_override("separation", 4)
+	hp_row.add_theme_constant_override("separation", 7)
 	hp_box.add_child(hp_row)
-	_hp_value = UITheme.label("100", 30, UITheme.TEXT, UITheme.font_mono)
+	_hp_value = UITheme.label("100", 50, UITheme.TEXT, UITheme.font_mono)
 	hp_row.add_child(_hp_value)
-	_hp_max = UITheme.label("/100", 13, UITheme.TEXT_DIM)
+	_hp_max = UITheme.label("/100", 22, UITheme.TEXT_DIM)
 	_hp_max.size_flags_vertical = Control.SIZE_SHRINK_END
 	hp_row.add_child(_hp_max)
 	_health_bar = ProgressBar.new()
 	_health_bar.show_percentage = false
-	_health_bar.custom_minimum_size = Vector2(0, 6)
+	_health_bar.custom_minimum_size = Vector2(0, 10)
 	_health_bar.max_value = 100.0
 	_health_bar.value = 100.0
-	_hp_fill = UITheme.style(UITheme.SUCCESS, 3)
+	_hp_fill = UITheme.style(UITheme.SUCCESS, 5)
 	_health_bar.add_theme_stylebox_override("fill", _hp_fill)
-	_health_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.07), 3))
+	_health_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.07), 5))
 	hp_box.add_child(_health_bar)
 
 	stats.add_child(VSeparator.new())
 
 	# Mermi
 	var ammo_box := VBoxContainer.new()
-	ammo_box.add_theme_constant_override("separation", 4)
+	ammo_box.add_theme_constant_override("separation", 7)
 	ammo_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stats.add_child(ammo_box)
-	_ammo_caption = UITheme.label("MERMİ", 10, UITheme.TEXT_DIM, UITheme.font_caps)
+	_ammo_caption = UITheme.label("MERMİ", 17, UITheme.TEXT_DIM, UITheme.font_caps)
 	ammo_box.add_child(_ammo_caption)
 	var ammo_row := HBoxContainer.new()
-	ammo_row.add_theme_constant_override("separation", 4)
+	ammo_row.add_theme_constant_override("separation", 7)
 	ammo_box.add_child(ammo_row)
-	_ammo_value = UITheme.label("30", 30, UITheme.TEXT, UITheme.font_mono)
+	_ammo_value = UITheme.label("30", 50, UITheme.TEXT, UITheme.font_mono)
 	ammo_row.add_child(_ammo_value)
-	_ammo_max = UITheme.label("/30", 13, UITheme.TEXT_DIM)
+	_ammo_max = UITheme.label("/30", 22, UITheme.TEXT_DIM)
 	_ammo_max.size_flags_vertical = Control.SIZE_SHRINK_END
 	ammo_row.add_child(_ammo_max)
 	_ammo_bar = ProgressBar.new()
 	_ammo_bar.show_percentage = false
-	_ammo_bar.custom_minimum_size = Vector2(0, 6)
+	_ammo_bar.custom_minimum_size = Vector2(0, 10)
 	_ammo_bar.max_value = 1.0
 	_ammo_bar.value = 1.0
-	_ammo_fill = UITheme.style(UITheme.ACCENT, 3)
+	_ammo_fill = UITheme.style(UITheme.ACCENT, 5)
 	_ammo_bar.add_theme_stylebox_override("fill", _ammo_fill)
-	_ammo_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.07), 3))
+	_ammo_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.07), 5))
 	ammo_box.add_child(_ammo_bar)
 
 	# Dayanıklılık: koşu (Shift) + çömelme (Ctrl) — _process'te yerel oyuncudan okunur
 	var stamina_row := HBoxContainer.new()
-	stamina_row.add_theme_constant_override("separation", 18)
+	stamina_row.add_theme_constant_override("separation", 30)
 	box.add_child(stamina_row)
 	var sprint := _make_stamina_meter("KOŞU  ·  ZIPLA", UITheme.SUCCESS)   # Shift koşu, Space zıplama — ikisi de bu dayanıklılıktan yer (uzun etiket kartı genişletip GÜÇ slotuna biniyordu)
 	stamina_row.add_child(sprint[0])
@@ -469,18 +469,18 @@ func _setup_player_card() -> void:
 ## [kutu, çubuk, dolgu stili, başlık]
 func _make_stamina_meter(caption: String, color: Color) -> Array:
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 3)
+	col.add_theme_constant_override("separation", 5)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var cap := UITheme.label(caption, 9, UITheme.TEXT_DIM, UITheme.font_caps)
+	var cap := UITheme.label(caption, 15, UITheme.TEXT_DIM, UITheme.font_caps)
 	col.add_child(cap)
 	var bar := ProgressBar.new()
 	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(0, 4)
+	bar.custom_minimum_size = Vector2(0, 7)
 	bar.max_value = 1.0
 	bar.value = 1.0
-	var fill := UITheme.style(color, 2)
+	var fill := UITheme.style(color, 3)
 	bar.add_theme_stylebox_override("fill", fill)
-	bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.07), 2))
+	bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.07), 3))
 	col.add_child(bar)
 	return [col, bar, fill, cap]
 
@@ -501,30 +501,30 @@ func _update_stamina_meter(bar: ProgressBar, fill: StyleBoxFlat, cap: Label, val
 func _setup_item_slot() -> void:
 	_item_slot = PanelContainer.new()
 	_item_slot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_item_slot.offset_left = 368
-	_item_slot.offset_top = -16
-	_item_slot.offset_bottom = -16
+	_item_slot.offset_left = 613
+	_item_slot.offset_top = -27
+	_item_slot.offset_bottom = -27
 	_item_slot.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_item_slot.custom_minimum_size = Vector2(104, 104)
+	_item_slot.custom_minimum_size = Vector2(173, 173)
 	_root.add_child(_item_slot)
 
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 2)
+	box.add_theme_constant_override("separation", 3)
 	_item_slot.add_child(box)
 	var head := HBoxContainer.new()
 	box.add_child(head)
-	var cap := UITheme.label("GÜÇ", 9, UITheme.TEXT_DIM, UITheme.font_caps)
+	var cap := UITheme.label("GÜÇ", 15, UITheme.TEXT_DIM, UITheme.font_caps)
 	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(cap)
 	var key := PanelContainer.new()
-	key.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.08), 4, UITheme.BORDER, 1, 5, 0))
-	key.add_child(UITheme.label("Q", 10, UITheme.TEXT, UITheme.font_bold))
+	key.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.08), 7, UITheme.BORDER, 1, 8, 0))
+	key.add_child(UITheme.label("Q", 17, UITheme.TEXT, UITheme.font_bold))
 	head.add_child(key)
-	_item_glyph = UITheme.label("—", 34, UITheme.TEXT_DIM, UITheme.font_bold)
+	_item_glyph = UITheme.label("—", 57, UITheme.TEXT_DIM, UITheme.font_bold)
 	_item_glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_item_glyph)
-	_item_name = UITheme.label("BOŞ", 9, UITheme.TEXT_DIM, UITheme.font_caps)
+	_item_name = UITheme.label("BOŞ", 15, UITheme.TEXT_DIM, UITheme.font_caps)
 	_item_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_item_name)
 	_ignore_mouse_recursive(_item_slot)
@@ -548,12 +548,12 @@ var _xp_feed: VBoxContainer
 func _setup_xp_feed() -> void:
 	_xp_feed = VBoxContainer.new()
 	_xp_feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_xp_feed.offset_left = 368
-	_xp_feed.offset_top = -132
-	_xp_feed.offset_bottom = -132
+	_xp_feed.offset_left = 613
+	_xp_feed.offset_top = -220
+	_xp_feed.offset_bottom = -220
 	_xp_feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_xp_feed.alignment = BoxContainer.ALIGNMENT_END
-	_xp_feed.add_theme_constant_override("separation", 2)
+	_xp_feed.add_theme_constant_override("separation", 3)
 	_xp_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_xp_feed)
 
@@ -562,10 +562,10 @@ func _on_xp_gained(amount: int, reason: String) -> void:
 	if _xp_feed == null:
 		return
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", 13)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(UITheme.label("+%d XP" % amount, 14, UITheme.ACCENT, UITheme.font_bold))
-	row.add_child(UITheme.label(reason, 12, UITheme.TEXT_DIM))
+	row.add_child(UITheme.label("+%d XP" % amount, 23, UITheme.ACCENT, UITheme.font_bold))
+	row.add_child(UITheme.label(reason, 20, UITheme.TEXT_DIM))
 	_xp_feed.add_child(row)
 	while _xp_feed.get_child_count() > XP_POPUP_MAX:
 		_xp_feed.get_child(0).free()
@@ -580,15 +580,15 @@ func _on_xp_gained(amount: int, reason: String) -> void:
 ## Test modu (debug build) tuş hatırlatıcısı — skor panelinin altında
 func _setup_test_hint() -> void:
 	var chip := PanelContainer.new()
-	chip.position = Vector2(16, 186)
-	chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 10, Color(UITheme.ACCENT, 0.5), 1, 10, 6))
+	chip.position = Vector2(27, 310)
+	chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 17, Color(UITheme.ACCENT, 0.5), 1, 17, 10))
 	_root.add_child(chip)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
+	box.add_theme_constant_override("separation", 3)
 	chip.add_child(box)
-	box.add_child(UITheme.label("TEST MODU", 9, UITheme.ACCENT, UITheme.font_caps))
+	box.add_child(UITheme.label("TEST MODU", 15, UITheme.ACCENT, UITheme.font_caps))
 	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "5 Önüne güç doğur   Q Kullan"]:
-		box.add_child(UITheme.label(line, 11, UITheme.TEXT_DIM))
+		box.add_child(UITheme.label(line, 18, UITheme.TEXT_DIM))
 	_ignore_mouse_recursive(chip)
 
 
@@ -607,10 +607,10 @@ func _on_item_changed(item_type: int) -> void:
 		create_tween().tween_property(_item_slot, "modulate", Color.WHITE, 0.4)
 	_item_glyph.add_theme_color_override("font_color", col)
 	_item_name.add_theme_color_override("font_color", col)
-	var st := UITheme.style(Color(UITheme.BG, 0.62), 14, Color(col, 0.6) if item_type >= 0 else UITheme.BORDER, 1, 10, 8)
+	var st := UITheme.style(Color(UITheme.BG, 0.62), 23, Color(col, 0.6) if item_type >= 0 else UITheme.BORDER, 1, 17, 13)
 	if item_type >= 0:
 		st.shadow_color = Color(col, 0.3)
-		st.shadow_size = 10
+		st.shadow_size = 17
 	_item_slot.add_theme_stylebox_override("panel", st)
 
 
@@ -619,10 +619,10 @@ func _setup_chat() -> void:
 	_chat = ChatBox.new()
 	_chat.mode = ChatBox.Mode.GAME
 	_chat.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_chat.offset_left = 16
-	_chat.offset_right = 416
-	_chat.offset_top = -390
-	_chat.offset_bottom = -180  # oyuncu kartı (dayanıklılık çubuklarıyla ~150 px) üstü
+	_chat.offset_left = 27
+	_chat.offset_right = 693
+	_chat.offset_top = -650
+	_chat.offset_bottom = -300  # oyuncu kartı (dayanıklılık çubuklarıyla ~250 px) üstü
 	_chat.grow_vertical = Control.GROW_DIRECTION_BEGIN  # içerik büyürse yukarı uzasın, oyuncu kartına binmesin
 	_chat.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_chat)
@@ -631,13 +631,13 @@ func _setup_chat() -> void:
 func _setup_minimap() -> void:
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	box.offset_left = -216   # Minimap.SIZE 200×148 (labirent oranı) + başlık
-	box.offset_top = -184
-	box.offset_right = -16
-	box.offset_bottom = -16
-	box.add_theme_constant_override("separation", 4)
+	box.offset_left = -360   # Minimap.SIZE 333×247 (labirent oranı) + başlık
+	box.offset_top = -307
+	box.offset_right = -27
+	box.offset_bottom = -27
+	box.add_theme_constant_override("separation", 7)
 	_root.add_child(box)
-	var cap := UITheme.label("TAKTİK HARİTA", 10, UITheme.TEXT_DIM, UITheme.font_caps)
+	var cap := UITheme.label("TAKTİK HARİTA", 17, UITheme.TEXT_DIM, UITheme.font_caps)
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	box.add_child(cap)
 	var minimap := Control.new()
@@ -659,18 +659,18 @@ func _setup_death_overlay() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_death_overlay.add_child(center)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 7)
 	center.add_child(box)
-	var t := UITheme.label("ETKİSİZ HALE GETİRİLDİN", 14, UITheme.DANGER, UITheme.font_caps)
+	var t := UITheme.label("ETKİSİZ HALE GETİRİLDİN", 23, UITheme.DANGER, UITheme.font_caps)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(t)
-	_death_count = UITheme.label("3", 72, UITheme.TEXT, UITheme.font_mono)
+	_death_count = UITheme.label("3", 120, UITheme.TEXT, UITheme.font_mono)
 	_death_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_death_count)
-	var sub := UITheme.label("YENİDEN DOĞUŞ", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	var sub := UITheme.label("YENİDEN DOĞUŞ", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(sub)
-	_death_killer = UITheme.label("", 13, UITheme.TEXT_DIM)
+	_death_killer = UITheme.label("", 22, UITheme.TEXT_DIM)
 	_death_killer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_death_killer)
 	_ignore_mouse_recursive(_death_overlay)
@@ -683,27 +683,27 @@ func _setup_scoreboard() -> void:
 	_root.add_child(center)
 
 	_scoreboard_panel = PanelContainer.new()
-	_scoreboard_panel.custom_minimum_size = Vector2(620, 0)
-	var st := UITheme.style(Color(UITheme.SURFACE, 0.96), 16, UITheme.BORDER, 1, 22, 18)
+	_scoreboard_panel.custom_minimum_size = Vector2(1033, 0)
+	var st := UITheme.style(Color(UITheme.SURFACE, 0.96), 27, UITheme.BORDER, 1, 37, 30)
 	st.shadow_color = Color(0, 0, 0, 0.5)
-	st.shadow_size = 24
+	st.shadow_size = 40
 	_scoreboard_panel.add_theme_stylebox_override("panel", st)
 	_scoreboard_panel.visible = false
 	center.add_child(_scoreboard_panel)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
+	box.add_theme_constant_override("separation", 20)
 	_scoreboard_panel.add_child(box)
 	var head := HBoxContainer.new()
 	box.add_child(head)
-	var title := UITheme.label("SKOR TABLOSU", 20, UITheme.TEXT, UITheme.font_title)
+	var title := UITheme.label("SKOR TABLOSU", 33, UITheme.TEXT, UITheme.font_title)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
-	head.add_child(UITheme.label("TAB", 10, UITheme.TEXT_DIM, UITheme.font_caps))
-	box.add_child(_score_columns_row("OYUNCU", "KARAKTER", "K", "Ö", UITheme.TEXT_DIM, UITheme.font_caps, 10))
+	head.add_child(UITheme.label("TAB", 17, UITheme.TEXT_DIM, UITheme.font_caps))
+	box.add_child(_score_columns_row("OYUNCU", "KARAKTER", "K", "Ö", UITheme.TEXT_DIM, UITheme.font_caps, 17))
 
 	_scoreboard_content = VBoxContainer.new()
-	_scoreboard_content.add_theme_constant_override("separation", 10)
+	_scoreboard_content.add_theme_constant_override("separation", 17)
 	box.add_child(_scoreboard_content)
 	_ignore_mouse_recursive(center)
 
@@ -720,22 +720,22 @@ func _setup_pause_menu() -> void:
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_pause_panel.add_child(center)
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(320, 0)
-	var st := UITheme.style(UITheme.SURFACE_2, 14, Color(UITheme.ACCENT, 0.25), 1, 26, 24)
+	card.custom_minimum_size = Vector2(533, 0)
+	var st := UITheme.style(UITheme.SURFACE_2, 23, Color(UITheme.ACCENT, 0.25), 1, 43, 40)
 	st.shadow_color = Color(0, 0, 0, 0.5)
-	st.shadow_size = 30
+	st.shadow_size = 50
 	card.add_theme_stylebox_override("panel", st)
-	UITheme.add_brackets(card, UITheme.FRAME, 16)
+	UITheme.add_brackets(card, UITheme.FRAME, 27)
 	center.add_child(card)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
+	box.add_theme_constant_override("separation", 17)
 	card.add_child(box)
-	box.add_child(UITheme.label("DURAKLATILDI", 11, UITheme.ACCENT, UITheme.font_caps))
-	box.add_child(UITheme.label("MENÜ", 26, UITheme.TEXT, UITheme.font_title))
-	var hint := UITheme.label("Oyun arka planda devam ediyor.", 12, UITheme.TEXT_DIM)
+	box.add_child(UITheme.label("DURAKLATILDI", 18, UITheme.ACCENT, UITheme.font_caps))
+	box.add_child(UITheme.label("MENÜ", 43, UITheme.TEXT, UITheme.font_title))
+	var hint := UITheme.label("Oyun arka planda devam ediyor.", 20, UITheme.TEXT_DIM)
 	box.add_child(hint)
-	box.add_child(_vspace(6))
+	box.add_child(_vspace(10))
 
 	var resume := _menu_button("DEVAM ET", "PrimaryButton")
 	resume.pressed.connect(_toggle_pause_menu)
@@ -766,24 +766,24 @@ func _setup_end_overlay() -> void:
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_end_overlay.add_child(center)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
+	box.add_theme_constant_override("separation", 10)
 	center.add_child(box)
 
-	var cap := UITheme.label("OYUN BİTTİ", 12, UITheme.TEXT_DIM, UITheme.font_caps)
+	var cap := UITheme.label("OYUN BİTTİ", 20, UITheme.TEXT_DIM, UITheme.font_caps)
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(cap)
-	_end_title = UITheme.label("ZAFER", 84, UITheme.ACCENT, UITheme.font_title)
+	_end_title = UITheme.label("ZAFER", 140, UITheme.ACCENT, UITheme.font_title)
 	_end_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_end_title)
-	_end_sub = UITheme.label("", 18, UITheme.TEXT, UITheme.font_bold)
+	_end_sub = UITheme.label("", 30, UITheme.TEXT, UITheme.font_bold)
 	_end_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_end_sub)
-	_end_stats = UITheme.label("", 13, UITheme.TEXT_DIM, UITheme.font_caps)
+	_end_stats = UITheme.label("", 22, UITheme.TEXT_DIM, UITheme.font_caps)
 	_end_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_end_stats)
-	box.add_child(_vspace(18))
+	box.add_child(_vspace(30))
 
-	_end_countdown_lbl = UITheme.label("", 13, UITheme.TEXT_DIM, UITheme.font_caps)
+	_end_countdown_lbl = UITheme.label("", 22, UITheme.TEXT_DIM, UITheme.font_caps)
 	_end_countdown_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_end_countdown_lbl)
 
@@ -796,7 +796,7 @@ func _menu_button(text: String, variation: String) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.theme_type_variation = variation
-	b.custom_minimum_size = Vector2(0, 44)
+	b.custom_minimum_size = Vector2(0, 73)
 	b.focus_mode = Control.FOCUS_NONE
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	return b
@@ -811,8 +811,8 @@ func _vspace(h: float) -> Control:
 ## translate_first false: ilk sütun oyuncu adı — otomatik çeviri kapalı (adı bir anahtara denk gelmesin)
 func _score_columns_row(a: String, b: String, c: String, d: String, color: Color, font: Font, font_size: int, translate_first := true) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var widths := [0.0, 130.0, 50.0, 50.0]
+	row.add_theme_constant_override("separation", 17)
+	var widths := [0.0, 217.0, 83.0, 83.0]
 	var texts := [a, b, c, d]
 	for i in range(4):
 		var lbl := UITheme.label(texts[i], font_size, color, font)
@@ -894,17 +894,17 @@ const HEAL_COLOR := Color(0.35, 1.0, 0.5)
 func _spawn_heal_crosses() -> void:
 	var rect := _root.get_rect()
 	for i in HEAL_CROSS_COUNT:
-		var l := UITheme.label("✚", randi_range(18, 40), HEAL_COLOR, UITheme.font_bold)
+		var l := UITheme.label("✚", randi_range(30, 67), HEAL_COLOR, UITheme.font_bold)
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		l.add_theme_color_override("font_outline_color", Color(0.0, 0.25, 0.08, 0.8))
-		l.add_theme_constant_override("outline_size", 6)
+		l.add_theme_constant_override("outline_size", 10)
 		# Kenarlara yakın (vinyetle birlikte), ortadaki aksiyonu kapatmadan
 		var side := randf() < 0.5
 		var x := randf_range(0.02, 0.22) if side else randf_range(0.78, 0.98)
 		l.position = Vector2(rect.size.x * x, rect.size.y * randf_range(0.55, 0.95))
 		l.modulate.a = 0.0
 		_root.add_child(l)
-		var rise := randf_range(90.0, 190.0)
+		var rise := randf_range(150.0, 317.0)
 		var dur := randf_range(0.9, 1.5)
 		var delay := randf_range(0.0, 0.35)
 		var tw := l.create_tween().set_parallel(true)
@@ -952,7 +952,7 @@ func _refresh_scores() -> void:
 		var r: Dictionary = _score_rows[i]
 		(r["value"] as Label).text = str(TeamManager.scores.get(i, 0))
 		var bg := Color(TeamManager.get_color(i), 0.14) if i == local_team else Color.TRANSPARENT
-		(r["panel"] as PanelContainer).add_theme_stylebox_override("panel", UITheme.style(bg, 6, Color.TRANSPARENT, 0, 6, 2))
+		(r["panel"] as PanelContainer).add_theme_stylebox_override("panel", UITheme.style(bg, 10, Color.TRANSPARENT, 0, 10, 3))
 
 
 func _on_score_updated(_team_id: int, _score: int) -> void:
@@ -986,22 +986,22 @@ func _refresh_scoreboard() -> void:
 		var team_color: Color = TeamManager.get_color(tid)
 		var team_peers: Array = teams[tid]
 		var group := VBoxContainer.new()
-		group.add_theme_constant_override("separation", 3)
+		group.add_theme_constant_override("separation", 5)
 		_scoreboard_content.add_child(group)
 
 		# Takım başlığı
 		var header := PanelContainer.new()
-		var hs := UITheme.style(Color(team_color, 0.14), 8, Color.TRANSPARENT, 0, 10, 6)
-		hs.border_width_left = 3
+		var hs := UITheme.style(Color(team_color, 0.14), 13, Color.TRANSPARENT, 0, 17, 10)
+		hs.border_width_left = 5
 		hs.border_color = team_color
 		header.add_theme_stylebox_override("panel", hs)
 		group.add_child(header)
 		var hrow := HBoxContainer.new()
 		header.add_child(hrow)
-		var tname := UITheme.label(UITheme.team_tag(tid), 13, team_color, UITheme.font_caps)
+		var tname := UITheme.label(UITheme.team_tag(tid), 22, team_color, UITheme.font_caps)
 		tname.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		hrow.add_child(tname)
-		hrow.add_child(UITheme.label(tr("%d KILL") % TeamManager.scores.get(tid, 0), 12, UITheme.TEXT, UITheme.font_caps))
+		hrow.add_child(UITheme.label(tr("%d KILL") % TeamManager.scores.get(tid, 0), 20, UITheme.TEXT, UITheme.font_caps))
 
 		# Oyuncuları kill'e göre sırala
 		team_peers.sort_custom(func(a: int, b: int) -> bool:
@@ -1022,10 +1022,10 @@ func _refresh_scoreboard() -> void:
 				player_name = tr("%s  (Sen)") % player_name
 			var row_panel := PanelContainer.new()
 			row_panel.add_theme_stylebox_override("panel",
-				UITheme.style(Color(1, 1, 1, 0.05) if is_me else Color.TRANSPARENT, 6, Color.TRANSPARENT, 0, 10, 4))
+				UITheme.style(Color(1, 1, 1, 0.05) if is_me else Color.TRANSPARENT, 10, Color.TRANSPARENT, 0, 17, 7))
 			row_panel.add_child(_score_columns_row(player_name, String(data.get("character", "—")),
 				str(stats.get("kills", 0)), str(stats.get("deaths", 0)),
-				UITheme.TEXT if is_me else Color(UITheme.TEXT, 0.85), UITheme.font_bold if is_me else null, 13, false))
+				UITheme.TEXT if is_me else Color(UITheme.TEXT, 0.85), UITheme.font_bold if is_me else null, 22, false))
 			group.add_child(row_panel)
 	_ignore_mouse_recursive(_scoreboard_content)
 
@@ -1045,19 +1045,19 @@ var _countdown_shown := -1
 func _setup_countdown() -> void:
 	_countdown_box = VBoxContainer.new()
 	_countdown_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	_countdown_box.offset_top = -170
-	_countdown_box.offset_bottom = -170
-	_countdown_box.offset_left = -200
-	_countdown_box.offset_right = 200
+	_countdown_box.offset_top = -283
+	_countdown_box.offset_bottom = -283
+	_countdown_box.offset_left = -333
+	_countdown_box.offset_right = 333
 	_countdown_box.add_theme_constant_override("separation", 0)
 	_countdown_box.visible = false
 	_root.add_child(_countdown_box)
-	var cap := UITheme.label("MAÇ BAŞLIYOR", 13, UITheme.TEXT_DIM, UITheme.font_caps)
+	var cap := UITheme.label("MAÇ BAŞLIYOR", 22, UITheme.TEXT_DIM, UITheme.font_caps)
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_countdown_box.add_child(cap)
-	_countdown_num = UITheme.label("", 64, UITheme.TEXT, UITheme.font_mono)
+	_countdown_num = UITheme.label("", 107, UITheme.TEXT, UITheme.font_mono)
 	_countdown_num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_countdown_num.add_theme_constant_override("outline_size", 6)
+	_countdown_num.add_theme_constant_override("outline_size", 10)
 	_countdown_num.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	_countdown_box.add_child(_countdown_num)
 
@@ -1121,15 +1121,15 @@ func _update_objective() -> void:
 			col = TeamManager.get_color(tid)
 	_objective_lbl.text = text
 	_objective_lbl.add_theme_color_override("font_color", col)
-	_objective_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 18, Color(col, 0.5), 1, 18, 7))
+	_objective_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 30, Color(col, 0.5), 1, 30, 12))
 
 
 func _show_banner(text: String, color: Color) -> void:
 	_alert_lbl.text = text
 	_alert_lbl.add_theme_color_override("font_color", color)
-	var st := UITheme.style(Color(UITheme.BG, 0.62), 10, Color(color, 0.7), 1, 22, 10)
+	var st := UITheme.style(Color(UITheme.BG, 0.62), 17, Color(color, 0.7), 1, 37, 17)
 	st.shadow_color = Color(color, 0.25)
-	st.shadow_size = 16
+	st.shadow_size = 27
 	_alert_chip.add_theme_stylebox_override("panel", st)
 
 	if _banner_tween and _banner_tween.is_valid():
@@ -1163,21 +1163,21 @@ func _build_carrier_bar() -> void:
 	_carrier_bar = PanelContainer.new()
 	_carrier_bar.visible = false
 	_carrier_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_carrier_bar.custom_minimum_size = Vector2(170, 0)
-	_carrier_bar.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.7), 4, Color(UITheme.SUCCESS, 0.7), 1, 8, 5))
+	_carrier_bar.custom_minimum_size = Vector2(283, 0)
+	_carrier_bar.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.7), 7, Color(UITheme.SUCCESS, 0.7), 1, 13, 8))
 	_root.add_child(_carrier_bar)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 7)
 	_carrier_bar.add_child(box)
-	_carrier_bar_lbl = UITheme.label("", 11, UITheme.SUCCESS, UITheme.font_caps)
+	_carrier_bar_lbl = UITheme.label("", 18, UITheme.SUCCESS, UITheme.font_caps)
 	_carrier_bar_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_carrier_bar_lbl)
 	_carrier_bar_fill = ProgressBar.new()
 	_carrier_bar_fill.show_percentage = false
 	_carrier_bar_fill.max_value = 1.0
-	_carrier_bar_fill.custom_minimum_size = Vector2(0, 9)
-	_carrier_bar_fill.add_theme_stylebox_override("fill", UITheme.style(UITheme.SUCCESS, 2))
-	_carrier_bar_fill.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.1), 2))
+	_carrier_bar_fill.custom_minimum_size = Vector2(0, 15)
+	_carrier_bar_fill.add_theme_stylebox_override("fill", UITheme.style(UITheme.SUCCESS, 3))
+	_carrier_bar_fill.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.1), 3))
 	box.add_child(_carrier_bar_fill)
 
 
@@ -1225,7 +1225,7 @@ func _on_door_unlock_changed(ratio: float, carrier_peer_id: int) -> void:
 	_unlock_time_lbl.add_theme_color_override("font_color", col)
 	_unlock_fill.bg_color = col
 	_unlock_bar.value = ratio
-	_unlock_panel.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 10, Color(col, 0.6), 1, 16, 9))
+	_unlock_panel.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 17, Color(col, 0.6), 1, 27, 15))
 	_unlock_panel.visible = true
 
 
@@ -1241,21 +1241,21 @@ func _build_trap_bar() -> void:
 	_trap_bar = PanelContainer.new()
 	_trap_bar.visible = false
 	_trap_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_trap_bar.custom_minimum_size = Vector2(170, 0)
-	_trap_bar.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.7), 4, Color(UITheme.DANGER, 0.7), 1, 8, 5))
+	_trap_bar.custom_minimum_size = Vector2(283, 0)
+	_trap_bar.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.7), 7, Color(UITheme.DANGER, 0.7), 1, 13, 8))
 	_root.add_child(_trap_bar)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 7)
 	_trap_bar.add_child(box)
-	_trap_bar_lbl = UITheme.label("", 11, UITheme.DANGER, UITheme.font_caps)
+	_trap_bar_lbl = UITheme.label("", 18, UITheme.DANGER, UITheme.font_caps)
 	_trap_bar_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_trap_bar_lbl)
 	_trap_bar_fill = ProgressBar.new()
 	_trap_bar_fill.show_percentage = false
 	_trap_bar_fill.max_value = 1.0
-	_trap_bar_fill.custom_minimum_size = Vector2(0, 9)
-	_trap_bar_fill.add_theme_stylebox_override("fill", UITheme.style(UITheme.DANGER, 2))
-	_trap_bar_fill.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.1), 2))
+	_trap_bar_fill.custom_minimum_size = Vector2(0, 15)
+	_trap_bar_fill.add_theme_stylebox_override("fill", UITheme.style(UITheme.DANGER, 3))
+	_trap_bar_fill.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.1), 3))
 	box.add_child(_trap_bar_fill)
 
 
@@ -1333,18 +1333,18 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int, method: int) ->
 
 	var row := PanelContainer.new()
 	row.size_flags_horizontal = Control.SIZE_SHRINK_END
-	row.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.78), 8, border, 1, 12, 5))
+	row.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.78), 13, border, 1, 20, 8))
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
+	h.add_theme_constant_override("separation", 17)
 	row.add_child(h)
-	var k_lbl := UITheme.label(kname, 13, kcol, UITheme.font_bold)
+	var k_lbl := UITheme.label(kname, 22, kcol, UITheme.font_bold)
 	k_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adları çevrilmesin
 	h.add_child(k_lbl)
 	if method == GameManager.KILL_KNIFE or method == GameManager.KILL_BACKSTAB:
-		h.add_child(UITheme.label("🔪", 13, UITheme.TEXT))
+		h.add_child(UITheme.label("🔪", 22, UITheme.TEXT))
 	else:
-		h.add_child(UITheme.label("▸", 12, UITheme.TEXT_DIM))
-	var v_lbl := UITheme.label(vname, 13, vcol, UITheme.font_bold)
+		h.add_child(UITheme.label("▸", 20, UITheme.TEXT_DIM))
+	var v_lbl := UITheme.label(vname, 22, vcol, UITheme.font_bold)
 	v_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	h.add_child(v_lbl)
 	_ignore_mouse_recursive(row)

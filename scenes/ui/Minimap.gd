@@ -8,8 +8,8 @@ extends Control
 ## Harita sınırları (3D dünya X/Z) — labirent (Maze_walls.obj) ayak izi, Maze_minimap.png ile birebir (1 px = 1 m)
 const MAP_MIN := Vector2(-62.0, -46.0)
 const MAP_MAX := Vector2(62.0, 46.0)
-const SIZE := Vector2(200.0, 148.0)   # labirentin en/boy oranı (124:92)
-const PAD := 6.0
+const SIZE := Vector2(333.0, 247.0)   # labirentin en/boy oranı (124:92)
+const PAD := 10.0
 const WALLS_TEXTURE := "res://asset model/Maze_minimap.png"
 ## false yapılırsa minimapte duvarlar çizilmez (sadece oyuncular)
 const SHOW_WALLS := true
@@ -26,7 +26,7 @@ var _alert_timer: float = 0.0
 var _alert_pos: Vector3 = Vector3.ZERO
 var _alert_color: Color = Color.RED
 
-var _bg_style: StyleBoxFlat = UITheme.style(Color(UITheme.BG, 0.82), 12, UITheme.BORDER, 1)
+var _bg_style: StyleBoxFlat = UITheme.style(Color(UITheme.BG, 0.82), 20, UITheme.BORDER, 1)
 
 
 func _ready() -> void:
@@ -98,21 +98,21 @@ func _draw() -> void:
 
 		var p := _w2m(player.global_position)
 		var color := TeamManager.get_color(team_id)
-		var radius := 5.0 if is_self else 3.5
+		var radius := 8.3 if is_self else 5.8
 
 		# Kendi el feneri konisi (Player root -Z yönüne bakar)
 		if is_self:
 			var fwd3: Vector3 = -(player as Node3D).global_transform.basis.z
 			var fwd := Vector2(fwd3.x, fwd3.z).normalized()
-			var cone := PackedVector2Array([p, p + fwd.rotated(-0.45) * 26.0, p + fwd.rotated(0.45) * 26.0])
+			var cone := PackedVector2Array([p, p + fwd.rotated(-0.45) * 43.0, p + fwd.rotated(0.45) * 43.0])
 			draw_colored_polygon(cone, Color(UITheme.ACCENT, 0.22))
 
-		draw_circle(p, radius + 1.5, Color(0.05, 0.05, 0.08))
+		draw_circle(p, radius + 2.5, Color(0.05, 0.05, 0.08))
 		draw_circle(p, radius, color)
 
 		# Kart taşıyorsa sarı halka
 		if player.has_card:
-			draw_arc(p, radius + 4.0, 0.0, TAU, 20, Color(1.0, 0.9, 0.1), 2.0)
+			draw_arc(p, radius + 6.7, 0.0, TAU, 20, Color(1.0, 0.9, 0.1), 3.0)
 
 	# ── Uydu güçleri (PowerupManager) — sadece kendi takımımız kullandıysa ──
 	_draw_satellite_reveals(local_team)
@@ -123,8 +123,8 @@ func _draw() -> void:
 		var blink := (floori(_alert_timer * 5.0) % 2) == 0
 		if blink:
 			var p := _w2m(_alert_pos)
-			draw_circle(p, 7.0, Color(_alert_color.r, _alert_color.g, _alert_color.b, alpha))
-			draw_arc(p, 11.0, 0.0, TAU, 20, Color(_alert_color.r, _alert_color.g, _alert_color.b, alpha * 0.7), 2.5)
+			draw_circle(p, 11.7, Color(_alert_color.r, _alert_color.g, _alert_color.b, alpha))
+			draw_arc(p, 18.3, 0.0, TAU, 20, Color(_alert_color.r, _alert_color.g, _alert_color.b, alpha * 0.7), 4.0)
 
 
 func _draw_satellite_reveals(local_team: int) -> void:
@@ -150,12 +150,12 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			var tid: int = NetworkManager.players.get(pid, {}).get("team_id", -1)
 			var pp := _w2m((pl as Node3D).global_position)
 			if pid != NetworkManager.get_local_id():
-				draw_circle(pp, 4.0, TeamManager.get_color(tid))
-				draw_arc(pp, 7.0, 0.0, TAU, 16, Color(c, pulse), 1.5)
+				draw_circle(pp, 6.7, TeamManager.get_color(tid))
+				draw_arc(pp, 11.7, 0.0, TAU, 16, Color(c, pulse), 2.5)
 			if pid == GameManager.card_carrier_peer_id:
-				var dia := PackedVector2Array([pp + Vector2(0, -15), pp + Vector2(5, -10), pp + Vector2(0, -5), pp + Vector2(-5, -10)])
+				var dia := PackedVector2Array([pp + Vector2(0, -25), pp + Vector2(8.3, -16.7), pp + Vector2(0, -8.3), pp + Vector2(-8.3, -16.7)])
 				draw_colored_polygon(dia, Color(1.0, 0.9, 0.1))
-				draw_arc(pp, 11.0, 0.0, TAU, 24, Color(1.0, 0.9, 0.1, pulse), 2.0)
+				draw_arc(pp, 18.3, 0.0, TAU, 24, Color(1.0, 0.9, 0.1, pulse), 3.0)
 		status += "◈ %d  " % ceili(_powerups.reveal_until["all_players"] - now)
 
 	# ◉ Takım uydusu: tüm düşmanlar
@@ -169,8 +169,8 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			if tid == local_team:
 				continue
 			var ep := _w2m((pl as Node3D).global_position)
-			draw_circle(ep, 4.0, TeamManager.get_color(tid))
-			draw_arc(ep, 7.0, 0.0, TAU, 16, Color(c2, pulse), 1.5)
+			draw_circle(ep, 6.7, TeamManager.get_color(tid))
+			draw_arc(ep, 11.7, 0.0, TAU, 16, Color(c2, pulse), 2.5)
 		status += "◉ %d" % ceili(_powerups.reveal_until["enemies"] - now)
 
 	# TEST (F7): kart (yerdeyse) + kapı konumu
@@ -178,18 +178,18 @@ func _draw_satellite_reveals(local_team: int) -> void:
 		var door: Variant = GameManager.door_instance
 		if door != null and is_instance_valid(door):
 			var dp := _w2m((door as Node3D).global_position)
-			draw_rect(Rect2(dp - Vector2(5, 5), Vector2(10, 10)), UITheme.ACCENT)
-			draw_arc(dp, 10.0, 0.0, TAU, 20, Color(UITheme.ACCENT, pulse), 1.5)
+			draw_rect(Rect2(dp - Vector2(8.5, 8.5), Vector2(17, 17)), UITheme.ACCENT)
+			draw_arc(dp, 16.7, 0.0, TAU, 20, Color(UITheme.ACCENT, pulse), 2.5)
 		var card: Variant = GameManager.card_instance
 		if card != null and is_instance_valid(card) and (card as Node3D).visible:
 			var cp := _w2m((card as Node3D).global_position)
-			var dia := PackedVector2Array([cp + Vector2(0, -6), cp + Vector2(5, 0), cp + Vector2(0, 6), cp + Vector2(-5, 0)])
+			var dia := PackedVector2Array([cp + Vector2(0, -10), cp + Vector2(8.3, 0), cp + Vector2(0, 10), cp + Vector2(-8.3, 0)])
 			draw_colored_polygon(dia, Color(1.0, 0.9, 0.1))
-			draw_arc(cp, 10.0, 0.0, TAU, 20, Color(1.0, 0.9, 0.1, pulse), 1.5)
+			draw_arc(cp, 16.7, 0.0, TAU, 20, Color(1.0, 0.9, 0.1, pulse), 2.5)
 		status += tr("TEST: ■ KAPI ◆ KART")
 
 	if not status.is_empty():
-		draw_string(font, Vector2(PAD + 4, SIZE.y - PAD - 4), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.9))
+		draw_string(font, Vector2(PAD + 7, SIZE.y - PAD - 7), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.9))
 
 
 ## 3D dünya konumunu (X/Z) minimap koordinatına çevirir

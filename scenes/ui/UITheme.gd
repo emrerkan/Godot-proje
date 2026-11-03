@@ -39,7 +39,7 @@ const SUCCESS   := Color(0.45, 0.92, 0.6)
 ## Takım sembolleri (TeamManager index 0-3: Mavi, Kırmızı, Yeşil, Sarı) — renk tek başına bilgi taşımasın
 const TEAM_GLYPHS: Array[String] = ["●", "▲", "■", "◆"]
 
-const RADIUS := 4          # corner_detail=1 ile pah (kesik köşe) boyu — v2'de küçük (BF1 keskin dikdörtgen)
+const RADIUS := 7          # corner_detail=1 ile pah (kesik köşe) boyu — v2'de küçük (BF1 keskin dikdörtgen)
 
 static var theme: Theme
 static var font_regular: Font
@@ -50,7 +50,7 @@ static var font_mono: Font  # sayılar, kodlar, sayaçlar — taktik terminal ok
 
 
 ## Arayüzün tasarlandığı taban çözünürlük — pencere/tam ekran bu boyuttan orantılı büyür/küçülür
-const BASE_RESOLUTION := Vector2i(1152, 648)
+const BASE_RESOLUTION := Vector2i(1920, 1080)
 
 
 ## Temayı (ilk çağrıda kurup) root Window'a atar + ekran ölçeklemesini kurar. Birden fazla çağrılması güvenli.
@@ -74,7 +74,7 @@ static func _apply_scaling(root: Window) -> void:
 	root.content_scale_size = BASE_RESOLUTION
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
-	# Kesirli ölçekte (1920 → ×1.67) çizgiler/yazılar piksel arasına düşüp flu görünmesin: gerçek piksele oturt
+	# Kesirli ölçekte (ör. 2560 → ×1.33) çizgiler/yazılar piksel arasına düşüp flu görünmesin: gerçek piksele oturt
 	root.snap_2d_transforms_to_pixel = true
 	root.snap_2d_vertices_to_pixel = true
 
@@ -92,17 +92,17 @@ static func _static_init() -> void:
 	font_bold = FontVariation.new()
 	font_bold.base_font = font_regular
 	font_bold.variation_embolden = 0.6
-	font_bold.spacing_glyph = 1
+	font_bold.spacing_glyph = 2
 
 	font_title = FontVariation.new()
 	font_title.base_font = font_regular
 	font_title.variation_embolden = 1.0
-	font_title.spacing_glyph = 6
+	font_title.spacing_glyph = 10
 
 	font_caps = FontVariation.new()
 	font_caps.base_font = font_regular
 	font_caps.variation_embolden = 0.35
-	font_caps.spacing_glyph = 3
+	font_caps.spacing_glyph = 5
 
 	# Sistemde varsa monospace (Windows: Cascadia/Consolas, Linux: DejaVu Sans Mono), yoksa varsayılan font
 	var mono := SystemFont.new()
@@ -130,7 +130,7 @@ static func team_tag(team_id: int, upper: bool = true) -> String:
 ## Panelin köşelerine taktik braket çizer (┌ ┐ └ ┘) — hedefin kendi `draw` sinyaline bağlanır
 ## (çocuk node yok → container yerleşimini bozmaz; panel zemininin üstüne, çocukların altına çizilir).
 ## inset < 0 → braketler panel kenarının biraz dışında durur.
-static func add_brackets(target: Control, color: Color = FRAME, length: float = 12.0, width: float = 2.0, inset: float = -3.0) -> void:
+static func add_brackets(target: Control, color: Color = FRAME, length: float = 20.0, width: float = 3.0, inset: float = -5.0) -> void:
 	target.draw.connect(func() -> void:
 		var r := Rect2(Vector2.ONE * inset, target.size - Vector2.ONE * inset * 2.0)
 		var l := minf(length, minf(r.size.x, r.size.y) * 0.4)
@@ -167,7 +167,7 @@ static func style(bg: Color, radius: int = RADIUS, border: Color = Color.TRANSPA
 	return s
 
 
-static func label(text: String, font_size: int = 15, color: Color = TEXT, font: Font = null) -> Label:
+static func label(text: String, font_size: int = 25, color: Color = TEXT, font: Font = null) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.add_theme_font_size_override("font_size", font_size)
@@ -184,24 +184,24 @@ static func label(text: String, font_size: int = 15, color: Color = TEXT, font: 
 static func _build_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font = font_regular
-	t.default_font_size = 15
+	t.default_font_size = 25
 
 	# ── Label ──
 	t.set_color("font_color", "Label", TEXT)
 	t.set_type_variation("TitleLabel", "Label")
 	t.set_font("font", "TitleLabel", font_title)
-	t.set_font_size("font_size", "TitleLabel", 28)
+	t.set_font_size("font_size", "TitleLabel", 47)
 	t.set_type_variation("CapsLabel", "Label")
 	t.set_font("font", "CapsLabel", font_caps)
-	t.set_font_size("font_size", "CapsLabel", 11)
+	t.set_font_size("font_size", "CapsLabel", 18)
 	t.set_color("font_color", "CapsLabel", TEXT_DIM)
 	t.set_type_variation("DimLabel", "Label")
 	t.set_color("font_color", "DimLabel", TEXT_DIM)
-	t.set_font_size("font_size", "DimLabel", 13)
+	t.set_font_size("font_size", "DimLabel", 22)
 
 	# ── Button (varsayılan) ──
-	var btn_margin_h := 16.0
-	var btn_margin_v := 9.0
+	var btn_margin_h := 27.0
+	var btn_margin_v := 15.0
 	# Cam düğme: saydam zemin + ince beyaz kenar; hover'da beyazlaşır (BF1)
 	t.set_stylebox("normal",   "Button", style(Color(1, 1, 1, 0.06), RADIUS, BORDER, 1, btn_margin_h, btn_margin_v))
 	t.set_stylebox("hover",    "Button", style(Color(1, 1, 1, 0.16), RADIUS, Color(1, 1, 1, 0.7), 1, btn_margin_h, btn_margin_v))
@@ -221,15 +221,15 @@ static func _build_theme() -> Theme:
 	t.set_type_variation("PrimaryButton", "Button")
 	var prim_norm := style(ACCENT, RADIUS, Color.TRANSPARENT, 0, btn_margin_h, btn_margin_v)
 	prim_norm.border_color = ACCENT.darkened(0.45)
-	prim_norm.border_width_bottom = 3
+	prim_norm.border_width_bottom = 5
 	var prim_hover := style(ACCENT.lightened(0.14), RADIUS, Color.TRANSPARENT, 0, btn_margin_h, btn_margin_v)
 	prim_hover.border_color = ACCENT.darkened(0.35)
-	prim_hover.border_width_bottom = 3
+	prim_hover.border_width_bottom = 5
 	prim_hover.shadow_color = Color(ACCENT, 0.35)
-	prim_hover.shadow_size = 14
+	prim_hover.shadow_size = 23
 	var prim_pressed := style(ACCENT.darkened(0.12), RADIUS, Color.TRANSPARENT, 0, btn_margin_h, btn_margin_v)
 	prim_pressed.border_color = ACCENT.darkened(0.5)
-	prim_pressed.border_width_top = 2  # basılınca "çöker"
+	prim_pressed.border_width_top = 3  # basılınca "çöker"
 	t.set_stylebox("normal",   "PrimaryButton", prim_norm)
 	t.set_stylebox("hover",    "PrimaryButton", prim_hover)
 	t.set_stylebox("pressed",  "PrimaryButton", prim_pressed)
@@ -240,10 +240,10 @@ static func _build_theme() -> Theme:
 
 	# ── GhostButton: şeffaf, sadece hover'da zemin ──
 	t.set_type_variation("GhostButton", "Button")
-	t.set_stylebox("normal",  "GhostButton", style(Color.TRANSPARENT, RADIUS, Color.TRANSPARENT, 0, 12, 7))
-	t.set_stylebox("hover",   "GhostButton", style(Color(1, 1, 1, 0.06), RADIUS, Color.TRANSPARENT, 0, 12, 7))
-	t.set_stylebox("pressed", "GhostButton", style(Color(1, 1, 1, 0.1), RADIUS, Color.TRANSPARENT, 0, 12, 7))
-	t.set_stylebox("disabled", "GhostButton", style(Color.TRANSPARENT, RADIUS, Color.TRANSPARENT, 0, 12, 7))
+	t.set_stylebox("normal",  "GhostButton", style(Color.TRANSPARENT, RADIUS, Color.TRANSPARENT, 0, 20, 12))
+	t.set_stylebox("hover",   "GhostButton", style(Color(1, 1, 1, 0.06), RADIUS, Color.TRANSPARENT, 0, 20, 12))
+	t.set_stylebox("pressed", "GhostButton", style(Color(1, 1, 1, 0.1), RADIUS, Color.TRANSPARENT, 0, 20, 12))
+	t.set_stylebox("disabled", "GhostButton", style(Color.TRANSPARENT, RADIUS, Color.TRANSPARENT, 0, 20, 12))
 	t.set_color("font_color", "GhostButton", TEXT_DIM)
 	t.set_color("font_hover_color", "GhostButton", TEXT)
 	t.set_color("font_pressed_color", "GhostButton", TEXT)
@@ -251,11 +251,11 @@ static func _build_theme() -> Theme:
 	# ── TabButton: toggle sekme, seçili olan altı çizgili ──
 	t.set_type_variation("TabButton", "Button")
 	# Seçili sekme (BF1): beyaz metin + beyaz alt çizgi, zemin yok; seçili olmayanlar soluk
-	var tab_sel := style(Color(1, 1, 1, 0.05), 0, Color.TRANSPARENT, 0, 18, 12)
+	var tab_sel := style(Color(1, 1, 1, 0.05), 0, Color.TRANSPARENT, 0, 30, 20)
 	tab_sel.border_color = Color.WHITE
-	tab_sel.border_width_bottom = 2
-	var tab_norm := style(Color.TRANSPARENT, 0, Color.TRANSPARENT, 0, 18, 12)
-	tab_norm.border_width_bottom = 2
+	tab_sel.border_width_bottom = 3
+	var tab_norm := style(Color.TRANSPARENT, 0, Color.TRANSPARENT, 0, 30, 20)
+	tab_norm.border_width_bottom = 3
 	tab_norm.border_color = Color.TRANSPARENT
 	var tab_hover := tab_norm.duplicate() as StyleBoxFlat
 	tab_hover.bg_color = Color(1, 1, 1, 0.04)
@@ -266,36 +266,36 @@ static func _build_theme() -> Theme:
 	t.set_stylebox("hover_pressed", "TabButton", tab_sel)
 	t.set_stylebox("focus", "TabButton", StyleBoxEmpty.new())
 	t.set_font("font", "TabButton", font_caps)
-	t.set_font_size("font_size", "TabButton", 14)
+	t.set_font_size("font_size", "TabButton", 23)
 	t.set_color("font_color", "TabButton", Color(TEXT_DIM, 0.75))
 	t.set_color("font_hover_color", "TabButton", TEXT)
 	t.set_color("font_pressed_color", "TabButton", Color.WHITE)
 	t.set_color("font_hover_pressed_color", "TabButton", Color.WHITE)
 
 	# ── LineEdit ──
-	var le_norm := style(Color(0, 0, 0, 0.3), RADIUS, BORDER, 1, 14, 10)
-	var le_focus := style(Color(0, 0, 0, 0.4), RADIUS, Color(1, 1, 1, 0.75), 1, 14, 10)
+	var le_norm := style(Color(0, 0, 0, 0.3), RADIUS, BORDER, 1, 23, 17)
+	var le_focus := style(Color(0, 0, 0, 0.4), RADIUS, Color(1, 1, 1, 0.75), 1, 23, 17)
 	t.set_stylebox("normal", "LineEdit", le_norm)
 	t.set_stylebox("focus", "LineEdit", le_focus)
-	t.set_stylebox("read_only", "LineEdit", style(Color(0, 0, 0, 0.2), RADIUS, BORDER, 1, 14, 10))
+	t.set_stylebox("read_only", "LineEdit", style(Color(0, 0, 0, 0.2), RADIUS, BORDER, 1, 23, 17))
 	t.set_color("font_color", "LineEdit", TEXT)
 	t.set_color("font_placeholder_color", "LineEdit", Color(TEXT_DIM, 0.6))
 	t.set_color("caret_color", "LineEdit", Color.WHITE)
 	t.set_color("selection_color", "LineEdit", Color(1, 1, 1, 0.25))
-	t.set_constant("caret_width", "LineEdit", 2)
+	t.set_constant("caret_width", "LineEdit", 3)
 
 	# ── Paneller ──
-	t.set_stylebox("panel", "PanelContainer", style(SURFACE, RADIUS + 4, BORDER, 1, 0, 0))
-	t.set_stylebox("panel", "Panel", style(SURFACE, RADIUS + 4, BORDER, 1))
-	t.set_stylebox("panel", "PopupPanel", style(SURFACE_2, RADIUS, BORDER, 1, 12, 12))
+	t.set_stylebox("panel", "PanelContainer", style(SURFACE, RADIUS + 6, BORDER, 1, 0, 0))
+	t.set_stylebox("panel", "Panel", style(SURFACE, RADIUS + 6, BORDER, 1))
+	t.set_stylebox("panel", "PopupPanel", style(SURFACE_2, RADIUS, BORDER, 1, 20, 20))
 	# Açılır menü (OptionButton listesi) — cam panel, hover beyaz
-	t.set_stylebox("panel", "PopupMenu", style(Color(BG, 0.97), RADIUS, BORDER, 1, 6, 6))
-	t.set_stylebox("hover", "PopupMenu", style(Color(1, 1, 1, 0.12), 2))
+	t.set_stylebox("panel", "PopupMenu", style(Color(BG, 0.97), RADIUS, BORDER, 1, 10, 10))
+	t.set_stylebox("hover", "PopupMenu", style(Color(1, 1, 1, 0.12), 3))
 	t.set_color("font_color", "PopupMenu", TEXT)
 	t.set_color("font_hover_color", "PopupMenu", Color.WHITE)
 	t.set_color("font_disabled_color", "PopupMenu", Color(TEXT_DIM, 0.5))
-	t.set_constant("v_separation", "PopupMenu", 8)
-	t.set_stylebox("panel", "TooltipPanel", style(SURFACE_3, 6, BORDER, 1, 10, 6))
+	t.set_constant("v_separation", "PopupMenu", 13)
+	t.set_stylebox("panel", "TooltipPanel", style(SURFACE_3, 10, BORDER, 1, 17, 10))
 	t.set_color("font_color", "TooltipLabel", TEXT)
 
 	# ── Ayraçlar ──
@@ -311,19 +311,19 @@ static func _build_theme() -> Theme:
 	t.set_stylebox("separator", "VSeparator", vsep)
 
 	# ── ScrollBar: ince, yuvarlak ──
-	var grabber := style(Color(1, 1, 1, 0.14), 4)
-	grabber.content_margin_left = 3
-	grabber.content_margin_right = 3
-	var grabber_hl := style(Color(1, 1, 1, 0.5), 4)
+	var grabber := style(Color(1, 1, 1, 0.14), 7)
+	grabber.content_margin_left = 5
+	grabber.content_margin_right = 5
+	var grabber_hl := style(Color(1, 1, 1, 0.5), 7)
 	for bar: String in ["VScrollBar", "HScrollBar"]:
-		t.set_stylebox("scroll", bar, style(Color(1, 1, 1, 0.02), 4, Color.TRANSPARENT, 0, 3, 3))
+		t.set_stylebox("scroll", bar, style(Color(1, 1, 1, 0.02), 7, Color.TRANSPARENT, 0, 5, 5))
 		t.set_stylebox("grabber", bar, grabber)
 		t.set_stylebox("grabber_highlight", bar, grabber_hl)
 		t.set_stylebox("grabber_pressed", bar, grabber_hl)
 
 	# ── ProgressBar ──
-	t.set_stylebox("background", "ProgressBar", style(Color(1, 1, 1, 0.07), 4))
-	t.set_stylebox("fill", "ProgressBar", style(ACCENT, 4))
+	t.set_stylebox("background", "ProgressBar", style(Color(1, 1, 1, 0.07), 7))
+	t.set_stylebox("fill", "ProgressBar", style(ACCENT, 7))
 	t.set_color("font_color", "ProgressBar", TEXT)
 
 	return t

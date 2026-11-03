@@ -79,41 +79,41 @@ func _build_ui() -> void:
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 36)
-	margin.add_theme_constant_override("margin_right", 36)
-	margin.add_theme_constant_override("margin_top", 26)
-	margin.add_theme_constant_override("margin_bottom", 22)
+	margin.add_theme_constant_override("margin_left", 60)
+	margin.add_theme_constant_override("margin_right", 60)
+	margin.add_theme_constant_override("margin_top", 43)
+	margin.add_theme_constant_override("margin_bottom", 37)
 	add_child(margin)
 
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 16)
+	root.add_theme_constant_override("separation", 27)
 	margin.add_child(root)
 
 	root.add_child(_build_header())
 
 	# Takım kartları: içerik kadar yükseklik (slot sayısı = takım boyutu) — boş alan alt bölüme kalır
 	var team_row := HBoxContainer.new()
-	team_row.add_theme_constant_override("separation", 14)
+	team_row.add_theme_constant_override("separation", 23)
 	root.add_child(team_row)
 	for i in range(NetworkManager.TEAM_COUNT):
 		team_row.add_child(_build_team_card(i))
 
 	# Alt bölüm: sohbet | oda ayarları | takımsızlar + hazır/başlat
 	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", 14)
+	bottom.add_theme_constant_override("separation", 23)
 	bottom.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(bottom)
 
 	var chat := ChatBox.new()
 	chat.mode = ChatBox.Mode.LOBBY
-	chat.custom_minimum_size = Vector2(340, 150)
+	chat.custom_minimum_size = Vector2(567, 250)
 	chat.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(chat)
 
 
 	var right := VBoxContainer.new()
-	right.add_theme_constant_override("separation", 10)
-	right.custom_minimum_size = Vector2(330, 0)
+	right.add_theme_constant_override("separation", 17)
+	right.custom_minimum_size = Vector2(550, 0)
 	bottom.add_child(right)
 	right.add_child(_build_unassigned_strip())
 	var fill := Control.new()
@@ -127,46 +127,46 @@ func _build_ui() -> void:
 
 func _build_header() -> Control:
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 12)
+	header.add_theme_constant_override("separation", 20)
 
 	var title_box := VBoxContainer.new()
-	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_theme_constant_override("separation", 3)
 	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title_box)
-	title_box.add_child(UITheme.label("LOBİ  ·  TAKIMINI SEÇ", 11, UITheme.TEXT_DIM, UITheme.font_caps))
-	_room_name_lbl = UITheme.label("", 26, UITheme.TEXT, UITheme.font_bold)
+	title_box.add_child(UITheme.label("LOBİ  ·  TAKIMINI SEÇ", 18, UITheme.TEXT_DIM, UITheme.font_caps))
+	_room_name_lbl = UITheme.label("", 43, UITheme.TEXT, UITheme.font_bold)
 	_room_name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_room_name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oda adı kullanıcı metni
 	title_box.add_child(_room_name_lbl)
 	# Ayar özeti (format · harita · şifre) — ayrıntılar ⚙ penceresinde
-	_settings_summary = UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	_settings_summary = UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	title_box.add_child(_settings_summary)
 
 	# Oyuncu sayısı
 	var count_chip := PanelContainer.new()
 	count_chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	count_chip.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 12, UITheme.BORDER, 1, 14, 10))
+	count_chip.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 20, UITheme.BORDER, 1, 23, 17))
 	var count_box := VBoxContainer.new()
 	count_box.add_theme_constant_override("separation", 0)
 	count_chip.add_child(count_box)
-	count_box.add_child(UITheme.label("OYUNCU", 10, UITheme.TEXT_DIM, UITheme.font_caps))
-	_player_count_lbl = UITheme.label("", 18, UITheme.TEXT, UITheme.font_mono)
+	count_box.add_child(UITheme.label("OYUNCU", 17, UITheme.TEXT_DIM, UITheme.font_caps))
+	_player_count_lbl = UITheme.label("", 30, UITheme.TEXT, UITheme.font_mono)
 	count_box.add_child(_player_count_lbl)
 	header.add_child(count_chip)
 
 	# Oda kodu + kopyala
 	var code_chip := PanelContainer.new()
 	code_chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	code_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.ACCENT, 0.08), 10, Color(UITheme.ACCENT, 0.35), 1, 14, 10))
-	UITheme.add_brackets(code_chip, UITheme.ACCENT, 8)
+	code_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.ACCENT, 0.08), 17, Color(UITheme.ACCENT, 0.35), 1, 23, 17))
+	UITheme.add_brackets(code_chip, UITheme.ACCENT, 13)
 	var code_row := HBoxContainer.new()
-	code_row.add_theme_constant_override("separation", 14)
+	code_row.add_theme_constant_override("separation", 23)
 	code_chip.add_child(code_row)
 	var code_box := VBoxContainer.new()
 	code_box.add_theme_constant_override("separation", 0)
 	code_row.add_child(code_box)
-	code_box.add_child(UITheme.label("ODA KODU", 10, UITheme.TEXT_DIM, UITheme.font_caps))
-	_room_code_lbl = UITheme.label("", 20, UITheme.ACCENT, UITheme.font_mono)
+	code_box.add_child(UITheme.label("ODA KODU", 17, UITheme.TEXT_DIM, UITheme.font_caps))
+	_room_code_lbl = UITheme.label("", 33, UITheme.ACCENT, UITheme.font_mono)
 	code_box.add_child(_room_code_lbl)
 	_copy_btn = Button.new()
 	_copy_btn.text = "Kopyala"
@@ -190,10 +190,10 @@ func _build_header() -> Control:
 	gear.text = "⚙"
 	gear.tooltip_text = "Oda ayarları"
 	gear.focus_mode = Control.FOCUS_NONE
-	gear.custom_minimum_size = Vector2(46, 46)
+	gear.custom_minimum_size = Vector2(77, 77)
 	gear.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	gear.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	gear.add_theme_font_size_override("font_size", 22)
+	gear.add_theme_font_size_override("font_size", 37)
 	gear.pressed.connect(_open_settings)
 	header.add_child(gear)
 	header.move_child(gear, leave.get_index())
@@ -218,9 +218,9 @@ func _build_team_card(team_id: int) -> Control:
 
 	# Başlık: renk şeridi + isim + doluluk
 	var header := PanelContainer.new()
-	var hs := UITheme.style(Color(color, 0.12), 0, Color.TRANSPARENT, 0, 14, 9)
-	hs.corner_radius_top_left = 12
-	hs.border_width_top = 3
+	var hs := UITheme.style(Color(color, 0.12), 0, Color.TRANSPARENT, 0, 23, 15)
+	hs.corner_radius_top_left = 20
+	hs.border_width_top = 5
 	hs.border_color = color
 	header.add_theme_stylebox_override("panel", hs)
 	box.add_child(header)
@@ -230,27 +230,27 @@ func _build_team_card(team_id: int) -> Control:
 	name_box.add_theme_constant_override("separation", 0)
 	name_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hrow.add_child(name_box)
-	name_box.add_child(UITheme.label(UITheme.team_tag(team_id), 17, color, UITheme.font_title))
-	var count_lbl := UITheme.label("0/%d" % NetworkManager.get_team_size(), 14, UITheme.TEXT, UITheme.font_mono)
+	name_box.add_child(UITheme.label(UITheme.team_tag(team_id), 28, color, UITheme.font_title))
+	var count_lbl := UITheme.label("0/%d" % NetworkManager.get_team_size(), 23, UITheme.TEXT, UITheme.font_mono)
 	count_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hrow.add_child(count_lbl)
 
 	# Slotlar (kompakt — kart yüksekliği slot sayısı kadar)
 	var slots_margin := MarginContainer.new()
 	for side: String in ["left", "right"]:
-		slots_margin.add_theme_constant_override("margin_" + side, 8)
-	slots_margin.add_theme_constant_override("margin_top", 8)
-	slots_margin.add_theme_constant_override("margin_bottom", 8)
+		slots_margin.add_theme_constant_override("margin_" + side, 13)
+	slots_margin.add_theme_constant_override("margin_top", 13)
+	slots_margin.add_theme_constant_override("margin_bottom", 13)
 	box.add_child(slots_margin)
 	var slots := VBoxContainer.new()
-	slots.add_theme_constant_override("separation", 4)
+	slots.add_theme_constant_override("separation", 7)
 	slots_margin.add_child(slots)
 
 	# Alt şerit
 	var footer := PanelContainer.new()
-	footer.custom_minimum_size = Vector2(0, 28)
+	footer.custom_minimum_size = Vector2(0, 47)
 	box.add_child(footer)
-	var footer_lbl := UITheme.label("", 11, UITheme.TEXT_DIM, UITheme.font_caps)
+	var footer_lbl := UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	footer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	footer_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	footer.add_child(footer_lbl)
@@ -262,57 +262,57 @@ func _build_team_card(team_id: int) -> Control:
 
 func _build_unassigned_strip() -> Control:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	var cap := UITheme.label("TAKIM SEÇMEYENLER", 10, UITheme.TEXT_DIM, UITheme.font_caps)
+	row.add_theme_constant_override("separation", 20)
+	var cap := UITheme.label("TAKIM SEÇMEYENLER", 17, UITheme.TEXT_DIM, UITheme.font_caps)
 	cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(cap)
 	_unassigned_row = HBoxContainer.new()
-	_unassigned_row.add_theme_constant_override("separation", 8)
+	_unassigned_row.add_theme_constant_override("separation", 13)
 	row.add_child(_unassigned_row)
 	return row
 
 
 func _build_bottom_bar() -> Control:
 	var bar := PanelContainer.new()
-	bar.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 14, UITheme.BORDER, 1, 16, 12))
+	bar.add_theme_stylebox_override("panel", UITheme.style(UITheme.SURFACE, 23, UITheme.BORDER, 1, 27, 20))
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 10)
+	col.add_theme_constant_override("separation", 17)
 	bar.add_child(col)
 
 	var checks := VBoxContainer.new()
-	checks.add_theme_constant_override("separation", 3)
+	checks.add_theme_constant_override("separation", 5)
 	col.add_child(checks)
-	_check_balance = UITheme.label("", 13, UITheme.TEXT_DIM)
+	_check_balance = UITheme.label("", 22, UITheme.TEXT_DIM)
 	checks.add_child(_check_balance)
-	_check_ready = UITheme.label("", 13, UITheme.TEXT_DIM)
+	_check_ready = UITheme.label("", 22, UITheme.TEXT_DIM)
 	checks.add_child(_check_ready)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 17)
 	col.add_child(row)
 
-	_host_hint = UITheme.label("Oyunu oda sahibi başlatacak", 12, UITheme.TEXT_DIM)
+	_host_hint = UITheme.label("Oyunu oda sahibi başlatacak", 20, UITheme.TEXT_DIM)
 	_host_hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_host_hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_host_hint)
 
 	_ready_btn = Button.new()
-	_ready_btn.custom_minimum_size = Vector2(140, 44)
+	_ready_btn.custom_minimum_size = Vector2(233, 73)
 	_ready_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_ready_btn.focus_mode = Control.FOCUS_NONE
 	_ready_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_ready_btn.add_theme_font_size_override("font_size", 15)
+	_ready_btn.add_theme_font_size_override("font_size", 25)
 	_ready_btn.pressed.connect(_on_ready_btn_pressed)
 	row.add_child(_ready_btn)
 
 	_start_btn = Button.new()
 	_start_btn.text = "OYUNU BAŞLAT  ▶"
 	_start_btn.theme_type_variation = "PrimaryButton"
-	_start_btn.custom_minimum_size = Vector2(150, 44)
+	_start_btn.custom_minimum_size = Vector2(250, 73)
 	_start_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_start_btn.focus_mode = Control.FOCUS_NONE
 	_start_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_start_btn.add_theme_font_size_override("font_size", 15)
+	_start_btn.add_theme_font_size_override("font_size", 25)
 	_start_btn.pressed.connect(_on_start_btn_pressed)
 	row.add_child(_start_btn)
 	return bar
@@ -374,14 +374,14 @@ func _close_settings() -> void:
 ## [KAYDET] hepsini birlikte uygular, [KAPAT]/✕/ESC/dışına tıklama taslağı atar.
 func _build_settings_panel() -> Control:
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(440, 0)
-	var st := UITheme.style(UITheme.SURFACE_2, 16, Color(UITheme.ACCENT, 0.3), 1, 24, 20)
+	panel.custom_minimum_size = Vector2(733, 0)
+	var st := UITheme.style(UITheme.SURFACE_2, 27, Color(UITheme.ACCENT, 0.3), 1, 40, 33)
 	st.shadow_color = Color(0, 0, 0, 0.5)
-	st.shadow_size = 30
+	st.shadow_size = 50
 	panel.add_theme_stylebox_override("panel", st)
-	UITheme.add_brackets(panel, UITheme.FRAME, 16)
+	UITheme.add_brackets(panel, UITheme.FRAME, 27)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
+	box.add_theme_constant_override("separation", 20)
 	panel.add_child(box)
 
 	var head := HBoxContainer.new()
@@ -390,8 +390,8 @@ func _build_settings_panel() -> Control:
 	titles.add_theme_constant_override("separation", 0)
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(titles)
-	titles.add_child(UITheme.label("⚙  ODA AYARLARI", 11, UITheme.ACCENT, UITheme.font_caps))
-	_settings_hint = UITheme.label("", 12, UITheme.TEXT_DIM)
+	titles.add_child(UITheme.label("⚙  ODA AYARLARI", 18, UITheme.ACCENT, UITheme.font_caps))
+	_settings_hint = UITheme.label("", 20, UITheme.TEXT_DIM)
 	titles.add_child(_settings_hint)
 	var close_x := Button.new()
 	close_x.text = "✕"
@@ -419,10 +419,10 @@ func _build_settings_panel() -> Control:
 	box.add_child(_setting_row("FORMAT", _size_option))
 
 	# Şifre: mevcut durum + (host) yeni şifre yaz VEYA kaldır işaretle
-	_pw_status = UITheme.label("", 13, UITheme.TEXT)
+	_pw_status = UITheme.label("", 22, UITheme.TEXT)
 	box.add_child(_setting_row("ŞİFRE", _pw_status))
 	_pw_row = HBoxContainer.new()
-	_pw_row.add_theme_constant_override("separation", 6)
+	_pw_row.add_theme_constant_override("separation", 10)
 	box.add_child(_pw_row)
 	_pw_input = LineEdit.new()
 	_pw_input.placeholder_text = "Yeni şifre (boş = değiştirme)"
@@ -447,26 +447,26 @@ func _build_settings_panel() -> Control:
 	_pw_row.add_child(_pw_remove)
 
 	# Kaydedilecek değişikliklerin özeti
-	_draft_note = UITheme.label("", 12, UITheme.TEXT_DIM)
+	_draft_note = UITheme.label("", 20, UITheme.TEXT_DIM)
 	_draft_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_draft_note)
 
 	# Alt butonlar: KAPAT (taslağı at) / KAYDET (uygula)
 	var footer := HBoxContainer.new()
-	footer.add_theme_constant_override("separation", 10)
+	footer.add_theme_constant_override("separation", 17)
 	footer.alignment = BoxContainer.ALIGNMENT_END
 	box.add_child(footer)
 	var cancel := Button.new()
 	cancel.text = "Kapat"
 	cancel.theme_type_variation = "GhostButton"
-	cancel.custom_minimum_size = Vector2(110, 42)
+	cancel.custom_minimum_size = Vector2(183, 70)
 	cancel.focus_mode = Control.FOCUS_NONE
 	cancel.pressed.connect(_close_settings)
 	footer.add_child(cancel)
 	_save_btn = Button.new()
 	_save_btn.text = "KAYDET"
 	_save_btn.theme_type_variation = "PrimaryButton"
-	_save_btn.custom_minimum_size = Vector2(140, 42)
+	_save_btn.custom_minimum_size = Vector2(233, 70)
 	_save_btn.focus_mode = Control.FOCUS_NONE
 	_save_btn.pressed.connect(_on_save_settings)
 	footer.add_child(_save_btn)
@@ -475,9 +475,9 @@ func _build_settings_panel() -> Control:
 
 func _setting_row(caption: String, control: Control) -> Control:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var cap := UITheme.label(caption, 10, UITheme.TEXT_DIM, UITheme.font_caps)
-	cap.custom_minimum_size = Vector2(80, 0)
+	row.add_theme_constant_override("separation", 17)
+	var cap := UITheme.label(caption, 17, UITheme.TEXT_DIM, UITheme.font_caps)
+	cap.custom_minimum_size = Vector2(133, 0)
 	cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(cap)
 	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -586,8 +586,8 @@ func _build_player_slot(peer_id: int, data: Dictionary, team_color: Color, is_me
 	var ready_flag: bool = data.get("is_ready", false)
 
 	var slot := PanelContainer.new()
-	slot.custom_minimum_size = Vector2(0, 30)
-	var st := UITheme.style(Color(1, 1, 1, 0.04), 8, Color.TRANSPARENT, 0, 8, 3)
+	slot.custom_minimum_size = Vector2(0, 50)
+	var st := UITheme.style(Color(1, 1, 1, 0.04), 13, Color.TRANSPARENT, 0, 13, 5)
 	if is_me:
 		st.bg_color = Color(team_color, 0.14)
 		st.border_color = Color(team_color, 0.55)
@@ -595,12 +595,12 @@ func _build_player_slot(peer_id: int, data: Dictionary, team_color: Color, is_me
 	slot.add_theme_stylebox_override("panel", st)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", 13)
 	slot.add_child(row)
 
 	row.add_child(_avatar(player_name, team_color))
 
-	var name_lbl := UITheme.label(player_name, 13, UITheme.TEXT, UITheme.font_bold if is_me else null)
+	var name_lbl := UITheme.label(player_name, 22, UITheme.TEXT, UITheme.font_bold if is_me else null)
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_lbl.clip_text = true
@@ -609,7 +609,7 @@ func _build_player_slot(peer_id: int, data: Dictionary, team_color: Color, is_me
 	row.add_child(name_lbl)
 
 	if peer_id == 1:
-		var host := UITheme.label("★", 12, UITheme.ACCENT)
+		var host := UITheme.label("★", 20, UITheme.ACCENT)
 		host.tooltip_text = "Oda sahibi"
 		host.mouse_filter = Control.MOUSE_FILTER_PASS
 		host.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -621,9 +621,9 @@ func _build_player_slot(peer_id: int, data: Dictionary, team_color: Color, is_me
 
 func _build_empty_slot() -> Control:
 	var slot := PanelContainer.new()
-	slot.custom_minimum_size = Vector2(0, 30)
-	slot.add_theme_stylebox_override("panel", UITheme.style(Color.TRANSPARENT, 8, Color(1, 1, 1, 0.06), 1, 12, 3))
-	var lbl := UITheme.label("+   Boş slot", 12, Color(UITheme.TEXT_DIM, 0.55))
+	slot.custom_minimum_size = Vector2(0, 50)
+	slot.add_theme_stylebox_override("panel", UITheme.style(Color.TRANSPARENT, 13, Color(1, 1, 1, 0.06), 1, 20, 5))
+	var lbl := UITheme.label("+   Boş slot", 20, Color(UITheme.TEXT_DIM, 0.55))
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	slot.add_child(lbl)
 	return slot
@@ -631,11 +631,11 @@ func _build_empty_slot() -> Control:
 
 func _avatar(player_name: String, color: Color) -> Control:
 	var av := PanelContainer.new()
-	av.custom_minimum_size = Vector2(24, 24)
+	av.custom_minimum_size = Vector2(40, 40)
 	av.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	av.add_theme_stylebox_override("panel", UITheme.style(Color(color, 0.85), 12))
+	av.add_theme_stylebox_override("panel", UITheme.style(Color(color, 0.85), 20))
 	var initial := player_name.substr(0, 1).to_upper() if not player_name.is_empty() else "?"
-	var lbl := UITheme.label(initial, 13, Color(0.05, 0.05, 0.08), UITheme.font_bold)
+	var lbl := UITheme.label(initial, 22, Color(0.05, 0.05, 0.08), UITheme.font_bold)
 	lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -647,8 +647,8 @@ func _ready_pill(ready_flag: bool) -> Control:
 	var pill := PanelContainer.new()
 	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var col := UITheme.SUCCESS if ready_flag else UITheme.TEXT_DIM
-	pill.add_theme_stylebox_override("panel", UITheme.style(Color(col, 0.14), 8, Color.TRANSPARENT, 0, 7, 2))
-	pill.add_child(UITheme.label("HAZIR" if ready_flag else "BEKLİYOR", 9, col, UITheme.font_caps))
+	pill.add_theme_stylebox_override("panel", UITheme.style(Color(col, 0.14), 13, Color.TRANSPARENT, 0, 12, 3))
+	pill.add_child(UITheme.label("HAZIR" if ready_flag else "BEKLİYOR", 15, col, UITheme.font_caps))
 	return pill
 
 
@@ -780,17 +780,17 @@ func _refresh_player_list() -> void:
 	for child in _unassigned_row.get_children():
 		child.queue_free()
 	if unassigned.is_empty():
-		_unassigned_row.add_child(UITheme.label("Herkes bir takımda", 12, Color(UITheme.TEXT_DIM, 0.7)))
+		_unassigned_row.add_child(UITheme.label("Herkes bir takımda", 20, Color(UITheme.TEXT_DIM, 0.7)))
 	for pid: int in unassigned:
 		var data: Dictionary = NetworkManager.players[pid]
 		var chip := PanelContainer.new()
 		var is_me: bool = pid == local_id
-		chip.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.05), 12,
-			Color(UITheme.ACCENT, 0.5) if is_me else Color.TRANSPARENT, 1 if is_me else 0, 10, 3))
+		chip.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.05), 20,
+			Color(UITheme.ACCENT, 0.5) if is_me else Color.TRANSPARENT, 1 if is_me else 0, 17, 5))
 		var label_text: String = data.get("name", "???")
 		if is_me:
 			label_text = tr("%s  (Sen)") % label_text
-		var chip_lbl := UITheme.label(label_text, 12, UITheme.TEXT if is_me else UITheme.TEXT_DIM)
+		var chip_lbl := UITheme.label(label_text, 20, UITheme.TEXT if is_me else UITheme.TEXT_DIM)
 		chip_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı çevrilmesin
 		chip.add_child(chip_lbl)
 		_unassigned_row.add_child(chip)
@@ -853,22 +853,22 @@ func _update_team_styles() -> void:
 
 		var ps := UITheme.style(UITheme.SURFACE_2 if is_hover else UITheme.SURFACE, 0, UITheme.BORDER, 1)
 		# Asimetrik pah: sol üst + sağ alt kesik (künye/etiket formu)
-		ps.corner_radius_top_left = 14
-		ps.corner_radius_bottom_right = 14
+		ps.corner_radius_top_left = 23
+		ps.corner_radius_bottom_right = 23
 		if is_mine:
 			ps.border_color = color
-			ps.set_border_width_all(2)
+			ps.set_border_width_all(3)
 			ps.shadow_color = Color(color, 0.3)
-			ps.shadow_size = 16
+			ps.shadow_size = 27
 		elif is_hover:
 			ps.border_color = Color(color, 0.5)
-		ps.set_content_margin_all(2)
+		ps.set_content_margin_all(3)
 		var panel: PanelContainer = t["panel"]
 		panel.add_theme_stylebox_override("panel", ps)
 		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if not (is_mine or is_full) else Control.CURSOR_ARROW
 
 		var fs := UITheme.style(Color(1, 1, 1, 0.025), 0)
-		fs.corner_radius_bottom_right = 12
+		fs.corner_radius_bottom_right = 20
 		var footer_lbl: Label = t["footer_lbl"]
 		if is_mine:
 			fs.bg_color = color
