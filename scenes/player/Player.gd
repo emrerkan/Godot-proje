@@ -105,6 +105,22 @@ var _jump_cooldown := 0.0
 var _airborne := false              # local: zıpladı ve henüz inmedi · uzak: AIR_FLAG
 var _air_anim_played := false
 
+## Sesler (Sfx.gd — CC0 kayıtlar). Adım: kat edilen yatay mesafe adım boyunu geçince (MOVE_ANIMS sırası: Run, Walk, Crouch)
+const SFX := preload("res://scenes/audio/Sfx.gd")
+const SFX_LISTENER := preload("res://scenes/audio/SfxListener.gd")
+const STEP_STRIDE: Array[float] = [1.9, 1.25, 0.95]
+const STEP_VOLUME_DB: Array[float] = [-10.0, -16.0, -24.0]   # çömelme neredeyse sessiz (taktik)
+const SHOT_VOLUME_DB := -5.0
+const BREATH_VOLUME_DB := -6.0
+const JUMP_VOLUME_DB := -6.0
+const BREATH_MIN_GAP := 0.7    # zıpla+takla art arda nefes yağmuru olmasın
+var _voice: AudioStreamPlayer3D
+var _shot_sound := "shot_rifle"
+var _step_dist := 0.0
+var _was_airborne := false
+var _breath_mode := -1         # çömelmeye GEÇİŞ anında nefes
+var _breath_cd := 0.0
+
 ## Takla (Ctrl basılı çömelirken + Space, hareket ederken): nişana göre ileri gidiyorsa FrontFlip, geri gidiyorsa BackFlip.
 ## Kliplerin kalça yüksekliği animasyondan (build_anim_library keep_height), çarpışma gövdesi yerde kalır; ilerlemeyi
 ## fizik verir: klibin FLIP_MOVE penceresinde yön kilitli sabit hız. Takla sürerken ateş yok, çömelme bağışıklığı yok,
@@ -216,6 +232,14 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	_use_capsule_shape()
 	collision_mask |= VOID_WALL_LAYER   # ImportedMap su kenarı engeli (sadece oyuncuyu durdurur, mermi/bomba geçer)
 	health = max_health
+
+	# Ses: oyuncuya bağlı 3D kaynak (atış/şarjör/adım — her peer'da); yerel oyuncuda dinleyici kafa hizasına
+	_voice = SFX.make_voice(self)
+	_shot_sound = SFX.shot_for(p_character)
+	if is_local:
+		var listener: Node3D = SFX_LISTENER.new()
+		listener.target = self
+		add_child(listener)
 
 	# FBX karakter mesh'ini bul
 	_char_mesh = get_node_or_null("CharacterMesh")
@@ -373,24 +397,36 @@ func _update_animation(delta: float) -> void:
 
 	var moving := _move_speed > ANIM_MOVE_THRESHOLD
 	_update_leg_facing(step, moving, delta)
+	_breath_cd -= delta
+	# Çömelmeye geçince nefes (uzaklarda da — mod _broadcast_state ile gelir)
+	if move_mode != _breath_mode:
+		if move_mode == MoveMode.CROUCH and _breath_mode != -1:
+			_play_breath("breath_soft", -2.0)
+		_breath_mode = move_mode
 
 	# Takla: klip bir kez, zamanı _flip_t yönetir (uzaklarda da aynı RPC'den başlar)
 	if _flip != Flip.NONE:
 		var flip_clip: StringName = FLIP_ANIMS[_flip]
 		if _anim_player.has_animation(flip_clip):
 			if _anim_player.current_animation != flip_clip:
+				_play_breath("breath_hard", 0.0, true)   # takla: güçlü nefes
 				_anim_player.play(flip_clip, 0.1)
 			_anim_player.speed_scale = FLIP_ANIM_SPEED
 		return
 
 	# Havada: zıplama klibi bir kez baştan (bitince son karede kalır), inişte normal klibe harmanlanır
 	if _airborne and _anim_player.has_animation(ANIM_JUMP):
+		_was_airborne = true
 		if not _air_anim_played:
 			_air_anim_played = true
+			# Kullanıcının zıplama kaydı (nefes/efor içeriyor — üstüne ayrıca nefes çalınmaz)
+			SFX.play_voice(_voice, "jump", JUMP_VOLUME_DB, 0.05)
+			_breath_cd = BREATH_MIN_GAP
 			_anim_player.play(ANIM_JUMP, 0.08)
 			_anim_player.speed_scale = JUMP_ANIM_SPEED
 		return
 	_air_anim_played = false
+	_update_footsteps(step.length(), moving)
 
 	var clip: StringName = MOVE_ANIMS[move_mode]
 	if not _anim_player.has_animation(clip):
@@ -407,6 +443,31 @@ func _update_animation(delta: float) -> void:
 		var idle: StringName = ANIM_IDLE if _anim_player.has_animation(ANIM_IDLE) else _idle_anim
 		if idle != &"":
 			_set_anim(idle, 1.0)
+
+
+## Adım/iniş sesleri (her peer, uzak oyuncularda da — karanlıkta düşmanı sesinden duyarsın; çömelme neredeyse sessiz)
+func _update_footsteps(step_len: float, moving: bool) -> void:
+	if _was_airborne:
+		_was_airborne = false
+		_step_dist = 0.0
+		SFX.play_voice(_voice, "step", STEP_VOLUME_DB[MoveMode.RUN] + 3.0, 0.05)   # iniş: biraz daha tok adım
+		return
+	if not moving or step_len > 3.0:   # durdu ya da ışınlandı (respawn)
+		_step_dist = STEP_STRIDE[move_mode] * 0.6   # yeniden yürüyünce ilk adım çabuk gelsin
+		return
+	_step_dist += step_len
+	if _step_dist >= STEP_STRIDE[move_mode]:
+		_step_dist = 0.0
+		var sound := "step_soft" if move_mode == MoveMode.CROUCH else "step"
+		SFX.play_voice(_voice, sound, STEP_VOLUME_DB[move_mode], 0.06)
+
+
+## Nefes (zıplama "breath" / çömelme "breath_soft" / takla "breath_hard"). strong → sınırı beklemez (takla zıplamadan hemen sonra gelebilir)
+func _play_breath(sound: String, extra_db: float, strong: bool = false) -> void:
+	if is_dead or (_breath_cd > 0.0 and not strong):
+		return
+	_breath_cd = BREATH_MIN_GAP
+	SFX.play_voice(_voice, sound, BREATH_VOLUME_DB + extra_db, 0.05)
 
 
 ## Bacaklar hareket yönüne, üst gövde nişana: Player ROOT (= nişan, fener + silah) fareye bakmaya devam eder;
@@ -491,6 +552,7 @@ func _equip_default_weapon() -> void:
 # ─────────────────────────────────────────────
 
 func _on_weapon_fired() -> void:
+	SFX.play_voice(_voice, _shot_sound, SHOT_VOLUME_DB, 0.04)
 	if _upper == null or _anim_player == null or is_dead:
 		return
 	var clip := ANIM_FIRE_WALK if _move_speed > ANIM_MOVE_THRESHOLD else ANIM_FIRE_STAND
@@ -518,6 +580,7 @@ func play_action(action: int) -> void:
 		return
 	match action:
 		Action.RELOAD:
+			_play_reload_sounds()
 			if _anim_player.has_animation(ANIM_RELOAD):
 				_upper.play_once(_anim_player.get_animation(ANIM_RELOAD), current_weapon.reload_time if current_weapon else -1.0)
 		Action.TOSS:
@@ -528,6 +591,7 @@ func play_action(action: int) -> void:
 			if _anim_player.has_animation(ANIM_HIT) and not _upper.is_busy():
 				_upper.play_once(_anim_player.get_animation(ANIM_HIT), -1.0, 0.65)
 		Action.STAB:
+			SFX.play_voice(_voice, "stab", -4.0, 0.1)
 			_stab_timer = STAB_DURATION
 			if _anim_player.has_animation(ANIM_STAB):
 				_upper.play_once(_anim_player.get_animation(ANIM_STAB), STAB_DURATION)
@@ -538,6 +602,22 @@ func play_action(action: int) -> void:
 # ─────────────────────────────────────────────
 # Fizik Döngüsü
 # ─────────────────────────────────────────────
+
+## Şarjör: çıkar (hemen) → tak (%55) → kurma kolu (%85) — süre karakterin (yükseltilmiş) şarjör süresine göre
+func _play_reload_sounds() -> void:
+	var t: float = current_weapon.reload_time if current_weapon else 1.8
+	SFX.play_voice(_voice, "mag_out", -6.0)
+	# Tween düğüme bağlı → oyuncu silinirse kendiliğinden iptal
+	var tw := create_tween()
+	tw.tween_interval(t * 0.55)
+	tw.tween_callback(func() -> void:
+		if not is_dead:
+			SFX.play_voice(_voice, "mag_in", -6.0))
+	tw.tween_interval(t * 0.3)
+	tw.tween_callback(func() -> void:
+		if not is_dead:
+			SFX.play_voice(_voice, "bolt", -6.0))
+
 
 ## Hasar/iyileşme parıltısını başlat (sadece görsel). strength 0..1
 func flash_fx(color: Color, strength: float) -> void:

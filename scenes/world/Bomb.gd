@@ -10,6 +10,7 @@ extends Node3D
 signal exploded(pos: Vector3, is_flash: bool)
 
 const SMOKE_CLOUD := preload("res://scenes/world/SmokeCloud.gd")
+const SFX := preload("res://scenes/audio/Sfx.gd")
 
 var is_flash := false
 var is_smoke := false
@@ -73,6 +74,7 @@ func _ready() -> void:
 	_warn_ring.visible = false
 	add_child(_warn_ring)
 	global_position = _from
+	SFX.play_at(get_tree(), "throw", _from, -8.0, 6.0, 30.0)
 
 
 func _process(delta: float) -> void:
@@ -102,6 +104,13 @@ func _explode() -> void:
 	_exploded = true
 	_ball.visible = false
 	_warn_ring.visible = false
+	# Ses (her peer kendi yerel bombasında — konumlu)
+	if is_smoke:
+		SFX.play_at(get_tree(), "smoke", _to, -8.0, 8.0, 40.0)
+	elif is_flash:
+		SFX.play_at(get_tree(), "flashbang", _to, -3.0, 14.0, 70.0)
+	else:
+		SFX.play_at(get_tree(), "explosion", _to, -4.0, 18.0, 90.0)
 	if is_smoke:
 		# Sis: patlama yok — yerde duman bulutu kalır
 		var cloud: Node3D = SMOKE_CLOUD.new()

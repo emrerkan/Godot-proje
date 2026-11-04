@@ -21,6 +21,7 @@ const UPGRADE_PAGE := preload("res://scenes/ui/UpgradePage.gd")
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const SETTINGS_WINDOW := preload("res://scenes/ui/SettingsWindow.gd")
 const GAME_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
+const SFX := preload("res://scenes/audio/Sfx.gd")
 
 ## OYNA alt menüsü: [anahtar, metin, panel başlığı] — anahtar = _pages anahtarı
 const PLAY_ITEMS := [["browse", "ODALAR"], ["create", "ODA KUR"], ["code", "KOD İLE KATIL"]]
@@ -251,6 +252,7 @@ func _modal_head(title: Label, on_close: Callable) -> Control:
 func _fade_layer(layer: Control, mat: ShaderMaterial, card: Control, show: bool) -> void:
 	var tw := create_tween().set_parallel(true)
 	if show:
+		SFX.play_ui(get_tree(), "ui_open", -12.0)
 		layer.visible = true
 		card.modulate.a = 0.0
 		tw.tween_method(func(v: float) -> void: mat.set_shader_parameter("amount", v), 0.0, 1.0, 0.18)

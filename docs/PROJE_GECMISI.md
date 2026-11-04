@@ -186,6 +186,24 @@
     tıklayınca ekranı kaplamayan bulanık arka planlı panel. Profil penceresi önceden de ekrana sığmıyordu (~1140 px) → başlık
     satırı kaldırıldı, ✕ ekran köşesine (~1040 px). Doğrulama: önce/sonra ekran görüntüleri (menü, lobi, karakter seçimi, ayarlar,
     profil). HUD oyunda görsel olarak kontrol EDİLMEDİ (değerler ×5/3, kullanıcı oyunda bakmalı).
+43. **Sesler (ilk sürüm, 2026-11-03)** — kullanıcı: "sesleri sen oluştur". Dosya/lisans yok: `Sfx.gd` hepsini kodla sentezler
+    (atış ×4 silah tipi, şarjör çıkar/tak/kurma, 4 adım + iniş, fırlatma, bıçak, patlama, flaş + kulak çınlaması, sis, menü
+    hover/tık/panel, kart çanı/uyarısı, kilit bipleri, maç sonu). Kararlar: adım sesleri uzak oyuncularda da duyulur (karanlıkta
+    düşmanı sesinden bulmak), çömelme neredeyse sessiz; kapı kilidi bipleri KONUMSUZ (kapı sadece taşıyıcıya görünüyor — ses yerini
+    ele vermesin); 3D dinleyici kamera değil oyuncunun kafası (kamera 18 m uzakta). Derleme + menü akışı doğrulandı; maç içi
+    sesler oyunda DİNLENMEDİ — ayar gerekirse `_synth` içindeki katman değerleri / `STEP_VOLUME_DB`.
+44. **Sesler v2 — gerçek CC0 kayıtlar** (kullanıcı: "sesler hiç olmamış; adım çok sert, mermi aynı, menü tıkı silah gibi — ufak tık
+    yeter; zıplama/çömelme/taklada nefes önemli; bomba çok kaba"). Karar (kullanıcı seçti): CC0 kayıt indir. `audio/sfx/` (45 dosya,
+    2.3 MB, CREDITS.md): Free Firearm Sound Library (her karaktere ayrı gerçek silah, 2-4 varyant), Kenney beton/halı adım, Kenney
+    arayüz tık/tik, OGA nefes (tek kayıttan 3 nefes), OGA patlama + bang. Sentez sadece bip/çan/çınlama/sis. Nefes: zıplama, çömelmeye
+    geçiş, takla. Ses seviyeleri düşürüldü (adım -10/-16/-24, menü tık -8, hover -14, patlama -4). Kayıt bulunamayan/zayıf: nefes tek
+    kaynaktan 3 varyant (biraz gürültülü kayıt), flaş için havai fişek "bang"leri. Oyunda DİNLENMEDİ.
+45. **Sesler v3** (kullanıcı: "nefesi değiştir, menü tıkı balon gibi"). Kullanıcı kendi kayıtlarını bıraktı: `fener-acma-kapama.mp3`
+    (menü tıkı), `yurume-ses.mp3` (4 adım → MP3 çerçeve sınırından `walk_1..4.mp3`; ffmpeg yok — çerçeve yan bilgisi global_gain
+    ile zarf çıkarıldı), `ziplama-ses.mp3`. Nefes → Owlish Media CC0 `breath-male` (temiz kayıt): takla `breath_hard`, çömelme
+    `breath_soft`; zıplamada sadece kullanıcının kaydı. Çömelme adımı → Owlish yumuşak adımlar. Kullanıcının önerdiği soundsnap.com
+    çömelme sesi EKLENMEDİ: Soundsnap ücretli abonelik + kendi lisansı (indirme hesap ister, dağıtım/yeniden yayın şartları var) —
+    kullanıcı kendi hesabıyla indirirse `audio/sfx`'e bırakıp `step_soft`'a bağlanabilir.
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 

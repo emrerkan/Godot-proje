@@ -31,11 +31,27 @@ HUD kurtarma `trap_rescue_time`. UpgradePage: sekmeler KARAKTER/GÜÇ GELİŞİM
 `user://options.cfg` (oyuncu adı ayrı: user://settings.cfg). `DEFAULTS` / `PRESETS` (Düşük-Orta-Yüksek-Ultra). `apply_once` UITheme.apply'dan
 (ölçeklemeden sonra) → `apply_all`: pencere modu/çözünürlük (**sadece kayıtlı dosya varsa**, debug'da ortalama yok — editörün çok
 pencereli testi bozulmasın), vsync, `Engine.max_fps`, root `scaling_3d_scale` (3D ölçek), FXAA/MSAA, gölge atlası (0 = kapalı),
-`content_scale_factor` (UI 0.8-1.0), ses kanalları Master/Music/SFX/UI (yoksa oluşturur — oyunda henüz ses YOK), FpsCounter.
+`content_scale_factor` (UI 0.8-1.0), ses kanalları Master/Music/SFX/UI (yoksa oluşturur), FpsCounter.
 **Sanal nişangah:** Crosshair görünürken fare CAPTURED, `cursor_pos += relative × mouse_sensitivity`; `aim_screen_position(vp)`
 → Player._get_aim_target + Crosshair çizimi. Gizlenince fare serbest + `warp_mouse(cursor_pos)`. CameraController.add_trauma × `camera_shake`.
 MenuBackground3D `menu_background` false → asker yok. SettingsWindow: TASLAK + UYGULA/KAPAT/VARSAYILAN, sekmeler GRAFİK/KONTROLLER/SES/OYUN;
 MainMenu sol alt "⚙ AYARLAR" (kapanınca arka plan ayarı değiştiyse yeniden kurar), HUD ESC menüsü "AYARLAR".
+
+## Ses — `scenes/audio/Sfx.gd` (statik, `preload`) + `SfxListener.gd`
+**Gerçek kayıtlar** `res://audio/sfx/` (HEPSİ CC0 — kaynak/lisans `audio/sfx/CREDITS.md`: Free Firearm Sound Library silahlar,
+OGA nefes/patlama/bang, Kenney adım/arayüz/metal). `FILES` = ad → varyant listesi (`stream` her çalışta rastgele biri). Kullanıcı ilk
+sentez sürümü için "hiç olmamış" dedi → silah/adım/patlama/nefes/menü KAYIT olmalı; sadece `SYNTH` (tinnitus, sis tıslaması, kilit bipleri,
+maç sonu akoru) kodla. Silah/nefes dosyaları işlenmiş (96→48 kHz, mono, ilk geçişe hizalı kesim) — işleme aracı repo dışında (scratchpad).
+`setup(tree)` (UITheme.apply) WorkerThreadPool'da hepsini yükler + `node_added` ile HER BaseButton'a hover (`ui_hover` -14 dB) / tık (`ui_click` -8 dB). Çalma: `play_ui` (konumsuz polifonik, kanal UI/SFX), `make_voice`+`play_voice`
+(oyuncuya bağlı polifonik 3D), `play_at` (tek seferlik 3D, en fazla 32). Dinleyici: `SfxListener` yerel oyuncunun kafasında, KAMERA yönünde.
+Bağlantılar: Player `_on_weapon_fired` (`shot_for(karakter)`: Tank AK rifle, Visioner AR-15 carbine, Runner smg, Medic SKS marksman,
+Sniper Mosin; `SHOT_VOLUME_DB`), RELOAD → `_play_reload_sounds` (mag_out → %55 mag_in → %85 bolt, tween), STAB, `_update_footsteps`
+(adım boyu `STEP_STRIDE`, `STEP_VOLUME_DB` koşu -10/yürü -16/çömel -24; `step` = kullanıcının yurume-ses.mp3'ünden 4 adım,
+`step_soft` = Owlish yumuşak adımlar; iniş = tok adım; uzak oyuncularda da), zıplama başı `jump` (kullanıcının ziplama-ses.mp3'ü,
+üstüne nefes YOK), **nefes** `_play_breath(ad, …)` (çömelmeye geçiş `breath_soft`, takla başı `breath_hard`; `BREATH_MIN_GAP`),
+menü tıkı `ui_click` = kullanıcının fener-acma-kapama.mp3'ü. Kullanıcı kendi ses dosyalarını audio/sfx'e bırakır → FILES'a bağla. Bomb.gd `throw` + explosion/flashbang/smoke, HUD flaş → `tinnitus`, kart
+alındı (kendi takım `card_pickup` / rakip `card_alert`), kilit bipleri `_update_unlock_ticks` (KONUMSUZ — kapının yerini ele vermez;
+takım tiz/rakip kalın, hızlanır), `unlock_reset`, maç sonu `match_win/lose`, MainMenu panel açılışı `ui_open`.
 
 ## Dil (TR/EN) — `scenes/settings/Lang.gd` + `LangEN.gd` (statik, `preload`)
 Kaynak dil TÜRKÇE; `LangEN.STRINGS` = {"<Türkçe metin birebir>": "English"} (~340 anahtar). `Lang.apply(setting)` (GameSettings.apply_all)

@@ -12,6 +12,12 @@ const KILL_FEED_MAX := 5
 const RESPAWN_TIME := 3.0  # GameManager._schedule_respawn ile aynı
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const XP_POPUP_MAX := 4
+const SFX := preload("res://scenes/audio/Sfx.gd")
+## Kapı kilidi bip aralığı: başta yavaş, açılmaya yaklaştıkça hızlanır (konumsuz — kapının yerini ele vermez)
+const UNLOCK_TICK_SLOW := 0.5
+const UNLOCK_TICK_FAST := 0.12
+var _unlock_tick_t := 0.0
+var _unlock_carrier := -1
 
 var _root: Control
 var _local_player: Node = null
@@ -147,6 +153,7 @@ func _notification(what: int) -> void:
 
 
 func _process(delta: float) -> void:
+	_update_unlock_ticks(delta)
 	# Menü/oyun sonu açıkken sohbet Enter ile açılmasın
 	_chat.enabled = not _pause_panel.visible and not _end_overlay.visible
 	_crosshair.allowed = _chat.enabled
@@ -262,6 +269,8 @@ func _setup_blind_overlay() -> void:
 
 
 func _on_flashed(strength: float) -> void:
+	# Kulak çınlaması — körlüğün gücüyle (sırtı dönük/uzak: daha kısık)
+	SFX.play_ui(get_tree(), "tinnitus", linear_to_db(clampf(strength, 0.05, 1.0)) - 3.0, 1.0, SFX.BUS_SFX)
 	# Tam etki: ~2.3 s bembeyaz + ~2.5 s sönme; uzak/sırtı dönük: kısa ve yarı saydam
 	_blind_alpha = maxf(_blind_alpha, clampf(strength * 1.25, 0.0, 1.0))
 	_blind_hold = maxf(_blind_hold, 0.3 + 2.0 * strength)
@@ -1146,6 +1155,8 @@ func _on_card_picked_up(carrier_peer_id: int, _carrier_pos: Vector3, carrier_tea
 	_carrier_peer = carrier_peer_id
 	_update_objective()
 	var team_name := TeamManager.get_team_name(carrier_team_id).to_upper()
+	# Kendi takımın aldıysa yükselen çan, rakip aldıysa inen uyarı
+	SFX.play_ui(get_tree(), "card_pickup" if carrier_team_id == _get_local_team() else "card_alert", -2.0)
 	if carrier_peer_id == NetworkManager.get_local_id():
 		_show_banner("KARTI ALDIN!  KAPIYA KOŞ", UITheme.SUCCESS)
 	else:
@@ -1192,13 +1203,32 @@ func _update_carrier_bar_position() -> void:
 	_carrier_bar.position = (sp - Vector2(_carrier_bar.size.x * 0.5, _carrier_bar.size.y)).round()
 
 
+## Kilit açılırken bip: taşıyıcının takımı tiz (yükselen perde), rakipler kalın uyarı bipi — ikisi de hızlanır
+func _update_unlock_ticks(delta: float) -> void:
+	if _last_unlock <= 0.0 or _last_unlock >= 1.0 or _end_overlay.visible:
+		_unlock_tick_t = 0.0
+		return
+	_unlock_tick_t -= delta
+	if _unlock_tick_t > 0.0:
+		return
+	_unlock_tick_t = lerpf(UNLOCK_TICK_SLOW, UNLOCK_TICK_FAST, _last_unlock)
+	var tid: int = NetworkManager.players.get(_unlock_carrier, {}).get("team_id", -1)
+	if tid == _get_local_team():
+		SFX.play_ui(get_tree(), "unlock_tick", -6.0, 1.0 + _last_unlock * 0.5)
+	else:
+		SFX.play_ui(get_tree(), "unlock_tick_enemy", -6.0)
+
+
 ## Kapı kilidi: taşıyıcıya karakter üstü bar, takımına "KORU", rakiplere "DURDUR" + kalan süre (üst panel)
 func _on_door_unlock_changed(ratio: float, carrier_peer_id: int) -> void:
 	var was := _last_unlock
 	_last_unlock = ratio
+	_unlock_carrier = carrier_peer_id
 	_carrier_bar.visible = false
 	if ratio <= 0.0 or ratio >= 1.0:
 		_unlock_panel.visible = false
+		if ratio <= 0.0 and was > 0.0:
+			SFX.play_ui(get_tree(), "unlock_reset", -4.0)
 		# Taşıyıcı çemberden çıktıysa (hâlâ kart sendeyse) uyar
 		if ratio <= 0.0 and was > 0.0 and carrier_peer_id == NetworkManager.get_local_id() and _carrier_peer == carrier_peer_id:
 			_show_banner("✕  KİLİT SIFIRLANDI  ·  ÇEMBERDE KAL", UITheme.DANGER)
@@ -1379,6 +1409,7 @@ func _on_game_ended(winning_team: int) -> void:
 	_scoreboard_panel.hide()
 	_death_overlay.hide()
 	var won := winning_team == _get_local_team()
+	SFX.play_ui(get_tree(), "match_win" if won else "match_lose", -2.0)
 	var team_color := TeamManager.get_color(winning_team)
 	_end_title.text = "ZAFER" if won else "YENİLGİ"
 	_end_title.add_theme_color_override("font_color", team_color if won else UITheme.DANGER)

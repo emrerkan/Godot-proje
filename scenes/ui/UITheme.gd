@@ -60,6 +60,8 @@ static func apply(tree: SceneTree) -> void:
 	if tree.root.theme != theme:
 		tree.root.theme = theme
 	_apply_scaling(tree.root)
+	# Sesler (kodla sentez, arka planda) + tüm düğmelere hover/tık sesi
+	preload("res://scenes/audio/Sfx.gd").setup(tree)
 	# Oyuncu ayarları (grafik/ses/kontrol) — açılışta bir kez; ölçeklemeden SONRA (ui_scale content_scale_factor'u ezer)
 	preload("res://scenes/settings/GameSettings.gd").apply_once(tree)
 
