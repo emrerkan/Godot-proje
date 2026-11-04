@@ -85,7 +85,7 @@ func _draw() -> void:
 		var player: Node = GameManager.active_players[peer_id]
 		if not is_instance_valid(player):
 			continue
-		if player.is_dead:
+		if player.is_dead or _is_hidden(player):
 			continue
 
 		var data: Dictionary = NetworkManager.players.get(peer_id, {})
@@ -145,6 +145,8 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			var pl: Variant = GameManager.active_players[pid]
 			if pl == null or not is_instance_valid(pl) or pl.is_dead:
 				continue
+			if _is_hidden(pl as Node):
+				continue  # görünmez rakip — uydu dahil hiç çizilmez (taşıyıcı işareti de)
 			if pid != NetworkManager.get_local_id() and _powerups.hidden_from_satellite((pl as Node3D).global_position):
 				continue  # "Radar Örtüsü" sisinin içinde
 			var tid: int = NetworkManager.players.get(pid, {}).get("team_id", -1)
@@ -165,6 +167,8 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			var pl: Variant = GameManager.active_players[pid]
 			if pl == null or not is_instance_valid(pl) or pl.is_dead:
 				continue
+			if _is_hidden(pl as Node):
+				continue  # görünmez rakip
 			var tid: int = NetworkManager.players.get(pid, {}).get("team_id", -1)
 			if tid == local_team:
 				continue
@@ -190,6 +194,11 @@ func _draw_satellite_reveals(local_team: int) -> void:
 
 	if not status.is_empty():
 		draw_string(font, Vector2(PAD + 7, SIZE.y - PAD - 7), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.9))
+
+
+## Görünmez + yerel oyuncunun rakibi → minimapte hiçbir yolda çizilmez (Player.is_hidden_from_local)
+func _is_hidden(pl: Node) -> bool:
+	return pl != null and pl.has_method("is_hidden_from_local") and bool(pl.call("is_hidden_from_local"))
 
 
 ## 3D dünya konumunu (X/Z) minimap koordinatına çevirir

@@ -6,6 +6,11 @@ extends CharacterBody3D
 signal health_changed(new_health: float)
 signal ammo_changed(current: int, total: int, reloading: bool)
 signal healed(amount: float)  # sadece local — HUD yeşil vinyet
+## Görünmezlik (PowerupManager._invis_rpc → set_invisible) — HER peer'da emit edilir, HUD yalnızca yerel oyuncununkine bağlanır.
+## active=false iken duration = bitişte kalan süre (süre dolduysa 0.0, ateş/bıçakla bozulduysa > 0) — HUD "bozuldu / bitti" ayrımı için.
+signal invisibility_changed(active: bool, duration: float)
+## Özel silah hazır/değil (PowerupManager._special_gun_rpc → set_special_armed) — HER peer'da emit edilir.
+signal special_armed_changed(armed: bool)
 
 @export var speed: float = 8.0
 @export var max_health: float = 100.0
@@ -83,6 +88,9 @@ const CROUCH_UNLOCK := 0.5
 const STAMINA_REGEN_DELAY := 0.6    # bıraktıktan sonra dolmaya başlama gecikmesi
 const DAMAGE_BULLET := 0
 const DAMAGE_EXPLOSION := 1
+## Özel silah (999). DİKKAT: 2 = DAMAGE_MELEE = GameManager.KILL_KNIFE (bıçak XP bonusu + kill feed bıçak ikonu) ile
+## çakışırdı → 4 (3 = arkadan bıçak). GameManager'da 4 özel dala girmez; HUD bunu Player.DAMAGE_SPECIAL ile ayırır.
+const DAMAGE_SPECIAL := 4
 var sprint_stamina := 1.0
 var crouch_stamina := 1.0
 var sprint_locked := false          # tükendi, yenileniyor
@@ -215,6 +223,36 @@ var _fx_level := 0.0
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const GAME_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
 var _upgrade_mult: Dictionary = PROFILE.multipliers({})
+
+# ── Yeni güçler: görünmezlik + özel silah (tek atış) ──
+# Görsel karar YEREL: rakip bizi hiçbir şekilde görmez (gövde/tüfek/bıçak/fener/etiket/lazer gizli),
+# kendisi + takım yarı saydam shimmer görür. Shader/Fx dosyaları paralel yazıldı → yoksa sessizce atlanır.
+const SHIMMER_SHADER_PATH := "res://scenes/player/InvisibilityShimmer.gdshader"
+const SPECIAL_FX_PATH := "res://scenes/weapons/SpecialGunFx.gd"
+const SPECIAL_LASER_LENGTH := 30.0      # = SpecialGunFx.LASER_LENGTH (lazer mesh boyu; nişana göre ölçeklenir)
+const SHIMMER_COLOR := Color(0.78, 0.72, 1.0)
+const SHIMMER_INTENSITY_SELF := 0.65   # kendi siluetim kaybolmasın (SelfVisibility'nin yerine geçer)
+const SHIMMER_INTENSITY_TEAM := 1.0
+const SHIMMER_ENDING_TIME := 1.5       # son 1.5 sn yoğunluk yavaşça yükselir (bitiyor ipucu)
+const SHIMMER_ENDING_BOOST := 0.2
+const SHIMMER_FADE_TIME := 0.2         # bitişte shimmer söner
+const SPECIAL_SHOT_SOUND := "shot_sniper"
+const SPECIAL_SHOT_EXTRA_DB := 4.0     # normal atıştan yüksek
+var is_invisible := false
+var special_armed := false
+var _invis_left := 0.0
+var _vis_hidden := false               # yerelde gizlendi (rakip gözüyle): _fx_light/flash_fx de susar
+var _shimmer_mat: ShaderMaterial = null
+var _shimmer_shader: Shader = null
+var _shimmer_shader_checked := false
+var _shimmer_intensity := 0.0
+var _shimmer_fade_t := 0.0
+var _shimmer_fade_from := 0.0
+var _overlay_backup: Dictionary = {}   # MeshInstance3D → önceki material_overlay (SelfVisibility vb.)
+var _special_fx: GDScript = null
+var _special_fx_checked := false
+var _special_laser: Node3D = null
+var _shoot_blocked := false            # özel atıştan sonra tuş bırakılana dek normal ateş yok (tam otomatik tüfek)
 
 
 func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner") -> void:
@@ -552,7 +590,11 @@ func _equip_default_weapon() -> void:
 # ─────────────────────────────────────────────
 
 func _on_weapon_fired() -> void:
-	SFX.play_voice(_voice, _shot_sound, SHOT_VOLUME_DB, 0.04)
+	_break_invisibility()   # ateş (normal veya özel) görünmezliği ANINDA bozar (sadece atan'ın kendi client'ı)
+	if current_weapon and current_weapon.get("last_shot_special") == true:
+		SFX.play_voice(_voice, SPECIAL_SHOT_SOUND, SHOT_VOLUME_DB + SPECIAL_SHOT_EXTRA_DB, 0.04)
+	else:
+		SFX.play_voice(_voice, _shot_sound, SHOT_VOLUME_DB, 0.04)
 	if _upper == null or _anim_player == null or is_dead:
 		return
 	var clip := ANIM_FIRE_WALK if _move_speed > ANIM_MOVE_THRESHOLD else ANIM_FIRE_STAND
@@ -621,7 +663,7 @@ func _play_reload_sounds() -> void:
 
 ## Hasar/iyileşme parıltısını başlat (sadece görsel). strength 0..1
 func flash_fx(color: Color, strength: float) -> void:
-	if _fx_light == null:
+	if _fx_light == null or _vis_hidden:   # rakipten gizli görünmez oyuncu hasar parıltısıyla da ele verilmez
 		return
 	_fx_level = maxf(_fx_level, clampf(strength, 0.0, 1.0))
 	_fx_light.light_color = color
@@ -629,11 +671,24 @@ func flash_fx(color: Color, strength: float) -> void:
 
 
 func _process(delta: float) -> void:
+	if _special_laser != null:
+		_aim_special_laser()   # animasyon namluyu oynattıkça lazer nişangaha kilitli kalsın
+	if is_invisible:
+		_invis_left -= delta
+		if _invis_left <= 0.0:
+			set_invisible(false, 0.0)
+		else:
+			_update_shimmer_intensity()
+	elif _shimmer_fade_t > 0.0:
+		_shimmer_fade_t = maxf(_shimmer_fade_t - delta, 0.0)
+		_set_shimmer_intensity(_shimmer_fade_from * _shimmer_fade_t / SHIMMER_FADE_TIME)
+		if _shimmer_fade_t <= 0.0:
+			_restore_overlays()
 	if _fx_light == null or _fx_level <= 0.0:
 		return
 	_fx_level = maxf(_fx_level - delta * FX_DECAY, 0.0)
 	_fx_light.light_energy = FX_ENERGY * _fx_level * _fx_level
-	_fx_light.visible = _fx_level > 0.0
+	_fx_light.visible = _fx_level > 0.0 and not _vis_hidden
 
 
 func _physics_process(delta: float) -> void:
@@ -651,6 +706,240 @@ func _physics_process(delta: float) -> void:
 
 func set_trapped(v: bool) -> void:
 	is_trapped = v
+
+
+# ─────────────────────────────────────────────
+# Görünmezlik (PowerupManager._invis_rpc her peer'da set_invisible çağırır)
+# ─────────────────────────────────────────────
+
+## Yerel oyuncunun gözünden bu oyuncu gizli mi? Görünmez VE yerel oyuncu kendisi değil VE farklı takım.
+## Minimap/lazer/gövde bunu kullanır. Kendisi ve takım arkadaşı için false (onlar shimmer görür).
+func is_hidden_from_local() -> bool:
+	if not is_invisible or is_local:
+		return false
+	var local_team: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
+	return local_team < 0 or local_team != team_id
+
+
+## Her peer'da çağrılır; süre bitince KENDİ yerel zamanlayıcısıyla kapanır (_process). active=false → bozma/erken bitirme.
+func set_invisible(active: bool, duration: float) -> void:
+	if active:
+		if is_dead or duration <= 0.0:
+			return
+		if is_invisible:
+			_end_invisibility(false)   # tekrar alınırsa temiz başla (görsel/overlay yedekleri bozulmasın)
+		is_invisible = true
+		_invis_left = duration
+		_apply_invis_visuals()
+		invisibility_changed.emit(true, duration)
+	else:
+		_end_invisibility(true)
+
+
+## report_remaining: false → kalan süre raporlanmaz (ölüm/respawn temizliği: HUD "bozuldu" göstermesin)
+func _end_invisibility(report_remaining: bool) -> void:
+	if not is_invisible:
+		return
+	var remaining := maxf(_invis_left, 0.0)
+	is_invisible = false
+	_invis_left = 0.0
+	var was_hidden := _vis_hidden
+	_vis_hidden = false
+	if was_hidden:
+		# Rakip gözüyle gizlenenleri geri aç (ölüyse ölüm akışı kendi görünürlüğünü yönetir)
+		if _char_mesh:
+			_char_mesh.visible = true
+		flashlight.visible = not is_dead
+		name_label.visible = _is_local_ally() and not is_dead
+		# Rakip de "mordan kendi rengine" geçişi görsün (kullanıcı isteği): gövde tam shimmer'la belirir,
+		# sonra kendisi/takımın gördüğü aynı sönme ile normale döner. Ölümde (report_remaining=false) geçiş yok.
+		if report_remaining and not is_dead:
+			_apply_shimmer()
+			if _shimmer_mat != null:
+				_shimmer_fade_from = SHIMMER_INTENSITY_TEAM + SHIMMER_ENDING_BOOST
+				_set_shimmer_intensity(_shimmer_fade_from)
+				_shimmer_fade_t = SHIMMER_FADE_TIME
+	elif not _overlay_backup.is_empty():
+		if _shimmer_mat != null and not is_dead:
+			_shimmer_fade_from = _shimmer_intensity
+			_shimmer_fade_t = SHIMMER_FADE_TIME
+		else:
+			_restore_overlays()
+	_update_laser()
+	invisibility_changed.emit(false, remaining if report_remaining else 0.0)
+
+
+func _apply_invis_visuals() -> void:
+	_shimmer_fade_t = 0.0
+	if is_hidden_from_local():
+		_vis_hidden = true
+		if _char_mesh:
+			_char_mesh.visible = false   # tüfek + bıçak + lazer Skeleton3D çocuğu → birlikte gizlenir
+		flashlight.visible = false
+		name_label.visible = false
+		card_indicator.visible = false
+		ammo_label.visible = false
+		if _fx_light:
+			_fx_light.visible = false
+	else:
+		_vis_hidden = false
+		_apply_shimmer()
+	_update_laser()
+
+
+## Kendisi/takım: gövde + tüfek aynı shimmer overlay (mevcut material_overlay — SelfVisibility — yedeklenir)
+func _apply_shimmer() -> void:
+	var shader := _get_shimmer_shader()
+	if shader == null or _char_mesh == null:
+		return
+	if _shimmer_mat == null:
+		_shimmer_mat = ShaderMaterial.new()
+		_shimmer_mat.shader = shader
+		_shimmer_mat.set_shader_parameter("shimmer_color", SHIMMER_COLOR)
+	if _overlay_backup.is_empty():
+		_collect_overlays(_char_mesh)
+	_update_shimmer_intensity()
+
+
+func _collect_overlays(node: Node) -> void:
+	if node == _special_laser:
+		return
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		_overlay_backup[mi] = mi.material_overlay
+		mi.material_overlay = _shimmer_mat
+	for child in node.get_children():
+		_collect_overlays(child)
+
+
+func _restore_overlays() -> void:
+	_shimmer_fade_t = 0.0
+	for key: Variant in _overlay_backup:
+		if is_instance_valid(key):
+			(key as MeshInstance3D).material_overlay = _overlay_backup[key] as Material
+	_overlay_backup.clear()
+
+
+func _update_shimmer_intensity() -> void:
+	var value := SHIMMER_INTENSITY_SELF if is_local else SHIMMER_INTENSITY_TEAM
+	if _invis_left < SHIMMER_ENDING_TIME:
+		value += SHIMMER_ENDING_BOOST * (1.0 - _invis_left / SHIMMER_ENDING_TIME)
+	_set_shimmer_intensity(value)
+
+
+func _set_shimmer_intensity(value: float) -> void:
+	_shimmer_intensity = value
+	if _shimmer_mat != null:
+		_shimmer_mat.set_shader_parameter("intensity", value)
+
+
+func _get_shimmer_shader() -> Shader:
+	if not _shimmer_shader_checked:
+		_shimmer_shader_checked = true
+		if ResourceLoader.exists(SHIMMER_SHADER_PATH):
+			_shimmer_shader = load(SHIMMER_SHADER_PATH) as Shader
+	return _shimmer_shader
+
+
+## Yerel görünmez oyuncu ateş etti / bıçakladı → herkese "görünürlük bozuldu" (sadece kendi oyuncusu için)
+func _break_invisibility() -> void:
+	if not is_invisible or not is_local:
+		return
+	if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0:
+		_invis_break_rpc.rpc()
+	else:
+		_invis_break_rpc()
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _invis_break_rpc() -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0:
+		if not is_local:   # call_local yerel çağrı: sadece sahibi kendi node'unda çağırabilir
+			return
+	elif sender != peer_id:
+		return
+	set_invisible(false, 0.0)
+
+
+# ─────────────────────────────────────────────
+# Özel silah (tek atış) — hazırlama PowerupManager._special_gun_rpc ile, atış yerelde
+# ─────────────────────────────────────────────
+
+## Her peer'da çağrılır. Hazırken tüfeğin namlusunda lazer (SpecialGunFx), değilken kaldırılır.
+func set_special_armed(armed: bool) -> void:
+	if armed and is_dead:
+		armed = false
+	if special_armed == armed:
+		return
+	special_armed = armed
+	_update_laser()
+	special_armed_changed.emit(armed)
+
+
+## Lazer SADECE yerel oyuncuda (kullanıcı: nişanı oyuncu dışında kimse görmesin) ve her kare namludan
+## nişangah noktasına (_get_aim_target) çizilir → ucu tam nişangahın üstünde (_aim_special_laser).
+func _update_laser() -> void:
+	if not special_armed or not is_local:
+		if _special_laser != null and is_instance_valid(_special_laser):
+			_special_laser.queue_free()
+		_special_laser = null
+		return
+	if _special_laser == null or not is_instance_valid(_special_laser):
+		_special_laser = null
+		var fx := _get_special_fx()
+		var muzzle_node: Node = null
+		if _hand_rifle and _hand_rifle.rifle:
+			muzzle_node = _hand_rifle.rifle.get_node_or_null("Muzzle")
+		if fx != null and muzzle_node != null:
+			_special_laser = fx.call(&"build_laser") as Node3D
+			if _special_laser != null:
+				_special_laser.name = "SpecialLaser"
+				muzzle_node.add_child(_special_laser)
+				_aim_special_laser()
+
+
+## Yerel: lazeri namludan nişan noktasına yönelt + boyunu mesafeye uydur (uçtaki nokta = nişangah).
+## SpecialGunFx lazeri -Z'ye LASER_LENGTH boyunda; kök Z ölçeğiyle kısaltılır, uç küresi ters ölçekle yuvarlak kalır.
+func _aim_special_laser() -> void:
+	if _special_laser == null or not is_instance_valid(_special_laser) or not _special_laser.is_inside_tree():
+		return
+	var from := (_special_laser.get_parent() as Node3D).global_position
+	var to := _get_aim_target()
+	var dist := from.distance_to(to)
+	if dist < 0.3:
+		return
+	var look := Basis.looking_at((to - from) / dist, Vector3.UP)
+	_special_laser.global_transform = Transform3D(look.scaled_local(Vector3(1.0, 1.0, dist / SPECIAL_LASER_LENGTH)), from)
+	var tip := _special_laser.get_node_or_null("Tip") as Node3D
+	if tip:
+		tip.scale = Vector3(1.0, 1.0, SPECIAL_LASER_LENGTH / dist)
+
+
+func _get_special_fx() -> GDScript:
+	if not _special_fx_checked:
+		_special_fx_checked = true
+		if ResourceLoader.exists(SPECIAL_FX_PATH):
+			_special_fx = load(SPECIAL_FX_PATH) as GDScript
+	return _special_fx
+
+
+## Sol tık basışı: tek özel mermi → yerelde hemen "hazır değil" → PowerupManager slotu boşaltsın
+func _fire_special() -> void:
+	current_weapon.fire_special(peer_id, team_id, _get_aim_target())   # mermi lazerle aynı çizgide: nişangaha
+	set_special_armed(false)
+	var scene := get_tree().current_scene
+	var pm: Node = scene.get_node_or_null("PowerupManager") if scene else null
+	if pm != null and pm.has_method("local_special_fired"):
+		pm.call("local_special_fired")
+
+
+## Ölüm/respawn: görünmezlik ve hazır özel silah sıfırlanır (HUD "bozuldu" göstermesin diye süre raporlanmaz)
+func _clear_power_states() -> void:
+	_end_invisibility(false)
+	_restore_overlays()
+	set_special_armed(false)
+	_shoot_blocked = false
 
 
 func _handle_local_input(delta: float) -> void:
@@ -731,7 +1020,14 @@ func _handle_local_input(delta: float) -> void:
 		shoot_pressed = Input.is_action_just_pressed("shoot")
 	else:
 		shoot_pressed = Input.is_action_pressed("shoot")
-	if shoot_pressed and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
+	if _shoot_blocked and not Input.is_action_pressed("shoot"):
+		_shoot_blocked = false
+	if special_armed:
+		# Özel silah hazır: sol tık BASIŞI = TEK atış (şarjör/ateş hızından bağımsız); normal tüfek susar
+		if Input.is_action_just_pressed("shoot") and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
+			_fire_special()
+			_shoot_blocked = true   # tuş basılı kalırsa tam otomatik tüfek hemen ateşlemesin
+	elif shoot_pressed and not _shoot_blocked and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
 		current_weapon.try_shoot(peer_id, team_id)
 
 	if Input.is_action_just_pressed("reload") and current_weapon and not typing:
@@ -804,6 +1100,7 @@ func _handle_stab_input(delta: float) -> void:
 		_stab_cooldown = STAB_COOLDOWN
 		_stab_pending = STAB_HIT_TIME
 		_stab_lunge = STAB_LUNGE_TIME if not is_trapped else 0.0
+		_break_invisibility()   # bıçaklama görünmezliği ANINDA bozar
 		_broadcast_action(Action.STAB)
 	if _stab_pending >= 0.0:
 		_stab_pending -= delta
@@ -1064,6 +1361,7 @@ func _apply_death() -> void:
 	is_dead = true
 	has_card = false
 	is_trapped = false
+	_clear_power_states()   # görünmezlik + hazır özel silah sıfırlanır (cesedin görünmesi için gizlemeler geri alınır)
 	_death_token += 1
 	_end_flip()  # is_dead zaten true → üst gövde katmanı açılmaz
 	_stab_pending = -1.0  # ölürken savrulan bıçak sonradan isabet etmesin
@@ -1114,6 +1412,7 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 	is_dead = false
 	has_card = false
 	is_trapped = false
+	_clear_power_states()
 	health = max_health
 	if is_local:
 		emit_signal("health_changed", health)

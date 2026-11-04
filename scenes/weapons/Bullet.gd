@@ -15,6 +15,29 @@ var _travel_distance: float = 0.0
 var pierce_walls := false
 var _done := false   # ışın taraması + Area sinyali aynı karede iki kez işlemesin (çift hasar)
 
+## Özel silah mermisi (make_special): çömelmiş hedefi de vurur, takım arkadaşından geçer (yok olmaz),
+## ilk rakipte hasar verip durur. Hasar kaynağı DAMAGE_SPECIAL → host çömelme korumasını uygulamaz.
+var is_special := false
+const SPECIAL_FX_PATH := "res://scenes/weapons/SpecialGunFx.gd"
+## = Player.DAMAGE_SPECIAL (Player'ı preload etmek Player→Weapon→Bullet döngüsü yaratırdı)
+const DAMAGE_SPECIAL := 4
+
+
+## Özel mermi görünümü: normal tracer modeli gizlenir, SpecialGunFx iz eklenir (Fx dosyası yoksa normal model açık kalır)
+func make_special() -> void:
+	is_special = true
+	var tracer: Node3D = null
+	if ResourceLoader.exists(SPECIAL_FX_PATH):
+		var fx := load(SPECIAL_FX_PATH) as GDScript
+		if fx != null:
+			tracer = fx.call(&"build_tracer") as Node3D
+	if tracer != null:
+		var model := get_node_or_null("Model") as Node3D
+		if model != null:
+			model.visible = false
+		add_child(tracer)
+		_disable_shadows(self)
+
 
 func initialize(
 	dir: Vector3,
@@ -55,7 +78,7 @@ func _physics_process(delta: float) -> void:
 	var to := from + move
 	var q := PhysicsRayQueryParameters3D.create(from, to, collision_mask)
 	var exclude: Array[RID] = []
-	for _i in 6:
+	for _i in (12 if is_special else 6):
 		q.exclude = exclude
 		var hit := get_world_3d().direct_space_state.intersect_ray(q)
 		if hit.is_empty():
@@ -63,7 +86,10 @@ func _physics_process(delta: float) -> void:
 		var col: Object = hit["collider"]
 		if col is CharacterBody3D:
 			# Atanın kendisi / çömelmiş hedef: içinden geç, taramaya devam
-			if col.get("peer_id") == shooter_peer_id or (col.has_method("is_crouching") and col.is_crouching()):
+			# Özel mermi: çömelmiş hedefi GEÇMEZ (vurur), takım arkadaşının içinden geçer
+			var crouch_skip: bool = not is_special and col.has_method("is_crouching") and col.is_crouching()
+			var ally_skip: bool = is_special and col.get("team_id") == shooter_team_id
+			if col.get("peer_id") == shooter_peer_id or crouch_skip or ally_skip:
 				exclude.append((col as CollisionObject3D).get_rid())
 				continue
 			global_position = hit["position"]
@@ -93,22 +119,26 @@ func _on_body_entered(body: Node) -> void:
 		if body.get("peer_id") == shooter_peer_id:
 			return
 
-		# Takım dostu ateş: mermiyi yok et, hasar verme
+		# Takım dostu ateş: mermiyi yok et, hasar verme (özel mermi: takım arkadaşından geçer, yok olmaz)
 		if body.get("team_id") == shooter_team_id:
+			if is_special:
+				return
 			_done = true
 			queue_free()
 			return
 
 		# Çömelmiş hedef: mermi üstünden geçer (yok olmaz, hasar yok). Host take_damage'de de kontrol eder.
-		if body.has_method("is_crouching") and body.is_crouching():
+		# Özel mermi çömelmeyi umursamaz.
+		if not is_special and body.has_method("is_crouching") and body.is_crouching():
 			return
 
 		# Sadece atan oyuncunun clienti hasar bildirir — çift hasar önlenir
 		if NetworkManager.get_local_id() == shooter_peer_id:
+			var source: int = DAMAGE_SPECIAL if is_special else 0   # 0 = Player.DAMAGE_BULLET
 			if NetworkManager.is_host():
-				body.take_damage(damage, shooter_peer_id)
+				body.take_damage(damage, shooter_peer_id, source)
 			else:
-				body.take_damage.rpc_id(1, damage, shooter_peer_id)
+				body.take_damage.rpc_id(1, damage, shooter_peer_id, source)
 
 	_done = true
 	queue_free()

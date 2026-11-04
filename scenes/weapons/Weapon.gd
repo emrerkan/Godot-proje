@@ -17,6 +17,12 @@ signal fired
 @export var max_distance: float = 60.0
 ## true: mermi duvarlardan geçer (sadece Sniper — Player.WEAPON_CONFIGS "pierce_walls")
 var pierce_walls := false
+## Özel silah (tek atış) sabitleri — PowerupManager güçü: 999 hasar, 1000 m, duvardan geçer
+const SPECIAL_SPEED := 160.0
+const SPECIAL_DAMAGE := 999.0
+const SPECIAL_MAX_DISTANCE := 1000.0
+## Son `fired` özel atıştan mı geldi? (Player ses seçimi için — fired sinyali parametresiz)
+var last_shot_special := false
 ## Eldeki tüfeğin namlu ağzı (HandRifle "Muzzle", Player atar). Yoksa / anormal konumdaysa $Muzzle kullanılır.
 var visual_muzzle: Node3D = null
 const VISUAL_MUZZLE_MAX_DIST := 1.4   # gövdeden yatay uzaklık sınırı (animasyon geçişi sapması)
@@ -76,7 +82,7 @@ func try_shoot(shooter_peer_id: int, shooter_team_id: int) -> void:
 ## Duvarın dibinde namlu duvarın İÇİNE/ARKASINA geçebiliyor → mermi orada doğup duvarı hiç görmüyordu.
 ## Oyuncu gövdesinden (namlu yüksekliğinde) namluya ışın: arada duvar varsa mermi gövdeden doğar,
 ## Bullet'ın ilk ışın taraması duvara çarpıp onu yok eder. Sniper (pierce_walls) zaten geçer → kontrol yok.
-func _safe_spawn_position() -> Vector3:
+func _safe_spawn_position(ignore_walls: bool = false) -> Vector3:
 	var muzzle_pos := muzzle.global_position
 	var player := get_parent().get_parent() as Node3D
 	if player and is_instance_valid(visual_muzzle) and visual_muzzle.is_visible_in_tree():
@@ -84,7 +90,7 @@ func _safe_spawn_position() -> Vector3:
 		var off := Vector2(tip.x - player.global_position.x, tip.z - player.global_position.z)
 		if off.length() < VISUAL_MUZZLE_MAX_DIST:
 			muzzle_pos = tip
-	if pierce_walls or player == null:
+	if pierce_walls or ignore_walls or player == null:
 		return muzzle_pos
 	var body_pos := Vector3(player.global_position.x, muzzle_pos.y, player.global_position.z)
 	var q := PhysicsRayQueryParameters3D.create(body_pos, muzzle_pos, 1)
@@ -108,6 +114,45 @@ func _spawn_bullet(
 	bullet.global_position = spawn_pos
 	bullet.initialize(direction, bullet_speed, damage, shooter_peer_id, shooter_team_id, p_max_distance)
 	bullet.pierce_walls = pierce_walls
+	last_shot_special = false
+	fired.emit()
+
+
+## Özel silah: şarjör/ateş hızından bağımsız TEK mermi (Player sol tık basışında, special_armed iken çağırır).
+## Saçılma yok; nişan yönünde 999 hasar, 1000 m, duvardan geçer, çömelme korumaz, takım arkadaşından geçer (Bullet).
+## aim: nişangah noktası (Player._get_aim_target) — mermi namludan TAM oraya (yatayda) gider, lazerle aynı çizgi.
+## Namlu gövdenin ~0.3 m sağında olduğu için gövde yönüne paralel atış nişangahı ıskalıyordu.
+func fire_special(shooter_peer_id: int, shooter_team_id: int, aim: Vector3 = Vector3.INF) -> void:
+	var spawn := _safe_spawn_position(true)
+	var holder: Node3D = get_parent()
+	var forward: Vector3 = -holder.global_transform.basis.z
+	if aim != Vector3.INF:
+		var to_aim := Vector3(aim.x - spawn.x, 0.0, aim.z - spawn.z)
+		if to_aim.length() > 0.5:   # nişan namlunun dibindeyse gövde yönü
+			forward = to_aim
+	forward.y = 0
+	forward = forward.normalized()
+	_spawn_special_bullet.rpc(spawn, forward, shooter_peer_id, shooter_team_id)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _spawn_special_bullet(
+	spawn_pos: Vector3,
+	direction: Vector3,
+	shooter_peer_id: int,
+	shooter_team_id: int
+) -> void:
+	var bullet: Node3D = bullet_scene.instantiate()
+	get_tree().current_scene.add_child(bullet)
+	bullet.global_position = spawn_pos
+	bullet.initialize(direction, SPECIAL_SPEED, SPECIAL_DAMAGE, shooter_peer_id, shooter_team_id, SPECIAL_MAX_DISTANCE)
+	bullet.pierce_walls = true
+	bullet.make_special()
+	# Atış anında her peer'da lazer sönsün (host'un _special_gun_rpc(false)'u RTT sonra gelir)
+	var player := get_parent().get_parent()
+	if player != null and player.has_method("set_special_armed"):
+		player.set_special_armed(false)
+	last_shot_special = true
 	fired.emit()
 
 

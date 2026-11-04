@@ -8,6 +8,11 @@
 ##   _set_item_rpc(peer, type)        → envanter (herkese; HUD sadece kendini gösterir)
 ##   _bomb_rpc(...)                   → Bomb.gd görseli (herkese; bomba + flaş), hasar host'ta _detonate'te
 ##   _reveal_rpc(team, kind, süre)    → uydu: o takımın minimapinde tüm oyuncular + kart taşıyıcı ("all_players") / düşmanlar ("enemies")
+##   _invis_rpc(peer, süre)           → GÖRÜNMEZLİK: Player.set_invisible (görsel kararı her peer yerel verir)
+##   _special_gun_rpc(peer, armed)    → ÖZEL SİLAH hazır/değil (slot boşalmaz); Q = _request_special_set(istenen durum),
+##                                      vazgeç YEREL iyimser + host'ta debounce'suz, hazırlama host onayıyla (tuzakta red);
+##                                      atış = local_special_fired → host slotu boşaltır
+##   TRAP_BREAKER                     → sadece tuzaktayken Q: Trap.self_rescue = true, 3 sn'lik kendi kendine çözme (hasar kesilmez)
 ## Patlama YEREL etkileri (_on_bomb_exploded, her peer kendi oyuncusu için): yakınlığa göre kamera sarsıntısı
 ## (CameraController.add_trauma), flaşta görüş hattı + bakış yönüne göre körlük (flashed → HUD beyaz ekran).
 ## Sinyaller (HUD/Minimap dinler): inventory_changed(type), reveal_started(kind, dur, own_team), notice(text, color), flashed(strength)
@@ -20,7 +25,7 @@ signal notice(text: String, color: Color)
 signal flashed(strength: float)                     # yerel oyuncu flaşla kör oldu (0..1)
 signal trap_rescue_changed(trapped_peer: int, ratio: float, rescuer_peer: int)  # HUD kurtarma barı
 
-enum Type { BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE, TRAP }  # index sabit (Powerup.gd/Minimap sayıyla kullanır) — yeni tip SONA eklenir
+enum Type { BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE, TRAP, INVIS, SPECIAL_GUN, TRAP_BREAKER }  # index sabit (Powerup.gd/Minimap sayıyla kullanır; INVIS=7, SPECIAL_GUN=8, TRAP_BREAKER=9) — yeni tip SONA eklenir
 const NONE := -1
 
 ## Görünüm/isim (HUD, Powerup.gd, Minimap ortak kullanır)
@@ -32,9 +37,13 @@ const INFO := {
 	Type.FLASH:     {"name": "FLAŞ BOMBASI",  "glyph": "✦", "color": Color(0.85, 0.93, 1.0),  "desc": "Fareye fırlat, görenleri kör eder"},
 	Type.SMOKE:     {"name": "SİS BOMBASI",   "glyph": "≋", "color": Color(0.72, 0.78, 0.86), "desc": "Fareye fırlat, görüşü kapatan sis bulutu"},
 	Type.TRAP:      {"name": "TUZAK",         "glyph": "▽", "color": Color(0.55, 0.5, 0.42),  "desc": "Yere bırak, düşmanı yakalar"},
+	Type.INVIS:        {"name": "GÖRÜNMEZLİK",  "glyph": "◐", "color": Color(0.72, 0.62, 1.0),  "desc": "6 sn rakiplerden gizlenir, ateşle bozulur"},
+	Type.SPECIAL_GUN:  {"name": "ÖZEL SİLAH",   "glyph": "⊕", "color": Color(1.0, 0.22, 0.55),  "desc": "Tek atış · duvardan geçer · menzil sınırsız"},
+	Type.TRAP_BREAKER: {"name": "TUZAK ÇÖZÜCÜ", "glyph": "⊘", "color": Color(0.80, 0.92, 0.36), "desc": "Tuzaktayken kendini kurtarır"},  # ✂ Windows'ta emojiye düşüyordu
 }
 ## ENEMY_SAT artık doğmaz (tek uydu kararı — INTEL_SAT tüm takımların oyuncularını gösterir); index sabit kaldığı için enum'da duruyor
-const WEIGHTS := {Type.BOMB: 22, Type.HEAL: 22, Type.FLASH: 18, Type.SMOKE: 16, Type.INTEL_SAT: 16, Type.TRAP: 14}
+const WEIGHTS := {Type.BOMB: 22, Type.HEAL: 22, Type.FLASH: 18, Type.SMOKE: 16, Type.INTEL_SAT: 16, Type.TRAP: 14,
+	Type.INVIS: 10, Type.TRAP_BREAKER: 10, Type.SPECIAL_GUN: 5}
 
 ## Zamanlama (sn)
 const FIRST_SPAWN_DELAY := 12.0
@@ -54,6 +63,12 @@ const HEAL_GROUP_RADIUS := 2.5     # "Grup Şifası" iyileştirilene uzaklık
 const TRAP_PLACE_DISTANCE := 1.0   # oyuncunun önüne, kısa mesafe (fırlatılmaz, bırakılır)
 const TRAP_RESCUE_RADIUS := 2.0
 const TRAP_SYNC_INTERVAL := 0.1
+## Yeni güçler (sabit değerler — güç ağacına BAĞLI DEĞİL, geliştirilemez)
+const INVIS_DURATION := 6.0           # görünmezlik süresi (sn) — ateş/bıçak erken bozar (Player)
+const TRAP_SELF_RESCUE_TIME := 3.0    # Tuzak Çözücü ile kendini çözme (arkadaş kurtarması trap.rescue_time = 4 sn)
+const SPECIAL_DAMAGE := 999.0         # Özel silah mermisi hasarı (Weapon.fire_special kullanır)
+const Q_DEBOUNCE_MS := 250            # Özel silah hazırla/vazgeç + çözücü ret bildirimi spam koruması
+const SPECIAL_SPENT_LOCK_MS := 1500   # yerel atıştan sonra host slotu boşaltana kadar Q yok sayılır
 
 ## Maç başında karaktere özel TEK SEFERLİK güç (GameManager._begin_actual_game_rpc → grant_starting_items)
 const STARTING_ITEMS := {
@@ -83,6 +98,14 @@ var reveal_until: Dictionary = {}
 var _traps: Dictionary = {}
 var _trap_sync_timer := 0.0
 
+## Host + client: peer_id → true (özel silah hazır). _special_gun_rpc her peer'da yazar; host _request_special_fired'ı buna göre doğrular.
+var _special_armed: Dictionary = {}
+## Host: peer_id → son özel silah hazırla/vazgeç zamanı (msec) — Q spam'inde arm/disarm titremesin
+var _special_toggle_msec: Dictionary = {}
+## Yerel: Q debounce (özel silah + çözücü ret bildirimi) ve atış sonrası kilit (msec, Time.get_ticks_msec)
+var _q_lock_until := 0
+var _special_spent_until := 0
+
 ## Yerel: "Radar Örtüsü" sis bulutları — içlerindekiler uydu haritasında çizilmez (Minimap hidden_from_satellite)
 var _radar_smokes: Array[Dictionary] = []   # {pos, radius, from, until} (sn)
 
@@ -101,6 +124,7 @@ func _ready() -> void:
 		push_warning("PowerupPoints bulunamadı — güç spawn edilmeyecek")
 	_spawn_timer = FIRST_SPAWN_DELAY
 	GameManager.kill_happened.connect(_on_kill_happened)
+	NetworkManager.player_disconnected.connect(_on_peer_left)
 	# Sis dokusu harita yüklenirken hazırlansın (ilk sis bombasında donma olmasın)
 	preload("res://scenes/world/SmokeCloud.gd").warm_up()
 	# Geç katılan / migration sonrası client: aktif güçleri host'tan iste
@@ -176,19 +200,24 @@ func _update_traps(delta: float) -> void:
 			var rescuer := -1
 			var pos: Vector3 = (trap as Node3D).global_position
 			var trapped_team := _team_of(trap.trapped_peer)
-			for pid: int in GameManager.active_players.keys():
-				if pid == trap.trapped_peer:
-					continue
-				var pl: Variant = GameManager.active_players.get(pid)
-				if pl == null or not is_instance_valid(pl) or pl.is_dead or _team_of(pid) != trapped_team:
-					continue
-				if (pl as Node3D).global_position.distance_to(pos) <= TRAP_RESCUE_RADIUS:
-					rescuer = pid
-					break
-			if rescuer != -1:
-				trap.rescue_ratio = minf(trap.rescue_ratio + delta / trap.rescue_time, 1.0)
+			if trap.self_rescue:
+				# Tuzak Çözücü: kendi hızı (3 sn) — yakındaki arkadaş olsa da çözücü hızı geçerli, mesafe şartı yok
+				rescuer = trap.trapped_peer
+				trap.rescue_ratio = minf(trap.rescue_ratio + delta / TRAP_SELF_RESCUE_TIME, 1.0)
 			else:
-				trap.rescue_ratio = 0.0
+				for pid: int in GameManager.active_players.keys():
+					if pid == trap.trapped_peer:
+						continue
+					var pl: Variant = GameManager.active_players.get(pid)
+					if pl == null or not is_instance_valid(pl) or pl.is_dead or _team_of(pid) != trapped_team:
+						continue
+					if (pl as Node3D).global_position.distance_to(pos) <= TRAP_RESCUE_RADIUS:
+						rescuer = pid
+						break
+				if rescuer != -1:
+					trap.rescue_ratio = minf(trap.rescue_ratio + delta / trap.rescue_time, 1.0)
+				else:
+					trap.rescue_ratio = 0.0
 			if trap.rescue_ratio >= 1.0:
 				_trap_freed_rpc.rpc(id, rescuer)
 			elif do_sync:
@@ -205,9 +234,36 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if k.physical_keycode != USE_KEY:
 		return
 	var me := _local_player()
-	if me == null or me.is_dead or get_item(NetworkManager.get_local_id()) == NONE:
+	var item := get_item(NetworkManager.get_local_id())
+	if me == null or me.is_dead or item == NONE:
 		return
 	get_viewport().set_input_as_handled()
+	var now := Time.get_ticks_msec()
+	if item == Type.TRAP_BREAKER and not me.is_trapped:
+		# Kullanıcı kararı: tuzakta değilken de kullanılabilir → boşa harcanır, slot boşalır (host _use_trap_breaker)
+		if now < _q_lock_until:
+			return   # host slotu boşaltana kadar çift basış bildirimi tekrarlamasın
+		_q_lock_until = now + Q_DEBOUNCE_MS
+		notice.emit(tr("Tuzak çözücü boşa kullanıldı"), Color(INFO[Type.TRAP_BREAKER]["color"]))
+	if item == Type.SPECIAL_GUN:
+		# Hazırla/vazgeç toggle: yanıt beklenmeden spam olmasın; atıştan sonra host slotu boşaltana dek ikinci arm yok
+		if now < _q_lock_until or now < _special_spent_until:
+			return
+		_q_lock_until = now + Q_DEBOUNCE_MS
+		var want_armed: bool = not me.special_armed
+		if want_armed and me.is_trapped:
+			notice.emit(tr("Tuzaktayken hazırlanamaz"), UITheme.TEXT)  # host da reddeder; RPC yollanmaz
+			return
+		if not want_armed:
+			# İYİMSER VAZGEÇ: host'un false RPC'si RTT sonra gelir; o arada sol tık özel mermiyi atmasın
+			# (host armed=false gördüğü için atışı yok sayar → bedava atış + slot kalırdı). Sonraki RPC no-op.
+			me.set_special_armed(false)
+		# İstenen durum açıkça yollanır (toggle değil): host'taki durum farklıysa bile niyet tersine dönmez
+		if NetworkManager.is_host():
+			_request_special_set(want_armed)
+		else:
+			_request_special_set.rpc_id(1, want_armed)
+		return
 	var aim: Vector3 = me._get_aim_target()
 	if NetworkManager.is_host():
 		_request_use(aim)
@@ -217,7 +273,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 # ─────────────────────────────────────────────
 #  TEST MODU (sadece debug build — editörden çalıştırınca; dışa aktarılmış oyunda kapalı)
-#  1 bomba · 2 sağlık · 3 uydu · 6 flaş · 8 sis · 9 tuzak → doğrudan envantere (slot doluysa değiştirir)
+#  1 bomba · 2 sağlık · 3 uydu · 4 görünmezlik · 6 flaş · 8 sis · 9 tuzak · - (eksi) özel silah · = (eşittir) tuzak çözücü
+#  → doğrudan envantere (slot doluysa değiştirir)
 #  7 → kart + kapı konumunu göster/gizle (yerel, minimap + 3D)
 #  5 → önüne rastgele bir güç doğur (yerden almayı denemek için)
 #  0 → önüne DÜŞMAN tuzağı kur (takımsız, team -1 — üstüne basıp yakalanmayı tek başına denemek için)
@@ -225,7 +282,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 ## Rakam tuşları — F tuşları KULLANILMAZ: oyun editör içinde çalışırken F1 yardım, F5 çalıştır, F6 sahne, F7 duraklat,
 ## F8 DURDUR (oyunu kapatıyordu!) editör kısayolları.
-const TEST_KEYS := {KEY_1: Type.BOMB, KEY_2: Type.HEAL, KEY_3: Type.INTEL_SAT, KEY_6: Type.FLASH, KEY_8: Type.SMOKE, KEY_9: Type.TRAP}
+const TEST_KEYS := {KEY_1: Type.BOMB, KEY_2: Type.HEAL, KEY_3: Type.INTEL_SAT, KEY_4: Type.INVIS, KEY_6: Type.FLASH, KEY_8: Type.SMOKE, KEY_9: Type.TRAP,
+	KEY_MINUS: Type.SPECIAL_GUN, KEY_EQUAL: Type.TRAP_BREAKER}
 const TEST_KEY_SPAWN := KEY_5          # önüne rastgele güç
 const TEST_KEY_OBJECTIVES := KEY_7     # kart + kapı göster/gizle
 const TEST_KEY_ENEMY_TRAP := KEY_0     # önüne düşman tuzağı
@@ -271,6 +329,8 @@ func _request_test_give(type: int) -> void:
 	var peer := multiplayer.get_remote_sender_id()
 	if peer == 0:
 		peer = 1
+	if type != Type.SPECIAL_GUN and _special_armed.get(peer, false):
+		_special_gun_rpc.rpc(peer, false)  # hazır özel silah varken slot değişirse hazır durumu kalmasın
 	_set_item_rpc.rpc(peer, type)
 
 
@@ -393,7 +453,7 @@ func _request_sync() -> void:
 		_trap_spawn_rpc.rpc_id(requester, id, (trap as Node3D).global_position, trap.team_id, trap.owner_peer)
 		if not trap.armed:
 			_trap_trigger_rpc.rpc_id(requester, id, trap.trapped_peer)
-			_trap_rescue_sync_rpc.rpc_id(requester, id, trap.rescue_ratio, -1)
+			_trap_rescue_sync_rpc.rpc_id(requester, id, trap.rescue_ratio, trap.trapped_peer if trap.self_rescue else -1)
 
 
 # ─────────────────────────────────────────────
@@ -438,11 +498,18 @@ func _set_item_rpc(peer_id: int, type: int, picked_up: bool = false, silent: boo
 	else:
 		inventory[peer_id] = type
 	if peer_id == NetworkManager.get_local_id():
+		if type != Type.SPECIAL_GUN:
+			_special_spent_until = 0  # slot boşaldı / başka güç — atış sonrası Q kilidi biter
 		if picked_up:
 			GameManager.gain_xp(GameManager.XP_POWERUP, "Güç toplandı")
 		inventory_changed.emit(type)
 		if type != NONE and not silent:
-			notice.emit(tr("%s %s alındı  ·  [Q] kullan") % [INFO[type]["glyph"], tr(INFO[type]["name"])], Color(INFO[type]["color"]))
+			var fmt := "%s %s alındı  ·  [Q] kullan"
+			if type == Type.SPECIAL_GUN:
+				fmt = "%s %s alındı  ·  [Q] hazırla"
+			elif type == Type.TRAP_BREAKER:
+				fmt = "%s %s alındı  ·  tuzakta [Q]"
+			notice.emit(tr(fmt) % [INFO[type]["glyph"], tr(INFO[type]["name"])], Color(INFO[type]["color"]))
 
 
 ## Maç başında her oyuncuya karakterine göre bir güç (GameManager._begin_actual_game_rpc, TÜM peer'larda).
@@ -457,8 +524,18 @@ func grant_starting_items() -> void:
 
 func _on_kill_happened(_killer: int, victim: int, _method: int) -> void:
 	# Ölünce slot boşalır (host karar verir)
-	if NetworkManager.is_host() and get_item(victim) != NONE:
+	if not NetworkManager.is_host():
+		return
+	if get_item(victim) != NONE:
 		_set_item_rpc.rpc(victim, NONE)
+	if _special_armed.get(victim, false):
+		_special_gun_rpc.rpc(victim, false)  # hazır özel silah ölümle iptal (lazer/çip/nişangah kalkar)
+
+
+## Ayrılan peer (host + client, NetworkManager.player_disconnected): özel silah kayıtları kalmasın (RPC yok, yerel temizlik)
+func _on_peer_left(peer: int) -> void:
+	_special_armed.erase(peer)
+	_special_toggle_msec.erase(peer)
 
 
 # ─────────────────────────────────────────────
@@ -476,10 +553,19 @@ func _request_use(aim: Vector3) -> void:
 	var player: Variant = GameManager.active_players.get(peer)
 	if type == NONE or player == null or not is_instance_valid(player) or player.is_dead:
 		return
+	# Slotu BOŞALTMAYAN güçler: önce özel dallar (çözücü tuzakta değilse yok sayılır, özel silah toggle)
+	if type == Type.SPECIAL_GUN:
+		_toggle_special_gun(peer)
+		return
+	if type == Type.TRAP_BREAKER:
+		_use_trap_breaker(peer, player)
+		return
 	_set_item_rpc.rpc(peer, NONE)
 	var team := _team_of(peer)
 	var m := _m(peer)
 	match type:
+		Type.INVIS:
+			_invis_rpc.rpc(peer, INVIS_DURATION)
 		Type.HEAL:
 			_use_heal(peer, team, player, aim, m)
 		Type.BOMB:
@@ -498,6 +584,113 @@ func _request_use(aim: Vector3) -> void:
 ## Kullananın güç ağacı değerleri (PowerTrees.BASE + açılmış düğümler)
 func _m(peer: int) -> Dictionary:
 	return POWER_TREES.mods_for(peer)
+
+
+## GÖRÜNMEZLİK: her peer'da Player.set_invisible — kimin gördüğü kararı Player'da YEREL (rakip hiçbir şey görmez,
+## kendisi + takım arkadaşları shimmer görür). Süreyi Player'ın yerel zamanlayıcısı bitirir; ateş/bıçak erken bozar.
+@rpc("authority", "call_local", "reliable")
+func _invis_rpc(peer: int, duration: float) -> void:
+	var pl: Variant = GameManager.active_players.get(peer)
+	if pl != null and is_instance_valid(pl) and pl.has_method("set_invisible"):
+		pl.set_invisible(true, duration)
+
+
+## ÖZEL SİLAH hazır/değil (her peer): lazer + nişangah + HUD çipi Player.special_armed_changed'dan gelir.
+@rpc("authority", "call_local", "reliable")
+func _special_gun_rpc(peer: int, armed: bool) -> void:
+	if armed:
+		_special_armed[peer] = true
+	else:
+		_special_armed.erase(peer)
+	var pl: Variant = GameManager.active_players.get(peer)
+	if pl != null and is_instance_valid(pl) and pl.has_method("set_special_armed"):
+		pl.set_special_armed(armed)
+
+
+## Host: (eski yol, _request_use) Q → hazırla / vazgeç toggle. Yerel Q artık _request_special_set kullanır.
+func _toggle_special_gun(peer: int) -> void:
+	var player: Variant = GameManager.active_players.get(peer)
+	if player == null or not is_instance_valid(player):
+		return
+	_set_special_armed_host(peer, player, not _special_armed.get(peer, false))
+
+
+## İstemci → host: özel silahı istenen duruma getir (true = hazırla, false = vazgeç). İstemci vazgeçi yerelde
+## iyimser uygulamıştır; host burada yetkili kararı verir ve herkese _special_gun_rpc yollar.
+@rpc("any_peer", "reliable")
+func _request_special_set(want_armed: bool) -> void:
+	if not NetworkManager.is_host():
+		return
+	var peer := multiplayer.get_remote_sender_id()
+	if peer == 0:
+		peer = 1
+	var player: Variant = GameManager.active_players.get(peer)
+	if get_item(peer) != Type.SPECIAL_GUN or player == null or not is_instance_valid(player) or player.is_dead:
+		return
+	_set_special_armed_host(peer, player, want_armed)
+
+
+## Host: yetkili hazır/değil kararı. Slot BOŞALMAZ (atışta boşalır).
+## Vazgeç debounce'suz ve her zaman kabul (oyuncuya avantaj sağlamaz; istemci zaten yerelde kapattı — gecikmeli
+## gelen bir vazgeçi yutmak istemciyi "kapalı", host'u "hazır" bırakırdı). Hazırlama: debounce + tuzakta RED.
+func _set_special_armed_host(peer: int, player: Node, want_armed: bool) -> void:
+	var armed: bool = _special_armed.get(peer, false)
+	if want_armed == armed:
+		return
+	var now := Time.get_ticks_msec()
+	if want_armed:
+		if player.is_trapped:
+			return
+		if now - int(_special_toggle_msec.get(peer, -100000)) < Q_DEBOUNCE_MS:
+			return
+	_special_toggle_msec[peer] = now
+	_special_gun_rpc.rpc(peer, want_armed)
+
+
+## Host: Tuzak Çözücü her zaman slotu boşaltır (kullanıcı: tuzakta değilken de "boşa" atılabilir). Tuzaktaysa
+## o oyuncunun tuzağı self_rescue olur (süre bilgisi _update_traps'te: TRAP_SELF_RESCUE_TIME, hasar kesilmez).
+func _use_trap_breaker(peer: int, player: Node) -> void:
+	if not player.is_trapped:
+		_set_item_rpc.rpc(peer, NONE)
+		return
+	var found_id := -1
+	var found: Variant = null
+	for id: int in _traps:
+		var t: Variant = _traps[id]
+		if is_instance_valid(t) and not t.armed and t.trapped_peer == peer:
+			found_id = id
+			found = t
+			break
+	if found == null:
+		return
+	_set_item_rpc.rpc(peer, NONE)
+	found.self_rescue = true
+	# Client'lara hemen bildir (10 Hz sync'i bekleme): rescuer == trapped → self_rescue
+	_trap_rescue_sync_rpc.rpc(found_id, found.rescue_ratio, peer)
+
+
+## YEREL oyuncu özel atışını yaptı (Player/Weapon çağırır) → host slotu boşaltır, hazır durumu kapatır.
+## Q'yu atış sonrası kısa süre kilitler: host slotu boşaltana kadar ikinci "hazırla" denenemesin.
+func local_special_fired() -> void:
+	_special_spent_until = Time.get_ticks_msec() + SPECIAL_SPENT_LOCK_MS
+	if NetworkManager.is_host():
+		_request_special_fired()
+	elif multiplayer.has_multiplayer_peer():
+		_request_special_fired.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func _request_special_fired() -> void:
+	if not NetworkManager.is_host():
+		return
+	var peer := multiplayer.get_remote_sender_id()
+	if peer == 0:
+		peer = 1
+	# Sadece host'ta hazır işaretli + slotta özel silah olan oyuncunun atışı geçerli (boş istek yok sayılır)
+	if get_item(peer) != Type.SPECIAL_GUN or not _special_armed.get(peer, false):
+		return
+	_set_item_rpc.rpc(peer, NONE)
+	_special_gun_rpc.rpc(peer, false)
 
 
 ## Sağlık (host): Medic hedef seçer; kritik canda "Acil Müdahale" çarpanı, "Yenilenme" ek can 4 sn'ye yayılır,
@@ -670,7 +863,7 @@ func _bomb_rpc(_id: int, from: Vector3, target: Vector3, team: int, thrower: int
 func trap_rescue_time(trapped_peer: int) -> float:
 	for trap: Variant in _traps.values():
 		if is_instance_valid(trap) and trap.trapped_peer == trapped_peer:
-			return trap.rescue_time
+			return TRAP_SELF_RESCUE_TIME if trap.self_rescue else trap.rescue_time  # Tuzak Çözücü: sabit 3 sn
 	return float(POWER_TREES.BASE["trap_rescue"])
 
 
@@ -794,6 +987,7 @@ func _trap_trigger_rpc(id: int, trapped_peer: int) -> void:
 	trap.armed = false
 	trap.trapped_peer = trapped_peer
 	trap.rescue_ratio = 0.0
+	trap.self_rescue = false
 	if trap.has_method("spring_shut"):
 		trap.spring_shut()
 	var pl: Variant = GameManager.active_players.get(trapped_peer)
@@ -803,7 +997,11 @@ func _trap_trigger_rpc(id: int, trapped_peer: int) -> void:
 	var trapped_name: String = NetworkManager.players.get(trapped_peer, {}).get("name", "?")
 	var col: Color = INFO[Type.TRAP]["color"]
 	if me == trapped_peer:
-		notice.emit(tr("⚠ TUZAĞA YAKALANDIN! Takım arkadaşın gelsin"), UITheme.DANGER)
+		# Slotta Tuzak Çözücü varsa Q ipucu (inventory tüm peer'larda aynı — _set_item_rpc herkese)
+		if get_item(me) == Type.TRAP_BREAKER:
+			notice.emit(tr("⚠ TUZAĞA YAKALANDIN! [Q] Tuzak çözücü"), UITheme.DANGER)
+		else:
+			notice.emit(tr("⚠ TUZAĞA YAKALANDIN! Takım arkadaşın gelsin"), UITheme.DANGER)
 	elif _team_of(trapped_peer) == _local_team():
 		notice.emit(tr("⚠ %s TUZAĞA YAKALANDI! Kurtar") % trapped_name, UITheme.DANGER)
 	elif _team_of(me) == trap.team_id:
@@ -815,6 +1013,9 @@ func _trap_rescue_sync_rpc(id: int, ratio: float, rescuer_peer: int) -> void:
 	var trap: Variant = _traps.get(id)
 	if trap != null and is_instance_valid(trap):
 		trap.rescue_ratio = ratio
+		# self_rescue emit'ten ÖNCE yazılır: HUD barı ilk karede trap_rescue_time() ile 4 değil 3 sn hesaplasın
+		if rescuer_peer != -1 and rescuer_peer == trap.trapped_peer:
+			trap.self_rescue = true
 	trap_rescue_changed.emit(trap.trapped_peer if trap != null and is_instance_valid(trap) else -1, ratio, rescuer_peer)
 
 
@@ -831,7 +1032,14 @@ func _trap_freed_rpc(id: int, rescuer_peer: int) -> void:
 	trap_rescue_changed.emit(trapped_peer, 0.0, -1)
 	var me := NetworkManager.get_local_id()
 	var trapped_name: String = NetworkManager.players.get(trapped_peer, {}).get("name", "?")
-	if me == rescuer_peer:
+	if rescuer_peer != -1 and rescuer_peer == trapped_peer:
+		# Tuzak Çözücü ile kendini çözdü: XP yok, limon bildirim
+		var breaker_col: Color = INFO[Type.TRAP_BREAKER]["color"]
+		if me == trapped_peer:
+			notice.emit(tr("✓ TUZAKTAN KURTULDUN"), breaker_col)
+		elif _team_of(trapped_peer) == _local_team():
+			notice.emit(tr("✓ %s tuzaktan kurtuldu") % trapped_name, breaker_col)
+	elif me == rescuer_peer:
 		GameManager.gain_xp(GameManager.XP_TRAP_RESCUE, "Takım arkadaşı kurtarıldı")
 		notice.emit(tr("✓ %s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))
 	elif _team_of(trapped_peer) == _local_team():

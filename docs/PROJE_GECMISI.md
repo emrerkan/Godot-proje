@@ -212,6 +212,12 @@
     `scenes/ui/IconSet.gd` (kodla çizilen vektör ikonlar). Kalıcı kural: yükseltme/güç değerleri oyuncuya mutlak sayı gösterilmez.
     Orkestra ile yapıldı: UX spec (`docs/ux/upgrade-page.md`) → sanat spec (`SANAT_KITABI.md` "İkon dili v1") → uygulama → /ux-review → düzeltme.
 
+47. **Üç yeni yerden-alınan güç (2026-11-05)** — kullanıcı: görünmezlik, tek mermili özel silah, tuzak çözücü; "hiçbiri geliştirme olmayacak" (PowerTrees'e dokunulmadı, değerler sabit).
+    Kararlar: **Görünmezlik** 6 sn; rakip hiç göremez, kendi takımı + kendisi yarı saydam titreşim görür; ateş (normal/özel) veya bıçak ANINDA bozar; adım sesi duyulur; rakip minimapinde (uydu dahil) yok.
+    **Özel silah** Q ile hazırlanır (lazer nişan), sol tık TEK atış, hazırken Q = vazgeç (güç slotta kalır); hasar 999, menzil 1000 m, duvardan geçer, ÇÖMELME KORUMAZ, takım arkadaşından geçer, ilk rakipte durur.
+    **Tuzak çözücü** sadece tuzaktayken Q → 3 sn kendi kendine çözme (arkadaş kurtarması 4 sn), tuzakta değilken Q kullanılmaz + uyarı. Doğma ağırlıkları 10 / 5 / 10 (INVIS / SPECIAL_GUN / TRAP_BREAKER).
+    Test tuşları 4 / - / =. Orkestra ile: UX spec (`docs/ux/new-powers.md`) → shader/3D (`InvisibilityShimmer`, `SpecialGunFx`) → Player/Weapon/Bullet → PowerupManager → HUD/Crosshair/Minimap → rutin. Ayrıntı CLAUDE.md "YENİ GÜÇLER".
+
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 
 - Flaşın sadece düşmanları etkilemesi istenirse: `PowerupManager._on_bomb_exploded` içine takım kontrolü (tek satır).

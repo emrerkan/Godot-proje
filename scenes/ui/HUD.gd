@@ -19,6 +19,19 @@ const UNLOCK_TICK_FAST := 0.12
 var _unlock_tick_t := 0.0
 var _unlock_carrier := -1
 
+## Yeni güçler (docs/ux/new-powers.md) — PowerupManager.Type indeksleri (enum SONA eklendi, sabit: 7/8/9)
+const T_INVIS := 7
+const T_SPECIAL := 8
+const T_BREAKER := 9
+## INFO yoksa (çok erken kare) yedek renkler — asıl kaynak PowerupManager.INFO
+const COL_INVIS := Color(0.72, 0.62, 1.0)
+const COL_SPECIAL := Color(1.0, 0.22, 0.55)
+const COL_BREAKER := Color(0.80, 0.92, 0.36)
+const DENY_TEXT := "Sadece tuzaktayken kullanılır"   # PowerupManager.notice — ret geri bildirimi (slot kırmızı flaş + ses)
+const PLAYER_SCRIPT := preload("res://scenes/player/Player.gd")
+## Özel silah öldürme yöntemi = Player.DAMAGE_SPECIAL (4; bıçak 2 / arkadan 3 ile çakışmaz)
+var _kill_special: int = PLAYER_SCRIPT.DAMAGE_SPECIAL
+
 var _root: Control
 var _local_player: Node = null
 var _carrier_peer := -1
@@ -97,6 +110,22 @@ var _powerups: Node = null
 var _item_slot: PanelContainer
 var _item_glyph: Label
 var _item_name: Label
+var _item_type := -1                 # slottaki güç (-1 = boş)
+var _slot_style: StyleBoxFlat = null
+var _slot_col := UITheme.TEXT_DIM
+var _deny_t := 0.0                   # tuzak çözücü reddi — slot kenarı kırmızı flaş (sn)
+var _armed := false                  # yerel oyuncu özel silahı hazır (Player.special_armed_changed)
+var _local_trapped := false          # yerel oyuncu tuzakta (is_trapped poll)
+
+# Durum çipleri (slotun sağı) — görünmezlik / özel silah hazır / tuzak çözücü "Q"
+var _chip_box: VBoxContainer
+var _chip_invis: Dictionary = {}
+var _chip_armed: Dictionary = {}
+var _chip_breaker: Dictionary = {}
+var _invis_active := false
+var _invis_total := 6.0
+var _invis_left := 0.0
+var _invis_tween: Tween = null
 
 
 func _ready() -> void:
@@ -170,6 +199,7 @@ func _process(delta: float) -> void:
 
 	_update_carrier_bar_position()
 	_update_trap_bar_position()
+	_update_power_status(delta)
 
 	# Koşu / çömelme dayanıklılığı
 	if _local_player and is_instance_valid(_local_player) and _sprint_bar:
@@ -542,11 +572,12 @@ func _setup_item_slot() -> void:
 	_powerups = get_parent().get_node_or_null("PowerupManager")
 	if _powerups:
 		_powerups.inventory_changed.connect(_on_item_changed)
-		_powerups.notice.connect(_show_banner)
+		_powerups.notice.connect(_on_powerup_notice)
 		_powerups.flashed.connect(_on_flashed)
 		_powerups.trap_rescue_changed.connect(_on_trap_rescue_changed)
 		if _powerups.TEST_MODE:
 			_setup_test_hint()
+	_build_status_chips()
 	_on_item_changed(-1)
 	_build_trap_bar()
 
@@ -597,31 +628,267 @@ func _setup_test_hint() -> void:
 	box.add_theme_constant_override("separation", 3)
 	chip.add_child(box)
 	box.add_child(UITheme.label("TEST MODU", 15, UITheme.ACCENT, UITheme.font_caps))
-	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "5 Önüne güç doğur   Q Kullan"]:
+	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "4 Görünmezlik   - Özel silah   = Tuzak çözücü", "5 Önüne güç doğur   Q Kullan"]:
 		box.add_child(UITheme.label(line, 18, UITheme.TEXT_DIM))
 	_ignore_mouse_recursive(chip)
 
 
 func _on_item_changed(item_type: int) -> void:
-	var col := UITheme.TEXT_DIM
-	if item_type < 0 or _powerups == null:
-		_item_glyph.text = "—"
-		_item_name.text = "BOŞ"
-	else:
-		var info: Dictionary = _powerups.INFO[item_type]
-		col = info["color"]
-		_item_glyph.text = info["glyph"]
-		_item_name.text = info["name"]
+	var picked := item_type >= 0 and item_type != _item_type
+	_item_type = item_type
+	if item_type >= 0 and _powerups != null and picked:
 		# Alındığında kısa parlama
 		_item_slot.modulate = Color(1.6, 1.6, 1.6)
 		create_tween().tween_property(_item_slot, "modulate", Color.WHITE, 0.4)
+	_refresh_slot()
+
+
+## Güç bilgisi (PowerupManager.INFO) — kayıt yoksa boş sözlük
+func _power_info(item_type: int) -> Dictionary:
+	if _powerups == null:
+		return {}
+	var all: Dictionary = _powerups.INFO
+	return all.get(item_type, {})
+
+
+## Slot görünümü: tip + özel silah hazır + tuzakta durumuna göre (docs/ux/new-powers.md §3.2)
+func _refresh_slot() -> void:
+	var col := UITheme.TEXT_DIM
+	var info := _power_info(_item_type) if _item_type >= 0 else {}
+	if info.is_empty():
+		_item_glyph.text = "—"
+		_item_name.text = "BOŞ"
+	else:
+		col = info["color"]
+		_item_glyph.text = info["glyph"]
+		_item_name.text = "HAZIR" if (_item_type == T_SPECIAL and _armed) else info["name"]
+	_slot_col = col
 	_item_glyph.add_theme_color_override("font_color", col)
 	_item_name.add_theme_color_override("font_color", col)
-	var st := UITheme.style(Color(UITheme.BG, 0.62), 23, Color(col, 0.6) if item_type >= 0 else UITheme.BORDER, 1, 17, 13)
-	if item_type >= 0:
-		st.shadow_color = Color(col, 0.3)
-		st.shadow_size = 17
-	_item_slot.add_theme_stylebox_override("panel", st)
+	_slot_style = UITheme.style(Color(UITheme.BG, 0.62), 23, Color(col, 0.6) if not info.is_empty() else UITheme.BORDER, 1, 17, 13)
+	if not info.is_empty():
+		_slot_style.shadow_color = Color(col, 0.3)
+		_slot_style.shadow_size = 17
+	_item_slot.add_theme_stylebox_override("panel", _slot_style)
+	_refresh_chips()
+
+
+## Tek nefes yardımcısı (0..1, hz kez/sn) — HUD animasyonları buradan geçer; "hareketi azalt" ayarı gelince tek yerden statiğe çekilir
+func _pulse(hz: float) -> float:
+	return 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * TAU * hz)
+
+
+func _on_powerup_notice(text: String, color: Color) -> void:
+	_show_banner(text, color)
+	if text == DENY_TEXT or text == tr(DENY_TEXT):
+		_deny_t = 0.3
+		SFX.play_ui(get_tree(), "unlock_reset", -8.0, 1.0)
+
+
+## Durum çipleri — slotun sağında, aşağıdan yukarı dizilir (görünmezlik / özel silah hazır / tuzak çözücü)
+func _build_status_chips() -> void:
+	_chip_box = VBoxContainer.new()
+	_chip_box.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_chip_box.offset_left = 800
+	_chip_box.offset_top = -27
+	_chip_box.offset_bottom = -27
+	_chip_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_chip_box.alignment = BoxContainer.ALIGNMENT_END
+	_chip_box.add_theme_constant_override("separation", 8)
+	_chip_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_chip_box)
+	var ci := _power_info(T_INVIS)
+	var cs := _power_info(T_SPECIAL)
+	var cb := _power_info(T_BREAKER)
+	# Görünüm sırası (üstten alta): özel silah, tuzak çözücü, görünmezlik
+	_chip_armed = _make_chip(cs.get("glyph", "⊕"), cs.get("color", COL_SPECIAL), false)
+	_chip_breaker = _make_chip(cb.get("glyph", "⊘"), cb.get("color", COL_BREAKER), false)
+	_chip_invis = _make_chip(ci.get("glyph", "◐"), ci.get("color", COL_INVIS), true)
+	(_chip_armed["text"] as Label).text = "HAZIR · SOL TIK ATEŞ · Q VAZGEÇ"
+	(_chip_breaker["text"] as Label).text = "Q · TUZAĞI ÇÖZ"
+	for c: Dictionary in [_chip_armed, _chip_breaker, _chip_invis]:
+		_chip_box.add_child(c["panel"])
+
+
+## Çip: cam panel + güç renkli kenar, glif 24 px + metin 20 px caps; with_bar → altında 6 px eriyen bar
+func _make_chip(glyph: String, color: Color, with_bar: bool) -> Dictionary:
+	var panel := PanelContainer.new()
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	panel.custom_minimum_size = Vector2(260, 52)
+	var st := UITheme.style(Color(UITheme.BG, 0.62), 17, Color(color, 0.7), 1, 20, 10)
+	panel.add_theme_stylebox_override("panel", st)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	box.add_child(row)
+	var g := UITheme.label(glyph, 24, color, UITheme.font_bold)
+	g.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(g)
+	var t := UITheme.label("", 20, UITheme.TEXT, UITheme.font_caps)
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(t)
+	var d := {"panel": panel, "glyph": g, "text": t, "style": st, "color": color, "bar": null, "fill": null}
+	if with_bar:
+		var bar := ProgressBar.new()
+		bar.show_percentage = false
+		bar.max_value = 1.0
+		bar.value = 1.0
+		bar.custom_minimum_size = Vector2(0, 6)
+		var fill := UITheme.style(color, 3)
+		bar.add_theme_stylebox_override("fill", fill)
+		bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.1), 3))
+		box.add_child(bar)
+		d["bar"] = bar
+		d["fill"] = fill
+	_ignore_mouse_recursive(panel)
+	return d
+
+
+## Slot tipi / özel silah / tuzak durumuna göre özel silah + tuzak çözücü çiplerini aç-kapa (görünmezlik çipi sinyalle yönetilir)
+func _refresh_chips() -> void:
+	if _chip_armed.is_empty():
+		return
+	var dead: bool = _local_player != null and is_instance_valid(_local_player) and _local_player.is_dead
+	(_chip_armed["panel"] as Control).visible = _armed and not dead
+	(_chip_breaker["panel"] as Control).visible = _item_type == T_BREAKER and _local_trapped and not dead
+
+
+func _update_power_status(delta: float) -> void:
+	if _chip_invis.is_empty():
+		return
+	var valid: bool = _local_player != null and is_instance_valid(_local_player)
+	var dead: bool = valid and _local_player.is_dead
+	var trapped: bool = valid and bool(_local_player.is_trapped)
+	if trapped != _local_trapped:
+		_local_trapped = trapped
+		_refresh_chips()
+	if dead:
+		# Ölüm her şeyi ANINDA bitirir — çip/hazır durumu kalıntısı kalmasın
+		if _armed:
+			_armed = false
+			_refresh_slot()
+		if _invis_active or (_chip_invis["panel"] as Control).visible:
+			_invis_active = false
+			_hide_invis_chip()
+		_refresh_chips()
+
+	if _deny_t > 0.0:
+		_deny_t = maxf(_deny_t - delta, 0.0)
+
+	# Slot kenarı: ret flaşı > nefes (hazır / tuzakta çözücü) > sabit
+	if _slot_style != null and _item_type >= 0:
+		var breathe: bool = (_item_type == T_SPECIAL and _armed) or (_item_type == T_BREAKER and _local_trapped)
+		if _deny_t > 0.0:
+			_slot_style.border_color = Color(UITheme.DANGER, 0.95)
+		elif breathe:
+			_slot_style.border_color = Color(_slot_col, lerpf(0.6, 1.0, _pulse(1.2)))
+		else:
+			_slot_style.border_color = Color(_slot_col, 0.6)
+
+	# Çipler nefes alır (kenar alfa; hızlı yanıp sönme yok)
+	if (_chip_armed["panel"] as Control).visible:
+		(_chip_armed["style"] as StyleBoxFlat).border_color = Color(_chip_armed["color"], lerpf(0.55, 1.0, _pulse(1.2)))
+	if (_chip_breaker["panel"] as Control).visible:
+		(_chip_breaker["style"] as StyleBoxFlat).border_color = Color(_chip_breaker["color"], lerpf(0.55, 1.0, _pulse(1.2)))
+
+	# Görünmezlik geri sayımı
+	if _invis_active:
+		_invis_left = maxf(_invis_left - delta, 0.0)
+		(_chip_invis["text"] as Label).text = tr("GÖRÜNMEZ · %.1f sn") % _invis_left
+		(_chip_invis["bar"] as ProgressBar).value = _invis_left / maxf(_invis_total, 0.1)
+		var st: StyleBoxFlat = _chip_invis["style"]
+		if _invis_left <= 1.5:
+			st.border_color = Color(_chip_invis["color"], lerpf(0.4, 1.0, _pulse(2.0)))
+		else:
+			st.border_color = Color(_chip_invis["color"], 0.7)
+
+
+func _hide_invis_chip() -> void:
+	if _invis_tween and _invis_tween.is_valid():
+		_invis_tween.kill()
+	(_chip_invis["panel"] as Control).visible = false
+
+
+## Yerel oyuncu görünmezlik durumu (Player.invisibility_changed): açılış = geri sayım çipi; kapanış = bozuldu / süre doldu
+func _on_invis_changed(active: bool, duration: float) -> void:
+	if _chip_invis.is_empty():
+		return
+	var dead: bool = _local_player != null and is_instance_valid(_local_player) and _local_player.is_dead
+	var col: Color = _chip_invis["color"]
+	var panel := _chip_invis["panel"] as Control
+	var lbl := _chip_invis["text"] as Label
+	var glyph := _chip_invis["glyph"] as Label
+	var bar := _chip_invis["bar"] as ProgressBar
+	if _invis_tween and _invis_tween.is_valid():
+		_invis_tween.kill()
+	if active:
+		_invis_active = true
+		_invis_total = maxf(duration, 0.1)
+		_invis_left = _invis_total
+		glyph.add_theme_color_override("font_color", col)
+		lbl.add_theme_color_override("font_color", UITheme.TEXT)
+		bar.visible = true
+		bar.value = 1.0
+		(_chip_invis["style"] as StyleBoxFlat).border_color = Color(col, 0.7)
+		lbl.text = tr("GÖRÜNMEZ · %.1f sn") % _invis_left
+		panel.visible = true
+		_show_banner("◐ GÖRÜNMEZSİN  ·  ateş edersen bozulur", col)
+		return
+	var was_active := _invis_active
+	_invis_active = false
+	if not was_active or dead:
+		panel.visible = false
+		return
+	var broken := _invis_left > 0.3
+	var end_col: Color = UITheme.DANGER if broken else UITheme.TEXT_DIM
+	lbl.text = "GÖRÜNÜRLÜK BOZULDU" if broken else "GÖRÜNMEZLİK BİTTİ"
+	lbl.add_theme_color_override("font_color", end_col)
+	glyph.add_theme_color_override("font_color", end_col)
+	(_chip_invis["style"] as StyleBoxFlat).border_color = Color(end_col, 0.8)
+	bar.visible = false
+	panel.visible = true
+	_invis_tween = create_tween()
+	_invis_tween.tween_interval(1.2 if broken else 1.0)
+	_invis_tween.tween_callback(func() -> void: panel.visible = false)
+
+
+## Yerel oyuncu özel silahı hazırladı / bıraktı / attı (Player.special_armed_changed)
+func _on_special_armed_changed(armed: bool) -> void:
+	var was := _armed
+	_armed = armed
+	_refresh_slot()
+	if armed == was:
+		return
+	var col: Color = _power_info(T_SPECIAL).get("color", COL_SPECIAL)
+	if armed:
+		_show_banner("⊕ ÖZEL SİLAH HAZIR  ·  lazerin rakiplere görünür", col)
+		return
+	# Atıştan sonra da false gelir (slot RTT kadar SPECIAL kalır) → atış (sol tık basılı) vazgeçme sayılmaz
+	var dead: bool = _local_player != null and is_instance_valid(_local_player) and _local_player.is_dead
+	if not dead and _item_type == T_SPECIAL and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_show_banner("⊕ Vazgeçtin  ·  silah slotta", Color(col, 0.7))
+
+
+## Yeni yerel oyuncu node'u: önceki maçtan kalan durum çipi/hazır bayrağı sıfırlanır, sinyaller bağlanır
+func _reset_power_status(player: Node) -> void:
+	_armed = false
+	_local_trapped = false
+	_invis_active = false
+	if not _chip_invis.is_empty():
+		_hide_invis_chip()
+		(_chip_armed["panel"] as Control).visible = false
+		(_chip_breaker["panel"] as Control).visible = false
+	if player.has_signal("invisibility_changed") and not player.is_connected("invisibility_changed", _on_invis_changed):
+		player.connect("invisibility_changed", _on_invis_changed)
+	if player.has_signal("special_armed_changed") and not player.is_connected("special_armed_changed", _on_special_armed_changed):
+		player.connect("special_armed_changed", _on_special_armed_changed)
+	_armed = bool(player.get("special_armed")) if player.has_signal("special_armed_changed") else false
+	if _item_slot != null:
+		_refresh_slot()
 
 
 func _setup_chat() -> void:
@@ -855,6 +1122,7 @@ func _ignore_mouse_recursive(node: Node) -> void:
 
 func _on_local_player_spawned(player: Node) -> void:
 	_local_player = player
+	_reset_power_status(player)
 	player.health_changed.connect(_on_health_changed)
 	player.ammo_changed.connect(_on_ammo_changed)
 	player.healed.connect(_on_healed)
@@ -1267,13 +1535,19 @@ var _trap_bar: PanelContainer
 var _trap_bar_fill: ProgressBar
 var _trap_bar_lbl: Label
 var _trap_bar_target: Node3D = null
+var _trap_panel_sb: StyleBoxFlat
+var _trap_fill_sb: StyleBoxFlat
+var _self_rescue_time := 3.0  # PowerupManager.TRAP_SELF_RESCUE_TIME
 
 func _build_trap_bar() -> void:
 	_trap_bar = PanelContainer.new()
 	_trap_bar.visible = false
 	_trap_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_trap_bar.custom_minimum_size = Vector2(283, 0)
-	_trap_bar.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.7), 7, Color(UITheme.DANGER, 0.7), 1, 13, 8))
+	_trap_panel_sb = UITheme.style(Color(UITheme.BG, 0.7), 7, Color(UITheme.DANGER, 0.7), 1, 13, 8)
+	_trap_bar.add_theme_stylebox_override("panel", _trap_panel_sb)
+	if _powerups != null:
+		_self_rescue_time = float(_powerups.get_script().get_script_constant_map().get("TRAP_SELF_RESCUE_TIME", 3.0))
 	_root.add_child(_trap_bar)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 7)
@@ -1285,7 +1559,8 @@ func _build_trap_bar() -> void:
 	_trap_bar_fill.show_percentage = false
 	_trap_bar_fill.max_value = 1.0
 	_trap_bar_fill.custom_minimum_size = Vector2(0, 15)
-	_trap_bar_fill.add_theme_stylebox_override("fill", UITheme.style(UITheme.DANGER, 3))
+	_trap_fill_sb = UITheme.style(UITheme.DANGER, 3)
+	_trap_bar_fill.add_theme_stylebox_override("fill", _trap_fill_sb)
 	_trap_bar_fill.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.1), 3))
 	box.add_child(_trap_bar_fill)
 
@@ -1301,7 +1576,14 @@ func _update_trap_bar_position() -> void:
 	_trap_bar.position = (sp - Vector2(_trap_bar.size.x * 0.5, _trap_bar.size.y)).round()
 
 
-func _on_trap_rescue_changed(trapped_peer: int, ratio: float, _rescuer_peer: int) -> void:
+## Bar rengi: arkadaş kurtarması DANGER, kendi kendini çözme tuzak çözücü limonu (etiket metni de farklı → renk körü güvenli)
+func _set_trap_bar_color(col: Color) -> void:
+	_trap_panel_sb.border_color = Color(col, 0.7)
+	_trap_fill_sb.bg_color = col
+	_trap_bar_lbl.add_theme_color_override("font_color", col)
+
+
+func _on_trap_rescue_changed(trapped_peer: int, ratio: float, rescuer_peer: int) -> void:
 	if ratio <= 0.0 or ratio >= 1.0:
 		_trap_bar.visible = false
 		_trap_bar_target = null
@@ -1317,8 +1599,19 @@ func _on_trap_rescue_changed(trapped_peer: int, ratio: float, _rescuer_peer: int
 		_trap_bar_target = null
 		return
 	_trap_bar_target = pl as Node3D
-	var trapped_name: String = tr("SEN") if trapped_peer == NetworkManager.get_local_id() else NetworkManager.players.get(trapped_peer, {}).get("name", "?")
-	_trap_bar_lbl.text = tr("KURTARILIYOR · %s · %.1f sn") % [trapped_name, (1.0 - ratio) * _powerups.trap_rescue_time(trapped_peer)]
+	var is_local_trapped := trapped_peer == NetworkManager.get_local_id()
+	var trapped_name: String = tr("SEN") if is_local_trapped else NetworkManager.players.get(trapped_peer, {}).get("name", "?")
+	if rescuer_peer == trapped_peer:
+		# Tuzak çözücü: kendi kendini çözüyor (3 sn, limon)
+		_set_trap_bar_color(_power_info(T_BREAKER).get("color", COL_BREAKER))
+		var left := (1.0 - ratio) * _self_rescue_time
+		if is_local_trapped:
+			_trap_bar_lbl.text = tr("ÇÖZÜLÜYOR · %.1f sn") % left
+		else:
+			_trap_bar_lbl.text = tr("%s KENDİNİ ÇÖZÜYOR · %.1f sn") % [trapped_name, left]
+	else:
+		_set_trap_bar_color(UITheme.DANGER)
+		_trap_bar_lbl.text = tr("KURTARILIYOR · %s · %.1f sn") % [trapped_name, (1.0 - ratio) * _powerups.trap_rescue_time(trapped_peer)]
 	_trap_bar_fill.value = ratio
 	_trap_bar.visible = true
 	_update_trap_bar_position()
@@ -1357,6 +1650,8 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int, method: int) ->
 			_death_killer.text = tr("Seni arkadan bıçaklayan: %s") % kname
 		elif method == GameManager.KILL_KNIFE:
 			_death_killer.text = tr("Seni bıçaklayan: %s") % kname
+		elif method == _kill_special:
+			_death_killer.text = tr("Seni özel silahla vuran: %s") % kname
 		else:
 			_death_killer.text = tr("Seni vuran: %s") % kname
 	elif killer_peer_id == local_id:
@@ -1373,6 +1668,8 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int, method: int) ->
 	h.add_child(k_lbl)
 	if method == GameManager.KILL_KNIFE or method == GameManager.KILL_BACKSTAB:
 		h.add_child(UITheme.label("🔪", 22, UITheme.TEXT))
+	elif method == _kill_special:
+		h.add_child(UITheme.label("⊕", 22, _power_info(T_SPECIAL).get("color", COL_SPECIAL), UITheme.font_bold))
 	else:
 		h.add_child(UITheme.label("▸", 20, UITheme.TEXT_DIM))
 	var v_lbl := UITheme.label(vname, 22, vcol, UITheme.font_bold)

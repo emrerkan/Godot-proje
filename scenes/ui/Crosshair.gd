@@ -18,8 +18,15 @@ const MAX_GAP := 117.0
 const TICK_LEN := 11.7
 const KICK := 11.7
 
+## Özel silah hazırken (Player.special_armed_changed): saçılmasız sabit halka + 4 çentik (⊕), kırmızı-eflatun — docs/ux/new-powers.md §3.6
+## Renk = PowerupManager.INFO[SPECIAL_GUN].color ile aynı
+const SPECIAL_COLOR := Color(1.0, 0.22, 0.55)
+const SPECIAL_RING_R := 15.0
+const SPECIAL_TICK_END := 24.0
+
 ## HUD her kare ayarlar: menü/oyun sonu açıkken false
 var allowed := true
+var _armed := false
 
 var _player: Node = null
 var _kick := 0.0
@@ -63,7 +70,16 @@ func _set_cursor_active(on: bool) -> void:
 
 func _on_local_player_spawned(player: Node) -> void:
 	_player = player
+	_armed = false
 	player.ammo_changed.connect(_on_ammo_changed)
+	if player.has_signal("special_armed_changed"):
+		if not player.is_connected("special_armed_changed", _on_special_armed_changed):
+			player.connect("special_armed_changed", _on_special_armed_changed)
+		_armed = bool(player.get("special_armed"))
+
+
+func _on_special_armed_changed(armed: bool) -> void:
+	_armed = armed
 
 
 func _on_ammo_changed(current: int, total: int, reloading: bool) -> void:
@@ -106,9 +122,12 @@ func _draw() -> void:
 	if not visible:
 		return
 	var c := SETTINGS.aim_screen_position(get_viewport()) - global_position
+	var outline := Color(0, 0, 0, 0.75)
+	if _armed:
+		_draw_special(c, outline)
+		return
 	var col := UITheme.DANGER if _empty else UITheme.ACCENT
 	var g := _gap + _kick
-	var outline := Color(0, 0, 0, 0.75)
 
 	for dir: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
 		var a := c + dir * g
@@ -124,3 +143,18 @@ func _draw() -> void:
 		var r := g + TICK_LEN + 10.0
 		draw_arc(c, r, 0.0, TAU, 40, Color(1, 1, 1, 0.12), 5.0, true)
 		draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * _reload_t, 40, UITheme.ACCENT, 5.0, true)
+
+
+## Özel silah nişangahı: sabit halka (saçılma/tepme/şarjör halkası yok) + dışa 4 çentik + nokta; halka 1.2 Hz yavaş nefes
+func _draw_special(c: Vector2, outline: Color) -> void:
+	var breathe := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * TAU * 1.2)
+	var ring_col := Color(SPECIAL_COLOR, lerpf(0.7, 1.0, breathe))
+	draw_arc(c, SPECIAL_RING_R, 0.0, TAU, 40, outline, 7.0, true)
+	draw_arc(c, SPECIAL_RING_R, 0.0, TAU, 40, ring_col, 3.0, true)
+	for dir: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+		var a := c + dir * SPECIAL_RING_R
+		var b := c + dir * SPECIAL_TICK_END
+		draw_line(a, b, outline, 7.0, true)
+		draw_line(a, b, SPECIAL_COLOR, 3.0, true)
+	draw_circle(c, 4.3, outline)
+	draw_circle(c, 2.5, SPECIAL_COLOR)

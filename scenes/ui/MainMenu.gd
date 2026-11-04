@@ -891,8 +891,11 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 	var sub := (tr("KOD  %s  ·  ŞİFRELİ") if has_pw else tr("KOD  %s")) % code
 	info.add_child(UITheme.label(sub, 17, UITheme.TEXT_DIM, UITheme.font_caps))
 	# Özellik çipleri: durum · format · harita
-	var chips := HBoxContainer.new()
-	chips.add_theme_constant_override("separation", 10)
+	# Akış kabı: yer yetmezse uzun harita adı (YERALTI KUANTUM LABİRENTİ) TAM haliyle alt satıra geçer —
+	# kesilmez, satırı kartın dışına da itmez (en küçük genişlik = en geniş tek çip)
+	var chips := HFlowContainer.new()
+	chips.add_theme_constant_override("h_separation", 10)
+	chips.add_theme_constant_override("v_separation", 7)
 	info.add_child(chips)
 	chips.add_child(_room_chip("● OYUNDA" if in_game else "● BEKLEMEDE", UITheme.DANGER if in_game else UITheme.SUCCESS))
 	chips.add_child(_room_chip(NetworkManager.get_format_text(team_size), UITheme.ACCENT))
@@ -940,6 +943,7 @@ func _room_chip(text: String, color: Color) -> Control:
 	chip.add_theme_stylebox_override("panel", UITheme.style(Color(color, 0.12), 10, Color.TRANSPARENT, 0, 12, 2))
 	chip.add_child(UITheme.label(text, 15, color, UITheme.font_caps))
 	return chip
+
 
 
 func _spacer(h: float) -> Control:

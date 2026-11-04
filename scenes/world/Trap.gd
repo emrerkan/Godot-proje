@@ -20,6 +20,9 @@ var reveal_near := 2.0
 var armed := true
 var trapped_peer := -1
 var rescue_ratio := 0.0
+## Tuzak Çözücü: yakalanan kendini çözüyor (PowerupManager.TRAP_SELF_RESCUE_TIME). Host Q'da yazar; client'lar
+## _trap_rescue_sync_rpc'de (rescuer_peer == trapped_peer) yazar — HUD barı süreyi buna göre hesaplar.
+var self_rescue := false
 var _dot_timer := 0.0      # tetiklenince saniyelik hasar tiker
 
 var _manager: Node = null

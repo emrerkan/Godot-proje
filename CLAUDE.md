@@ -384,6 +384,17 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   host `_process` → `SPAWN_INTERVAL` (8-15s) aralıkla `PowerupPoints/Point*` (33 köşe, `tools/maze_corners.py`)
   üzerinde `_spawn_rpc(id, type, pos, lifetime 5-10s)`, `MAX_ACTIVE=3`, ömür dolunca `_despawn_rpc`.
   Tipler `Type {BOMB, HEAL, INTEL_SAT, ENEMY_SAT, FLASH, SMOKE, TRAP}` (index sabit — Powerup.gd/Minimap sayıyla kullanır), görünüm/isim `INFO` (HUD/Minimap/Powerup ortak).
+  **YENİ GÜÇLER (2026-11-05, geliştirmesiz/sabit; spec `docs/ux/new-powers.md`)** — Type sonuna `INVIS`=7, `SPECIAL_GUN`=8, `TRAP_BREAKER`=9; ağırlık 10/5/10;
+  test tuşları 4 / `-` / `=`. **Görünmezlik** `INVIS_DURATION` 6 s: Q → host `_invis_rpc` → `Player.set_invisible(active, duration)` (yerel zamanlayıcı, `invisibility_changed`);
+  görsel karar YEREL `Player.is_hidden_from_local()` (görünmez + yerel oyuncu başka takım): gövde/tüfek/fener/ad/kart işareti/`_fx_light` gizli, Minimap bu oyuncuyu normal+uydu çizmez;
+  kendisi/takımı `InvisibilityShimmer.gdshader` overlay (SelfVisibility overlay'i kaydedilip geri konur). Ateş (normal/özel) veya bıçak → `_invis_break_rpc` (any_peer, sender doğrulanır) anında bozar; adım sesi kalır.
+  Bitişte RAKİP de gövdeyi tam shimmer'la görüp `SHIMMER_FADE_TIME`'da normale dönüşünü izler (kullanıcı: "mordan kendi rengine" geçiş herkese; ölümde yok).
+  **Özel silah:** Q = hazırla/vazgeç (`_request_special_set(want)` → `_special_gun_rpc(peer, armed)` → `Player.set_special_armed`, `special_armed_changed`; slot dolu kalır, Crosshair kırmızı saçılmasız);
+  lazer `SpecialGunFx.build_laser` SADECE yerel oyuncuda (kullanıcı: nişanı başkası görmez), `_aim_special_laser` her kare namludan `_get_aim_target`'a
+  yönlenip boyu ölçeklenir (uç = nişangah); sol tık basışı = TEK atış `Weapon.fire_special(peer, team, aim)` (yön namludan nişana) → `_spawn_special_bullet` (hız 160, `SPECIAL_DAMAGE` 999, menzil 1000, `pierce_walls`, `Bullet.make_special` + `SpecialGunFx.build_tracer`);
+  yerel `PowerupManager.local_special_fired()` → host slotu boşaltır + armed=false. Mermi çömelmeyi GEÇMEZ (`Player.DAMAGE_SPECIAL`=4 — 2/3 bıçakla çakışırdı; çömelmeye bağışık değil), takım arkadaşından geçer, ilk rakipte durur; kill feed ikonu HUD'da.
+  **Tuzak çözücü** (glif `⊘` — `✂` Windows'ta emojiye düşüyordu): tuzakta değilken Q → "Tuzak çözücü boşa kullanıldı", slot BOŞALIR (kullanıcı isteği); tuzaktaysa slot boşalır, `Trap.self_rescue`=true, `TRAP_SELF_RESCUE_TIME` 3 s (arkadaş 4 s), hasar kesilmez.
+  Senkron mevcut `_trap_rescue_sync_rpc(id, ratio, rescuer)`; `rescuer == trapped_peer` = kendi kendine (HUD "ÇÖZÜLÜYOR"/"… KENDİNİ ÇÖZÜYOR"), XP yok. Ölüm slotu + armed'i sıfırlar.
   **TEK UYDU:** ENEMY_SAT artık doğmaz (WEIGHTS'te yok, test tuşu 4 kaldırıldı); INTEL_SAT tüm takımların oyuncuları + kart taşıyıcı.
   Yükseltilebilen değerler (iyileştirme 35, yarıçaplar, fitiller, atış, sis 10 s, uydu 8 s, tuzak) sabit DEĞİL → `PowerTrees.BASE` + `_m(peer)`.
   **SMOKE** (sis bombası, test 8): `_throw_bomb(..., flash=false, smoke=true)` → `_bomb_rpc(..., smoke)` → Bomb.gd `is_smoke`
