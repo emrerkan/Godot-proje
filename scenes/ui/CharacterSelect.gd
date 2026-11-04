@@ -49,6 +49,7 @@ var _font_caps: FontVariation
 
 
 func _ready() -> void:
+	preload("res://scenes/audio/MenuMusic.gd").duck(get_tree())   # menü müziği sürer ama yarı sese kısılır; oyun başlayınca HUD durdurur
 	_init_fonts()
 	NetworkManager.player_list_updated.connect(_refresh)
 	_build_ui()

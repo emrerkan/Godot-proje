@@ -21,7 +21,8 @@ const BASE := {
 	"trap_dot": 12.0, "trap_rescue": 4.0, "trap_trigger": 0.9, "trap_reveal_far": 5.0, "trap_reveal_near": 2.0,
 }
 
-## Detay panelinde "eski → yeni" gösterimi: [etiket, biçim]  (biçim: s saniye, m metre, hp can, pct yüzde, x çarpan, bool)
+## Detay panelinde etkisi gösterilecek anahtarlar (UpgradePage `LABELS.has(key)` süzgeci). DİKKAT: etiket/birim
+## değerleri UI'da GÖSTERİLMEZ (mutlak sayı yok, kullanıcı kararı) — metin için `change_text` + `SUBJECTS` kullan.
 const LABELS := {
 	"bomb_fuse": ["Fitil", "s"], "bomb_radius": ["Patlama yarıçapı", "m"], "bomb_edge": ["Kenar hasarı", "pct"],
 	"bomb_throw": ["Atış menzili", "m"], "bomb_flight": ["Uçuş süresi", "s"],
@@ -50,11 +51,11 @@ const TREES := {
 	]},
 	"heal": {"type": 1, "name": "SAĞLIK", "short": "SAĞLIK", "nodes": [
 		{"id": "root", "name": "Sıkı Sargı", "desc": "Sağlık gücü daha çok iyileştirir.", "req": "", "pos": Vector2i(0, 1), "set": {"heal_amount": 40.0}},
-		{"id": "a1", "name": "Yenilenme", "desc": "İyileştirmeden sonra 4 sn boyunca ek can dolar.", "req": "root", "pos": Vector2i(1, 0), "set": {"heal_regen": 10.0}},
+		{"id": "a1", "name": "Yenilenme", "desc": "İyileştirmeden sonra bir süre ek can dolar.", "req": "root", "pos": Vector2i(1, 0), "set": {"heal_regen": 10.0}},
 		{"id": "a2", "name": "Güçlü Sargı", "desc": "Sağlık gücü daha da çok iyileştirir.", "req": "a1", "pos": Vector2i(2, 0), "set": {"heal_amount": 45.0}},
 		{"id": "b1", "name": "Uzak Tedavi", "desc": "Medic ile takım arkadaşını daha uzaktan iyileştirirsin.", "req": "root", "pos": Vector2i(1, 2), "set": {"heal_medic_range": 8.0, "heal_medic_aim": 3.2}},
-		{"id": "b2", "name": "Acil Müdahale", "desc": "Canı %30'un altındaki oyuncuda iyileştirme 1.5 kat etki eder.", "req": "b1", "pos": Vector2i(2, 2), "set": {"heal_critical": 1.5}},
-		{"id": "b3", "name": "Grup Şifası", "desc": "İyileştirilenin 2.5 m yakınındaki takım arkadaşları iyileştirmenin %20'sini alır.", "req": "b2", "pos": Vector2i(3, 2), "set": {"heal_group": 0.2}},
+		{"id": "b2", "name": "Acil Müdahale", "desc": "Canı kritik seviyedeki oyuncuda iyileştirme güçlenir.", "req": "b1", "pos": Vector2i(2, 2), "set": {"heal_critical": 1.5}},
+		{"id": "b3", "name": "Grup Şifası", "desc": "İyileştirilenin yakınındaki takım arkadaşları da iyileşir.", "req": "b2", "pos": Vector2i(3, 2), "set": {"heal_group": 0.2}},
 	]},
 	"sat": {"type": 2, "name": "UYDU", "short": "UYDU", "nodes": [
 		{"id": "root", "name": "Kalibrasyon", "desc": "Uydu daha uzun süre açık kalır.", "req": "", "pos": Vector2i(0, 1), "set": {"sat_duration": 9.5}},
@@ -67,7 +68,7 @@ const TREES := {
 		{"id": "a2", "name": "Derin Körlük", "desc": "Körlük daha güçlü ve uzun sürer.", "req": "a1", "pos": Vector2i(2, 0), "set": {"flash_strength": 1.15}},
 		{"id": "b1", "name": "Göz Kırpma", "desc": "Kendi flaşın seni daha az kör eder.", "req": "root", "pos": Vector2i(1, 2), "set": {"flash_self": 0.6}},
 		{"id": "b2", "name": "Uzun Kol", "desc": "Flaşı daha uzağa atarsın.", "req": "b1", "pos": Vector2i(2, 2), "set": {"flash_throw": 14.5}},
-		{"id": "b3", "name": "Dost Uyarısı", "desc": "Takım arkadaşların senin flaşından yarı yarıya etkilenir.", "req": "b2", "pos": Vector2i(3, 2), "set": {"flash_team": 0.5}},
+		{"id": "b3", "name": "Dost Uyarısı", "desc": "Takım arkadaşların senin flaşından daha az etkilenir.", "req": "b2", "pos": Vector2i(3, 2), "set": {"flash_team": 0.5}},
 	]},
 	"smoke": {"type": 5, "name": "SİS BOMBASI", "short": "SİS", "nodes": [
 		{"id": "root", "name": "Yoğun Sis", "desc": "Sis daha uzun süre kalır.", "req": "", "pos": Vector2i(0, 1), "set": {"smoke_duration": 11.0}},
@@ -139,19 +140,46 @@ static func next_cost(owned: Dictionary, tree: String) -> int:
 	return int(round(COST_BASE * pow(COST_GROWTH, owned_count(owned, tree)) / 5.0)) * 5
 
 
-## Detay paneli: değeri biçimle ("4.6 m", "%45", "Var")
-static func format_value(key: String, v: float) -> String:
-	match String(LABELS.get(key, ["", ""])[1]):
-		"s":
-			return String(TranslationServer.translate("%.1f sn")) % v
-		"m":
-			return "%.1f m" % v
-		"hp":
-			return String(TranslationServer.translate("%d can")) % int(round(v))
-		"pct":
-			return String(TranslationServer.translate("%%%d")) % int(round(v * 100.0))
-		"x":
-			return "×%.1f" % v
-		"bool":
-			return String(TranslationServer.translate("Var" if v > 0.0 else "Yok"))
-	return str(v)
+## change_text için doğal Türkçe özneler (anahtar → özne)
+const SUBJECTS := {
+	"bomb_fuse": "Fitil süresi", "bomb_radius": "Patlama alanı", "bomb_edge": "Kenar hasarı",
+	"bomb_throw": "Atış menzili", "bomb_flight": "Uçuş süresi",
+	"heal_amount": "İyileştirme", "heal_regen": "Ek can yenilenmesi", "heal_medic_range": "Medic menzili",
+	"heal_medic_aim": "Medic nişan alanı", "heal_critical": "Kritik canda iyileştirme", "heal_group": "Grup iyileştirmesi",
+	"sat_duration": "Uydu süresi",
+	"flash_fuse": "Flaş fitil süresi", "flash_radius": "Flaş etki alanı", "flash_strength": "Körlük şiddeti",
+	"flash_self": "Sana körlük", "flash_throw": "Flaş atış menzili", "flash_team": "Takımına körlük",
+	"smoke_duration": "Sis süresi", "smoke_radius": "Sis alanı", "smoke_fuse": "Duman çıkış süresi",
+	"smoke_throw": "Sis atış menzili", "smoke_radar": "Uyduda görünmezlik",
+	"trap_dot": "Saniyelik hasar", "trap_rescue": "Kurtarma süresi", "trap_trigger": "Tetik alanı",
+	"trap_reveal_far": "Fark edilme mesafesi", "trap_reveal_near": "Yakın fark edilme mesafesi",
+}
+## Süre birimli anahtarlar (artış "uzar", azalış "kısalır")
+const TIME_KEYS := ["bomb_fuse", "bomb_flight", "sat_duration", "flash_fuse", "smoke_duration", "smoke_fuse", "trap_rescue"]
+
+
+## Detay paneli etki cümlesi — mutlak sayı yok, yüzde dili ("Patlama alanı %15 artar")
+static func change_text(key: String, before: float, after: float) -> String:
+	var subj: String = String(TranslationServer.translate(String(SUBJECTS.get(key, key))))
+	# Yeni etkiler (önceden yoktu)
+	if before <= 0.0 and after > 0.0:
+		match key:
+			"heal_regen":
+				return String(TranslationServer.translate("İyileştirmeden sonra ek can dolar"))
+			"heal_group":
+				return String(TranslationServer.translate("Yakındaki takım arkadaşları da iyileşir"))
+			"smoke_radar":
+				return String(TranslationServer.translate("Sistekiler uyduda görünmez"))
+	# Etki kalkıyor
+	if after <= 0.0 and before > 0.0:
+		return String(TranslationServer.translate("%s kalkar")) % subj
+	var grow: bool = after >= before
+	var is_time: bool = TIME_KEYS.has(key)
+	var p: int = int(round(absf(after - before) / before * 100.0)) if before > 0.0 else 0
+	if p <= 0:
+		if is_time:
+			return String(TranslationServer.translate("%s biraz uzar" if grow else "%s biraz kısalır")) % subj
+		return String(TranslationServer.translate("%s biraz artar" if grow else "%s biraz azalır")) % subj
+	if is_time:
+		return String(TranslationServer.translate("%s %%%d uzar" if grow else "%s %%%d kısalır")) % [subj, p]
+	return String(TranslationServer.translate("%s %%%d artar" if grow else "%s %%%d azalır")) % [subj, p]

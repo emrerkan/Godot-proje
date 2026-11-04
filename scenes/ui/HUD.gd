@@ -101,6 +101,7 @@ var _item_name: Label
 
 func _ready() -> void:
 	UITheme.apply(get_tree())
+	preload("res://scenes/audio/MenuMusic.gd").stop(get_tree())   # oyun başladı → menü müziği biter (kullanıcı isteği)
 	TeamManager.score_updated.connect(_on_score_updated)
 	GameManager.game_ended.connect(_on_game_ended)
 	GameManager.card_picked_up.connect(_on_card_picked_up)

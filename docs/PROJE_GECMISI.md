@@ -204,6 +204,13 @@
     `breath_soft`; zıplamada sadece kullanıcının kaydı. Çömelme adımı → Owlish yumuşak adımlar. Kullanıcının önerdiği soundsnap.com
     çömelme sesi EKLENMEDİ: Soundsnap ücretli abonelik + kendi lisansı (indirme hesap ister, dağıtım/yeniden yayın şartları var) —
     kullanıcı kendi hesabıyla indirirse `audio/sfx`'e bırakıp `step_soft`'a bağlanabilir.
+46. **Yükseltme ekranı yenilemesi (2026-11-04)** — kullanıcı: "bar bar seviye yerine tek bar, yüzdelik dolsun ama '%10-20 yükseltildi'
+    yazmayalım; güçlerin ne kadar verdiğini net söylemeyelim (15 can değil %15 can); Call of Duty'deki gibi sade renk ve özel çizim
+    ikonlar (emoji değil)". Kararlar: ikon/palet kapsamı **sadece yükseltme ekranı** (diğer ekranlar sonra); özet kartı yüzde
+    (`PlayerProfile.stat_percent`); satırda sadece etki metni (`stat_effect_text`, örn. "%15 can artar"), ilerleme metni yok;
+    güç detayı `PowerTrees.change_text` (mutlak sayı yok). Stat başına TEK bar; kehribar sadece birincil eylem + XP. Yeni
+    `scenes/ui/IconSet.gd` (kodla çizilen vektör ikonlar). Kalıcı kural: yükseltme/güç değerleri oyuncuya mutlak sayı gösterilmez.
+    Orkestra ile yapıldı: UX spec (`docs/ux/upgrade-page.md`) → sanat spec (`SANAT_KITABI.md` "İkon dili v1") → uygulama → /ux-review → düzeltme.
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 

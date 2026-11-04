@@ -42,6 +42,7 @@ const TEAM_GLYPHS: Array[String] = ["●", "▲", "■", "◆"]
 const RADIUS := 7          # corner_detail=1 ile pah (kesik köşe) boyu — v2'de küçük (BF1 keskin dikdörtgen)
 
 static var theme: Theme
+static var _glow_hooked := false
 static var font_regular: Font
 static var font_bold: FontVariation
 static var font_title: FontVariation
@@ -62,8 +63,23 @@ static func apply(tree: SceneTree) -> void:
 	_apply_scaling(tree.root)
 	# Sesler (kodla sentez, arka planda) + tüm düğmelere hover/tık sesi
 	preload("res://scenes/audio/Sfx.gd").setup(tree)
+	# Her PrimaryButton'a fener parıltısı (ButtonGlow) — sonradan eklenen düğmeler de
+	if not _glow_hooked:
+		_glow_hooked = true
+		tree.node_added.connect(func(n: Node) -> void: _hook_primary(n))
 	# Oyuncu ayarları (grafik/ses/kontrol) — açılışta bir kez; ölçeklemeden SONRA (ui_scale content_scale_factor'u ezer)
 	preload("res://scenes/settings/GameSettings.gd").apply_once(tree)
+
+
+## Düğme ağaca girince (varyasyon add_child'dan SONRA atanmış olabilir → ertelenmiş kontrol) PrimaryButton ise ButtonGlow ekler
+static func _hook_primary(node: Node) -> void:
+	if node is Button:
+		_check_primary.call_deferred(node)
+
+
+static func _check_primary(btn: Button) -> void:
+	if is_instance_valid(btn) and btn.theme_type_variation == &"PrimaryButton":
+		preload("res://scenes/ui/ButtonGlow.gd").attach(btn)
 
 
 ## Ölçekleme: CANVAS_ITEMS → 2D arayüz BASE_RESOLUTION'da tasarlanmış gibi davranır, ekrana orantılı ölçeklenir
@@ -219,26 +235,18 @@ static func _build_theme() -> Theme:
 	t.set_color("font_focus_color",    "Button", TEXT)
 	t.set_color("font_disabled_color", "Button", Color(TEXT_DIM, 0.6))
 
-	# ── PrimaryButton: sodyum kehribarı plaka — altta koyu kenar (basılabilir metal düğme hissi) ──
+	# ── PrimaryButton: içi SADE cam, SADECE çerçeve kehribar (kullanıcı isteği) + içinde fener parıltısı
+	#    (ButtonGlow.gd — `_hook_primary` her PrimaryButton'a otomatik ekler) ──
 	t.set_type_variation("PrimaryButton", "Button")
-	var prim_norm := style(ACCENT, RADIUS, Color.TRANSPARENT, 0, btn_margin_h, btn_margin_v)
-	prim_norm.border_color = ACCENT.darkened(0.45)
-	prim_norm.border_width_bottom = 5
-	var prim_hover := style(ACCENT.lightened(0.14), RADIUS, Color.TRANSPARENT, 0, btn_margin_h, btn_margin_v)
-	prim_hover.border_color = ACCENT.darkened(0.35)
-	prim_hover.border_width_bottom = 5
-	prim_hover.shadow_color = Color(ACCENT, 0.35)
-	prim_hover.shadow_size = 23
-	var prim_pressed := style(ACCENT.darkened(0.12), RADIUS, Color.TRANSPARENT, 0, btn_margin_h, btn_margin_v)
-	prim_pressed.border_color = ACCENT.darkened(0.5)
-	prim_pressed.border_width_top = 3  # basılınca "çöker"
-	t.set_stylebox("normal",   "PrimaryButton", prim_norm)
+	var prim_hover := style(Color(1, 1, 1, 0.09), RADIUS, ACCENT, 2, btn_margin_h, btn_margin_v)
+	t.set_stylebox("normal",   "PrimaryButton", style(Color(1, 1, 1, 0.05), RADIUS, Color(ACCENT, 0.85), 2, btn_margin_h, btn_margin_v))
 	t.set_stylebox("hover",    "PrimaryButton", prim_hover)
-	t.set_stylebox("pressed",  "PrimaryButton", prim_pressed)
-	t.set_stylebox("disabled", "PrimaryButton", style(Color(ACCENT, 0.18), RADIUS, Color.TRANSPARENT, 0, btn_margin_h, btn_margin_v))
+	t.set_stylebox("pressed",  "PrimaryButton", style(Color(ACCENT, 0.16), RADIUS, ACCENT, 2, btn_margin_h, btn_margin_v))
+	t.set_stylebox("hover_pressed", "PrimaryButton", style(Color(ACCENT, 0.16), RADIUS, ACCENT, 2, btn_margin_h, btn_margin_v))
+	t.set_stylebox("disabled", "PrimaryButton", style(Color(1, 1, 1, 0.03), RADIUS, Color(ACCENT, 0.22), 1, btn_margin_h, btn_margin_v))
 	for key: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
-		t.set_color(key, "PrimaryButton", ACCENT_TEXT)
-	t.set_color("font_disabled_color", "PrimaryButton", Color(ACCENT_TEXT, 0.6))
+		t.set_color(key, "PrimaryButton", TEXT)
+	t.set_color("font_disabled_color", "PrimaryButton", Color(TEXT_DIM, 0.6))
 
 	# ── GhostButton: şeffaf, sadece hover'da zemin ──
 	t.set_type_variation("GhostButton", "Button")

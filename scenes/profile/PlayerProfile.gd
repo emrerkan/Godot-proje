@@ -23,11 +23,21 @@ const CHARACTERS: Array[String] = ["Tank", "Visioner", "Runner", "Sniper", "Medi
 ## Stat sırası UI'da da bu sırayla gösterilir. per_level = seviye başına oran.
 const STATS: Array[String] = ["health", "speed", "damage", "weapon", "stamina"]
 const STAT_INFO := {
-	"health":  {"name": "CAN",          "glyph": "❤", "per_level": 0.05, "desc": "+%%%d maksimum can"},
-	"speed":   {"name": "HIZ",          "glyph": "➤", "per_level": 0.03, "desc": "+%%%d hareket hızı"},
-	"damage":  {"name": "HASAR",        "glyph": "✸", "per_level": 0.04, "desc": "+%%%d mermi hasarı"},
-	"weapon":  {"name": "SİLAH",        "glyph": "⟳", "per_level": 0.04, "desc": "%%%d hızlı şarjör ve atış"},
-	"stamina": {"name": "DAYANIKLILIK", "glyph": "⚡", "per_level": 0.10, "desc": "+%%%d koşu/çömelme süresi"},
+	"health":  {"name": "CAN",          "per_level": 0.05},
+	"speed":   {"name": "HIZ",          "per_level": 0.03},
+	"damage":  {"name": "HASAR",        "per_level": 0.04},
+	"weapon":  {"name": "SİLAH",        "per_level": 0.04},
+	"stamina": {"name": "DAYANIKLILIK", "per_level": 0.10},
+}
+
+## Etki cümleleri (yüzde dili, mutlak sayı yok). "weapon" yalnız şarjör süresini söyler: reload çarpanı
+## tam 1 - seviye × per_level (atış aralığı ayrı, daha zayıf ayarlı — bkz multipliers) → söylenen yüzde dürüst.
+const STAT_EFFECT := {
+	"health": "Can %%%d artar",
+	"speed": "Hareket hızı %%%d artar",
+	"damage": "Mermi hasarı %%%d artar",
+	"weapon": "Şarjör süresi %%%d kısalır",
+	"stamina": "Koşu ve çömelme süresi %%%d uzar",
 }
 
 static var xp := 0                 # harcanabilir
@@ -195,7 +205,13 @@ static func multipliers(levels: Variant) -> Dictionary:
 	}
 
 
-## UI metni: "+%15 maksimum can" gibi (seviye × oran)
-static func stat_bonus_text(stat: String, level: int) -> String:
-	var info: Dictionary = STAT_INFO[stat]
-	return String(TranslationServer.translate(info["desc"])) % int(round(level * float(info["per_level"]) * 100.0))
+## Seviyenin yüzde karşılığı (ör. 5 → 25)
+static func stat_percent(stat: String, level: int) -> int:
+	return int(round(level * float(STAT_INFO[stat]["per_level"]) * 100.0))
+
+
+## "Can %25 artar"; level 0 → "Henüz yükseltilmedi"
+static func stat_effect_text(stat: String, level: int) -> String:
+	if level <= 0 or not STAT_EFFECT.has(stat):
+		return String(TranslationServer.translate("Henüz yükseltilmedi"))
+	return String(TranslationServer.translate(STAT_EFFECT[stat])) % stat_percent(stat, level)

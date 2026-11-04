@@ -1,4 +1,4 @@
-// canvas_ui_menu_beam.gdshader — TacticalDark ana menü (MainMenu.gd OYNA alt menüsü)
+// canvas_ui_menu_beam.gdshader — TacticalDark ana menü (MainMenu.gd OYNA alt menüsü) + UpgradePage ikon kutuları / YÜKSELT düğmeleri
 // Amaç: fare bir maddenin üstüne gelince "el feneriyle oraya tutuyormuşuz" izlenimi: maddenin arkasında
 // sıcak beyaz fener izi (parlak merkez + soluk dış halka) + ışıkta süzülen toz zerreleri. `intensity` 0 → 1 tween'lenir.
 // Toplamsal karışım — sadece aydınlatır; dikdörtgen maddeden geniş tutulur, kenarlarda tamamen söner.
@@ -21,6 +21,7 @@ uniform float dust_cell_px = 26.0;                             // zerre ızgaras
 uniform float dust_density : hint_range(0.0, 1.0) = 0.45;      // hücrelerin ne kadarında zerre var
 uniform float dust_alpha : hint_range(0.0, 1.0) = 0.8;
 uniform vec2 dust_drift_px = vec2(6.0, -9.0);                  // süzülme hızı (piksel/sn) — yukarı/sağa
+uniform float dust_clock = -1.0;                               // >= 0: zerre saati dışarıdan (sabit tutulursa toz donar, UpgradePage), < 0: TIME
 group_uniforms;
 
 const float FLICKER_DEPTH = 0.06;    // fener titremesi genliği
@@ -51,8 +52,10 @@ void fragment() {
 	float light = (hot * hot_strength + spill * spill_strength) * flicker;
 
 	// İki ölçekte toz — sadece ışık lekesinin içinde görünür
-	float specks = dust(FRAGCOORD.xy, dust_cell_px, TIME)
-		+ 0.6 * dust(FRAGCOORD.xy * 1.7 + 50.0, dust_cell_px * 1.3, TIME * 0.7);
+	// Zerre saati: dust_clock verilmişse o (dallanmasız seçim), yoksa TIME
+	float dt = mix(TIME, dust_clock, step(0.0, dust_clock));
+	float specks = dust(FRAGCOORD.xy, dust_cell_px, dt)
+		+ 0.6 * dust(FRAGCOORD.xy * 1.7 + 50.0, dust_cell_px * 1.3, dt * 0.7);
 	specks *= smoothstep(0.95, 0.2, r);
 
 	float a = (light * light_alpha + specks * dust_alpha) * intensity;

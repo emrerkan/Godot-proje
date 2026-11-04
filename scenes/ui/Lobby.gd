@@ -44,6 +44,7 @@ var _host_hint: Label
 
 func _ready() -> void:
 	UITheme.apply(get_tree())
+	preload("res://scenes/audio/MenuMusic.gd").play(get_tree())   # menüden süren müzik devam eder (yoksa başlar)
 	NetworkManager.player_list_updated.connect(_refresh_player_list)
 	NetworkManager.host_migrated.connect(_on_host_migrated)
 	NetworkManager.room_settings_changed.connect(_on_settings_changed)
@@ -838,8 +839,9 @@ func _style_ready_button(ready_flag: bool, local_team: int) -> void:
 			_ready_btn.remove_theme_stylebox_override(key)
 		for key: String in ["font_color", "font_hover_color", "font_pressed_color"]:
 			_ready_btn.remove_theme_color_override(key)
-		# Host'ta ana vurgu "Başlat"ta olsun, client'ta "Hazırım"da
-		_ready_btn.theme_type_variation = "" if NetworkManager.is_host() else "PrimaryButton"
+		# Host'ta da client'ta da aynı birincil görünüm (kehribar çerçeve + fener/toz — kullanıcı isteği)
+		_ready_btn.theme_type_variation = "PrimaryButton"
+		preload("res://scenes/ui/ButtonGlow.gd").attach(_ready_btn)   # "HAZIRSIN" düz varyasyondan dönüşte; düz iken kendini gizler
 
 
 func _update_team_styles() -> void:

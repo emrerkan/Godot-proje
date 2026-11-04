@@ -34,11 +34,16 @@ const FILES := {
 	"step": ["walk_1.mp3", "walk_2.mp3", "walk_3.mp3", "walk_4.mp3"],          # kullanıcının yurume-ses.mp3'ünden 4 adım
 	"step_soft": ["crouch_step_1.wav", "crouch_step_2.wav", "crouch_step_3.wav", "crouch_step_4.wav"],  # çömelme
 	"jump": ["ziplama-ses.mp3"],                                                # kullanıcının kaydı
+	"crouch": ["crouch_1.wav"],                     # kullanıcının AI kaydı (çömelmeye geçiş; baştaki sessizlik kesildi)
+	"flip": ["flip_1.mp3", "flip_2.mp3"],           # kullanıcının AI kayıtları (takla başı)
 	"explosion": ["explosion_1.mp3", "explosion_2.wav"],
 	"flashbang": ["flash_bang_01.ogg", "flash_bang_04.ogg", "flash_bang_10.ogg"],
 	"mag_out": ["mag_out.ogg"], "mag_in": ["mag_in.ogg"], "bolt": ["bolt.ogg"],
 	"stab": ["stab.ogg"], "throw": ["throw.ogg"],
-	"ui_click": ["fener-acma-kapama.mp3"],   # kullanıcı: menü tıkı = fener düğmesi "ui_hover": ["ui_hover.ogg"], "ui_open": ["ui_open.ogg"],
+	"ui_click": ["fener-acma-kapama.mp3"],   # kullanıcı: menü tıkı = fener düğmesi
+	# kullanıcı: eski Kenney hover sesi "baloncuk" gibiydi → OYUNDAKİ ATEŞ sesi (kısık smg); yükseltme satın alınca tüfek atışı
+	"ui_hover": ["shot_smg_1.wav", "shot_smg_2.wav", "shot_smg_3.wav"],
+	"upgrade_buy": ["shot_rifle_1.wav", "shot_rifle_2.wav", "shot_rifle_3.wav", "shot_rifle_4.wav"],
 	"card_pickup": ["card_pickup.ogg"], "card_alert": ["card_alert.ogg"],
 }
 ## Kodla sentezlenen sesler (bip/çan/çınlama — sentezin iyi yaptığı basit sesler)
@@ -170,7 +175,7 @@ static func _hook_button(b: BaseButton) -> void:
 		if now - _last_hover_ms < HOVER_MIN_GAP_MS:
 			return
 		_last_hover_ms = now
-		play_ui(b.get_tree(), "ui_hover", -14.0, randf_range(0.97, 1.03)))
+		play_ui(b.get_tree(), "ui_hover", -24.0, randf_range(0.97, 1.03)))   # ateş sesi: menüde kısık
 	b.pressed.connect(func() -> void:
 		if b.is_inside_tree():
 			play_ui(b.get_tree(), "ui_click", -8.0))

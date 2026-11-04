@@ -18,6 +18,7 @@ const MENU_OVERLAY := preload("res://scenes/ui/MenuOverlay.gdshader")
 const MENU_BEAM := preload("res://scenes/ui/canvas_ui_menu_beam.gdshader")
 const BLUR_BACKDROP := preload("res://scenes/ui/BlurBackdrop.gdshader")
 const UPGRADE_PAGE := preload("res://scenes/ui/UpgradePage.gd")
+const MENU_MUSIC := preload("res://scenes/audio/MenuMusic.gd")
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const SETTINGS_WINDOW := preload("res://scenes/ui/SettingsWindow.gd")
 const GAME_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
@@ -103,6 +104,7 @@ func _ready() -> void:
 	RoomManager.rooms_updated.connect(_refresh_room_list)
 
 	_build_ui()
+	MENU_MUSIC.play(get_tree())   # karakter seçimine kadar sürer (lobi de çalar, kesilmez)
 	_name_input.text = _load_name()
 	_show_tab("browse")
 	_update_listening()
@@ -252,8 +254,7 @@ func _modal_head(title: Label, on_close: Callable) -> Control:
 func _fade_layer(layer: Control, mat: ShaderMaterial, card: Control, show: bool) -> void:
 	var tw := create_tween().set_parallel(true)
 	if show:
-		SFX.play_ui(get_tree(), "ui_open", -12.0)
-		layer.visible = true
+		layer.visible = true   # açılış sesi yok — kullanıcı: sadece düğmenin fener tıkı
 		card.modulate.a = 0.0
 		tw.tween_method(func(v: float) -> void: mat.set_shader_parameter("amount", v), 0.0, 1.0, 0.18)
 		tw.tween_property(card, "modulate:a", 1.0, 0.16)

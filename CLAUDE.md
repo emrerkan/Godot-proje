@@ -17,7 +17,16 @@ XP: `GameManager.gain_xp(amount, reason)` YEREL (her peer kendine): `_announce_k
 `_apply_card_pickup_rpc`, `_process` (hayatta kalma/kart taşıma tick'leri), `_end_game_rpc` (maç+zafer, `match_xp`),
 PowerupManager `_set_item_rpc(..., picked_up)` ve `_medic_heal_rpc`. `xp_gained` → HUD `_xp_feed`. UI: MainMenu sol alttaki operatör
 kartında profil seviyesi + XP; sağ üst gezinmedeki **PROFİL** → `_open_profile()` bulanık modal (`_profile_modal`, ESC/✕/dışına tık kapatır)
-içinde `UpgradePage.gd` (oda sekmeleri sadece oyun bulmak için — profil oraya konmayacak, kullanıcı isteği); CharacterSelect kartları yükseltilmiş değer + "SV n". Kurallar/fikir havuzu: docs/PROJE_GECMISI.md §5.
+içinde `UpgradePage.gd` (oda sekmeleri sadece oyun bulmak için — profil oraya konmayacak, kullanıcı isteği). **UpgradePage kuralları:** stat başına TEK bar,
+ilerleme metni yok ("%40 yükseltildi" yazılmaz), satırda sadece `PlayerProfile.stat_effect_text` ("%15 can artar"), özet kartı yüzde `stat_percent`, güç detayı
+`PowerTrees.change_text`; oyuncuya MUTLAK sayı gösterilmez (kullanıcı kuralı), emoji yok, sade palet (kehribar sadece birincil eylem + XP; CoD tarzı, şimdilik sadece bu ekran). İSTİSNA: güç ağacı düğüm çerçeveleri
+durum renkli `STATE_COLORS` (açık yeşil / sırası gelen sarı / kilitli kırmızı; bağlantı çizgileri de); düğüm ve XP çipi İÇİ SAYDAM, sadece çerçeve
+renkli; açık düğümde yazı/ikon yok (sadece yeşil); KİLİTLİ düğüme tıklamak detay AÇMAZ (`_select_node` reddeder, ret sesi, imleç yasak). Panel yüksekliği SABİT (güç sekmesi
+`custom_minimum_size.y` = karakter sekmesi; stat düğmesi 380×65 → MAKS satırı kısalmaz). İkon kutuları `_icon_box`: arkada `canvas_ui_menu_beam`
+fener lekesi + toz, satır üstünde/odakta yanar (`_process`, `BEAM_IDLE`→`BEAM_LIT`), detay kutusu hep yanık.
+YÜKSELT/AÇ = tema PrimaryButton (aşağıda, ButtonGlow); "XP YETERSİZ" `_set_soft(btn,true)` → stil override + meta `glow_off` (fener yok).
+İkonlar `scenes/ui/IconSet.gd` (statik, `IconSet.make(id, size, color)`; kodla çizilen vektör: health/speed/damage/weapon/stamina/bomb/heal/sat/flash/smoke/trap/lock/check;
+stil: docs/SANAT_KITABI.md "İkon dili v1", UX spec: docs/ux/upgrade-page.md). CharacterSelect kartları yükseltilmiş değer + "SV n". Kurallar/fikir havuzu: docs/PROJE_GECMISI.md §5.
 **Güç ağaçları (HESAP GENELİ)** — `scenes/profile/PowerTrees.gd` (statik, preload): `TREES` (bomb/heal/sat/flash/smoke/trap; düğüm
 id/req/pos/`set`), `BASE` değerler, `mods(owned)` = BASE + düğüm `set`'leri (tanım sırasıyla — sonraki öncekini ezer), `mods_for(peer)`
 (NetworkManager.players[peer]["powers"]), fiyat ağaç başına `300×1.4^n`. Kayıt `PlayerProfile.powers` (cfg `[powers] owned`), `buy_power`.
@@ -42,16 +51,19 @@ MainMenu sol alt "⚙ AYARLAR" (kapanınca arka plan ayarı değiştiyse yeniden
 OGA nefes/patlama/bang, Kenney adım/arayüz/metal). `FILES` = ad → varyant listesi (`stream` her çalışta rastgele biri). Kullanıcı ilk
 sentez sürümü için "hiç olmamış" dedi → silah/adım/patlama/nefes/menü KAYIT olmalı; sadece `SYNTH` (tinnitus, sis tıslaması, kilit bipleri,
 maç sonu akoru) kodla. Silah/nefes dosyaları işlenmiş (96→48 kHz, mono, ilk geçişe hizalı kesim) — işleme aracı repo dışında (scratchpad).
-`setup(tree)` (UITheme.apply) WorkerThreadPool'da hepsini yükler + `node_added` ile HER BaseButton'a hover (`ui_hover` -14 dB) / tık (`ui_click` -8 dB). Çalma: `play_ui` (konumsuz polifonik, kanal UI/SFX), `make_voice`+`play_voice`
+`setup(tree)` (UITheme.apply) WorkerThreadPool'da hepsini yükler + `node_added` ile HER BaseButton'a hover (`ui_hover` -24 dB) / tık (`ui_click` -8 dB).
+Kullanıcı: eski Kenney hover sesi "baloncuk" gibiydi → `ui_hover` = `shot_smg_*` (OYUNDAKİ ATEŞ sesi). MainMenu panel/PROFİL açılışında ayrı ses YOK
+(sadece fener tıkı). UpgradePage satın alma (stat + güç düğümü) → `upgrade_buy` = `shot_rifle_*` -8 dB. Çalma: `play_ui` (konumsuz polifonik, kanal UI/SFX), `make_voice`+`play_voice`
 (oyuncuya bağlı polifonik 3D), `play_at` (tek seferlik 3D, en fazla 32). Dinleyici: `SfxListener` yerel oyuncunun kafasında, KAMERA yönünde.
 Bağlantılar: Player `_on_weapon_fired` (`shot_for(karakter)`: Tank AK rifle, Visioner AR-15 carbine, Runner smg, Medic SKS marksman,
 Sniper Mosin; `SHOT_VOLUME_DB`), RELOAD → `_play_reload_sounds` (mag_out → %55 mag_in → %85 bolt, tween), STAB, `_update_footsteps`
 (adım boyu `STEP_STRIDE`, `STEP_VOLUME_DB` koşu -10/yürü -16/çömel -24; `step` = kullanıcının yurume-ses.mp3'ünden 4 adım,
 `step_soft` = Owlish yumuşak adımlar; iniş = tok adım; uzak oyuncularda da), zıplama başı `jump` (kullanıcının ziplama-ses.mp3'ü,
-üstüne nefes YOK), **nefes** `_play_breath(ad, …)` (çömelmeye geçiş `breath_soft`, takla başı `breath_hard`; `BREATH_MIN_GAP`),
+üstüne nefes YOK), **efor sesi** `_play_breath(ad, …)` (çömelmeye geçiş `crouch` = kullanıcının AI kaydı crouch_1.wav, takla başı `flip` = flip_1/2.mp3; `BREATH_MIN_GAP`;
+eski Owlish `breath_*` dosyaları FILES'ta duruyor ama kullanılmıyor; kullanıcı sırada bıçak/bomba/kazandı/kaybetti/şarjör kayıtları getirecek),
 menü tıkı `ui_click` = kullanıcının fener-acma-kapama.mp3'ü. Kullanıcı kendi ses dosyalarını audio/sfx'e bırakır → FILES'a bağla. Bomb.gd `throw` + explosion/flashbang/smoke, HUD flaş → `tinnitus`, kart
 alındı (kendi takım `card_pickup` / rakip `card_alert`), kilit bipleri `_update_unlock_ticks` (KONUMSUZ — kapının yerini ele vermez;
-takım tiz/rakip kalın, hızlanır), `unlock_reset`, maç sonu `match_win/lose`, MainMenu panel açılışı `ui_open`.
+takım tiz/rakip kalın, hızlanır), `unlock_reset`, maç sonu `match_win/lose`.
 
 ## Dil (TR/EN) — `scenes/settings/Lang.gd` + `LangEN.gd` (statik, `preload`)
 Kaynak dil TÜRKÇE; `LangEN.STRINGS` = {"<Türkçe metin birebir>": "English"} (~340 anahtar). `Lang.apply(setting)` (GameSettings.apply_all)
@@ -82,6 +94,10 @@ kodla Theme kurup `root.theme`'e atar (sahne geçişlerinde korunur, tüm sahnel
 gerçek ekran pikselinde çizer, yoksa ölçeklemede bulanık). MenuBackground3D bundan türer, CharacterSelect önizlemeleri kullanır. Palet sabitleri
 (`ACCENT` el feneri sarısı, `SURFACE*`, `TEXT_DIM`...), `style()`/`label()` helper'ları, fontlar (`font_bold/title/caps`).
 Tip varyasyonları: Button → `PrimaryButton`/`GhostButton`/`TabButton`, Label → `TitleLabel`/`CapsLabel`/`DimLabel`.
+**PrimaryButton (kullanıcı isteği, TÜM oyun):** içi sade cam, SADECE çerçeve kehribar, yazı beyaz (eski dolu kehribar plaka YOK) + `scenes/ui/ButtonGlow.gd`
+(UITheme.apply `node_added` → `_hook_primary` ertelenmiş kontrolle HER PrimaryButton'a otomatik ekler): içinde `canvas_ui_menu_beam` fener lekesi —
+boşta nabız gibi parıldar ama TOZ DURUR (shader `dust_clock` dışarıdan), hover/odakta tam yanar + toz uçuşur; disabled / meta `glow_off` /
+varyasyon artık Primary değilse gizli (Lobby HAZIRIM varyasyonu değişir → orada `attach` elle de çağrılır).
 **Görsel kimlik v2 "Sis & Cam" (BF1 etkisi) → [docs/SANAT_KITABI.md](docs/SANAT_KITABI.md)** (yeni UI bu kurallara uymalı):
 saydam koyu cam paneller (`SURFACE*` α 0.58-0.7), ince beyaz `BORDER`, beyaz köşe braketi `FRAME` (`add_brackets` varsayılanı;
 draw sinyaline bağlanır, çocuk node yok), beyaz `TEXT`, sekmeler beyaz alt çizgi, cam düğmeler (hover beyazlaşır);
@@ -427,7 +443,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   ODA KUR: ad + şifre yan yana + **HARİTA** (tam satır OptionButton, sağda "EN FAZLA …") + **FORMAT** (4 bölümlü toggle düğme `_size_buttons`,
   sağda "n OYUNCU"; `_update_size_options` haritanın `max_team`'i üstünü kapatır, panel ~810 px,
   son seçim `settings.cfg [room]`) → `create_server(..., {map, team_size})` (yayına ilk andan doğru girer; Lobby ⚙ ile sonra da değişir).
-  Arka plan `MenuBackground3D` (aşağıda). `NetworkManager.create_server/join_server`
+  Arka plan `MenuBackground3D` (aşağıda). **Müzik** `scenes/audio/MenuMusic.gd` (statik; player ROOT'ta → sahne geçişinde kesilmez): MainMenu + Lobby `play` (çalıyorsa dokunmaz),
+  CharacterSelect `duck` (sürer, -10 dB ≈ yarı ses), HUD `stop` (oyun başlayınca 1.5 sn söner) — kullanıcı isteği. Dosya `audio/music/background-music.mp3` (kullanıcının AI ile ürettiği),
+  döngü, "Music" kanalı, -10 dB'ye 2.5 sn'de açılır; dosya yoksa sessiz. `NetworkManager.create_server/join_server`
   çağırır, `server_created`/`joined_server`/`connection_failed`/`kicked` sinyallerini dinler.
 - **Lobby.gd**: UI tamamen kodla (tscn sadece kök), UITheme paleti + MenuBackground3D (fare feneri `light_color` kendi takımına döner).
   Üst: oda adı, oyuncu sayısı, oda kodu + Kopyala (`DisplayServer.clipboard_set`). 4 takım kartı × `get_team_size()` slot,

@@ -401,7 +401,7 @@ func _update_animation(delta: float) -> void:
 	# Çömelmeye geçince nefes (uzaklarda da — mod _broadcast_state ile gelir)
 	if move_mode != _breath_mode:
 		if move_mode == MoveMode.CROUCH and _breath_mode != -1:
-			_play_breath("breath_soft", -2.0)
+			_play_breath("crouch", -2.0)   # kullanıcının çömelme kaydı (kumaş + nefes)
 		_breath_mode = move_mode
 
 	# Takla: klip bir kez, zamanı _flip_t yönetir (uzaklarda da aynı RPC'den başlar)
@@ -409,7 +409,7 @@ func _update_animation(delta: float) -> void:
 		var flip_clip: StringName = FLIP_ANIMS[_flip]
 		if _anim_player.has_animation(flip_clip):
 			if _anim_player.current_animation != flip_clip:
-				_play_breath("breath_hard", 0.0, true)   # takla: güçlü nefes
+				_play_breath("flip", 0.0, true)   # takla: kullanıcının takla kaydı
 				_anim_player.play(flip_clip, 0.1)
 			_anim_player.speed_scale = FLIP_ANIM_SPEED
 		return
@@ -462,7 +462,7 @@ func _update_footsteps(step_len: float, moving: bool) -> void:
 		SFX.play_voice(_voice, sound, STEP_VOLUME_DB[move_mode], 0.06)
 
 
-## Nefes (zıplama "breath" / çömelme "breath_soft" / takla "breath_hard"). strong → sınırı beklemez (takla zıplamadan hemen sonra gelebilir)
+## Hareket efor sesi (çömelme "crouch" / takla "flip" — kullanıcının kayıtları). strong → sınırı beklemez (takla zıplamadan hemen sonra gelebilir)
 func _play_breath(sound: String, extra_db: float, strong: bool = false) -> void:
 	if is_dead or (_breath_cd > 0.0 and not strong):
 		return
