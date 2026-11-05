@@ -61,7 +61,7 @@ Sniper Mosin; `SHOT_VOLUME_DB`), RELOAD → `_play_reload_sounds` (mag_out → %
 `step_soft` = Owlish yumuşak adımlar; iniş = tok adım; uzak oyuncularda da), zıplama başı `jump` (kullanıcının ziplama-ses.mp3'ü,
 üstüne nefes YOK), **efor sesi** `_play_breath(ad, …)` (çömelmeye geçiş `crouch` = kullanıcının AI kaydı crouch_1.wav, takla başı `flip` = flip_1/2.mp3; `BREATH_MIN_GAP`;
 eski Owlish `breath_*` dosyaları FILES'ta duruyor ama kullanılmıyor; kullanıcı sırada bıçak/bomba/kazandı/kaybetti/şarjör kayıtları getirecek),
-menü tıkı `ui_click` = kullanıcının fener-acma-kapama.mp3'ü. Kullanıcı kendi ses dosyalarını audio/sfx'e bırakır → FILES'a bağla. Bomb.gd `throw` + explosion/flashbang/smoke, HUD flaş → `tinnitus`, kart
+menü tıkı `ui_click` = kullanıcının fener-acma-kapama.mp3'ü. Kullanıcı kendi ses dosyalarını audio/sfx'e bırakır → FILES'a bağla. Bomb.gd `throw` + patlama (kullanıcının kayıtları: yerel oyuncu `NEAR_SOUND_DIST` 10 m içindeyse `explosion_near` = bomba-1.wav, değilse `explosion_far` = bomba-2.wav) + flashbang/smoke, HUD flaş → `tinnitus`, kart
 alındı (kendi takım `card_pickup` / rakip `card_alert`), kilit bipleri `_update_unlock_ticks` (KONUMSUZ — kapının yerini ele vermez;
 takım tiz/rakip kalın, hızlanır), `unlock_reset`, maç sonu `match_win/lose`.
 
@@ -129,6 +129,7 @@ menü iGPU'da pahalıydı. NetworkManager `_notification`: odakta olmayan pencer
 | `_chat_system(text)` (host) | `register_player` ("katıldı"), `_on_peer_disconnected` ("ayrıldı") | `channel="system"` herkese |
 | `_chat_receive(msg)` (authority) | host → peer'lar | `chat_history`'ye ekler (max 60, sahne geçişinde korunur, `disconnect_all` temizler), `chat_received` sinyali |
 | `set_team_size(n)` / `set_map(id)` / `set_room_password(pw)` (host) | Lobby ODA AYARLARI | `room_settings` {map, team_size 2-5, has_password} → `_push_settings` → `_sync_room_settings` (call_local) → `room_settings_changed`. Takım küçülünce `_enforce_team_size` fazlaları takımsız yapar. Şifre değişince `_sync_password` (üyeler bilsin → migration) |
+| **Oda kuralları** `set_powers(b)` / `set_win_mode("cards"/"timed")` / `set_card_count(1-3)` / `set_match_minutes(3-30)` / `set_weapon_mode("normal"/"knife")` (host, maç dışı) | Lobby | `room_settings`'e `powers, win_mode, card_count, match_minutes, weapon_mode` (varsayılan true/cards/1/10/normal). Getter'lar anahtar yoksa varsayılan: `powers_enabled()` (**knife ise HER ZAMAN false**), `get_win_mode/card_count/match_minutes/weapon_mode`; `get_room_status()` hepsini yayına ekler; `create_server(..., p_settings)` aynı anahtarları kabul eder. **Aşama 1: sadece `powers` oyunda işler** — kapalıyken PowerupManager güç DOĞURMAZ, `grant_starting_items` boş, Q yok, test güç tuşları (1-6,8,9,0,-,=) yok (7 çalışır), host `_request_pickup/use/special_set/test_*` reddeder. Diğer kuralların oyuna etkisi sonraki aşamalarda. |
 | `get_team_size()` / `get_max_players()` (=4×size) / `get_map_info()` / `get_format_text()` / `get_room_status()` / `is_game_running()` | Lobby, MainMenu, GameManager, RoomManager | `MAPS` listesi (şimdilik sadece Labirent), format "3v3v3v3" |
 
 **Host-tarafı kurallar:** `register_player` — oyun sürüyorsa (`is_game_running`) yeni katılım REDDEDİLİR ("Oyun devam ediyor"),
@@ -158,7 +159,14 @@ Test: 3 headless süreçle (host + 2 client, localhost) doğrulandı — yeni ho
 
 **State enum:** `MENU, LOBBY, CHARACTER_SELECT, IN_GAME, ENDED`.
 `active_players: Dictionary` (peer_id → Player node), `player_stats` (peer_id → {kills,deaths}),
-`card_carrier_peer_id` (-1 = kart yerde), `card_instance`, `door_instance`.
+`cards: Dictionary` (card_id → Card node; Card `carrier_peer` -1 = yerde, "cards" grubu), `door_instance`.
+**ÇOKLU KART (2026-11-06):** oda ayarı `card_count` 1-3. Kazanma = TEK çıkış, bir takım N kartın HEPSİNİ aynı anda taşır (biriktirme YOK),
+o takımın tüm taşıyıcıları canlı + `DOOR_UNLOCK_RADIUS` içindeyken `_update_door_unlock` sayar → `handle_card_delivered(team_id)`.
+Bir oyuncu çok kart taşır (`Player.cards_held`, `has_card` getter). Sorgular: `get_card_total/get_cards_held/get_team_cards/get_card_carriers/
+is_card_carrier/get_unlocking_team`; `cards_changed` sinyali; `door_unlock_changed(ratio, TEAM_id)`. Ölüm/ayrılma `_drop_cards_of` →
+halka (r 0.9 m, komşu ≥0.8 m, duvara ışınla içeri, zemin ışını) → `_apply_card_drop_rpc(ids, positions, team)`. Spawn `_pick_card_positions`
+(kartlar arası `CARD_MIN_SPACING` 15 m, yetmezse kademeli). Migration `card_positions` (taşınanlar yere). `card_picked_up/card_dropped` kart başına.
+Reddedilen alternatifler: docs/PROJE_GECMISI.md.
 
 | Fonksiyon | Tetikleyen | Akış |
 |---|---|---|
@@ -179,7 +187,11 @@ geri sayım (ısınma sürer; `_load_status_rpc`'nin 4. alanı `countdown` → `
 | `get_migration_state()` / `restore_from_migration()` | host migration | kart/kapı pozisyonu + skor snapshot → yeni sahnede geri yükleme |
 | `return_to_menu()` | HUD "Ana Menüye Dön" / pause menü | state temizle, `NetworkManager.disconnect_all()`, Main.tscn |
 
-**Sinyaller:** `game_started`, `game_ended(team_id)`, `local_player_spawned(player)`,
+**Süreli (KARTSIZ) mod** (`NetworkManager.get_win_mode()=="timed"`, `is_timed_match()`): `_match_go_rpc` kart/kapı DOĞURMAZ, `match_time_left`
+= dakika×60 (tüm peer'lar kendi azaltır, host `TIMER_SYNC_INTERVAL` 5 s `_match_timer_rpc` ile düzeltir) → host `_on_time_up`: oyuncusu olan takımlar
+arasında en yüksek `TeamManager.scores`, eşitse **-1 = BERABERLİK** (ani ölüm yok — kullanıcı) → `_end_game_rpc(team, "time")`; `end_reason` HUD alt yazısı.
+Migration `time_left` taşır. UI: Lobby/ODA KUR "OYUN MODU" KARTLI/KARTSIZ + SÜRE 3-30 dk, HUD `_time_chip` (≤60 sn kehribar + "SON 1 DAKİKA", ≤10 sn kırmızı nabız).
+**Sinyaller:** `game_started`, `game_ended(team_id)` (-1 = beraberlik), `local_player_spawned(player)`,
 `card_picked_up(peer,pos,team)`, `card_dropped(pos,team)`, `kill_happened(killer,victim,method)`.
 
 **Önemli:** Hasar/kill/kart/respawn mantığının TÜMÜ host guard'lı (`if not NetworkManager.is_host(): return`).
@@ -250,6 +262,11 @@ Basınca `STAB_LUNGE_DIST` 1 m ileri hamle (tuzakta yok). Öldürme yöntemi `ta
 `_stab_timer` ateşi kilitler + `_aim_corr`'u 0'a çeker — bıçak göğüsten düz saplar). `STAB_HIT_TIME` sonra `_find_stab_target`
 (yerel: nişan ±60° koni, `STAB_RANGE` 1.9 m, duvar ışını) → host `_request_stab` (sender = bu oyuncu, takım, menzil+tolerans, duvar)
 → arka/ön kararı → `take_damage` (çömelme korumaz). `STAB_COOLDOWN` 1 s.
+**Sadece bıçak modu** (`is_knife_mode()` = `NetworkManager.get_weapon_mode()=="knife"`; oda ayarı SİLAH: NORMAL/SADECE BIÇAK; özel güç bıçakta da seçilebilir ama `_pick_type` ÖZEL SİLAH'ı doğurmaz — tüfek yok;
+arkadan bıçaklama ekranda da sadece "BIÇAK"/"BIÇAKLA ÖLDÜRME" yazar, XP bonusu ayrı kalır):
+`speed` × `KNIFE_SPEED_MULT` 1.15, bekleme `KNIFE_STAB_COOLDOWN` 0.6 s, SOL TIK = bıçak (basılı tutunca tekrar), tüfek ateşi/şarjör yok
+(`current_weapon` yine kurulur), `HandRifle.knife_only` → tüfek hep gizli, bıçak hep sağ elde, `aim_error` 0; üst gövde tabanı `Idle`
+(AimIdle değil — ayrı bıçak duruş klibi YOK, ileride Mixamo bıçak idle eklenebilir). HUD mermi yerine "BIÇAK", Crosshair nokta+halka.
 **Çömelme bağışıklığı:** `is_crouching()` → `Bullet._on_body_entered` mermiyi yok etmeden geçirir; host
 `take_damage(amount, shooter, source)` `source==DAMAGE_BULLET` ise çömelmiş hedefe işlemez (host, `_broadcast_state` modunu kullanır).
 Bomba `DAMAGE_EXPLOSION` (1) gönderir → çömelme korumaz.
@@ -494,6 +511,10 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   güncellenir), kill feed (sağ üst), oyuncu kartı (sol alt: karakter, can, mermi; şarjör ilerlemesi `weapon.reload_time` tween'i),
   Minimap (sağ alt), düşük can/hasar vinyeti, ölüm ekranı (`_local_player.is_dead` poll + `RESPAWN_TIME=3` geri sayım),
   TAB scoreboard, ESC pause, oyun sonu (`_end_overlay`, ZAFER/YENİLGİ). "Ana Menüye Dön" → `GameManager.return_to_menu()`.
+  **Ölüm bandı** `DeathRecap.gd` (= `_death_overlay`, BF1 tarzı alt bant: öldüren amblem/ad/karakter/leş-ölüm/kalan can/"SEN – RAKİP" `_duel`,
+  silah (`_method_key`: bomba/tuzak aynı hasar türü → yerel `_trapped_seen_ms` ile ayrılır), halka geri sayım; öldürenin gücü GÖSTERİLMEZ — kullanıcı istemedi) ←
+  `_present_death`. **Öldürme bildirimi** `KillNotice.gd` (orta alt, kafatası + yöntem başlığı + toplam XP + kurban adı) ← `_present_kill`;
+  bu öldürme XP nedenleri (`KILL_XP_REASONS`) sol XP akışında tekrar yazılmaz.
   Oyun mantığına dokunmaz — sadece sinyal dinler.
 
 ---

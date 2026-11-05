@@ -12,10 +12,10 @@ const LASER_SHADER := preload("res://scenes/weapons/special_laser.gdshader")
 const TRACER_SHADER := preload("res://scenes/weapons/special_tracer.gdshader")
 
 ## Renkler (PowerupManager.INFO[SPECIAL_GUN].color ile aynı ana ton)
-const COLOR_MAIN := Color(1.0, 0.22, 0.55)
-const COLOR_LASER_CORE := Color(1.0, 0.75, 0.85)
-const COLOR_LASER_TIP := Color(1.0, 0.45, 0.65, 0.9)
-const COLOR_TRACER_CORE := Color(1.0, 0.93, 0.95)
+const COLOR_MAIN := Color(1.0, 0.12, 0.12)
+const COLOR_LASER_CORE := Color(1.0, 0.72, 0.68)
+const COLOR_LASER_TIP := Color(1.0, 0.35, 0.3, 0.9)
+const COLOR_TRACER_CORE := Color(1.0, 0.93, 0.9)
 
 ## Ölçüler (metre)
 const LASER_LENGTH := 30.0

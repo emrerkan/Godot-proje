@@ -11,6 +11,9 @@ signal exploded(pos: Vector3, is_flash: bool)
 
 const SMOKE_CLOUD := preload("res://scenes/world/SmokeCloud.gd")
 const SFX := preload("res://scenes/audio/Sfx.gd")
+## Yerel oyuncu patlamaya bu mesafeden (m) yakınsa yakın patlama sesi (bomba-1), uzaksa uzak ses (bomba-2).
+## Varsayılan patlama yarıçapı 4 m → 10 m "hemen yanında" sayılır.
+const NEAR_SOUND_DIST := 10.0
 
 var is_flash := false
 var is_smoke := false
@@ -100,6 +103,14 @@ func _process(delta: float) -> void:
 		_explode()
 
 
+## Yerel oyuncunun (ölüyse cesedinin) patlamaya uzaklığı; oyuncu yoksa sonsuz (uzak ses)
+func _local_distance() -> float:
+	var me = GameManager.active_players.get(NetworkManager.get_local_id())
+	if is_instance_valid(me) and me is Node3D:
+		return (me as Node3D).global_position.distance_to(_to)
+	return INF
+
+
 func _explode() -> void:
 	_exploded = true
 	_ball.visible = false
@@ -110,7 +121,8 @@ func _explode() -> void:
 	elif is_flash:
 		SFX.play_at(get_tree(), "flashbang", _to, -3.0, 14.0, 70.0)
 	else:
-		SFX.play_at(get_tree(), "explosion", _to, -4.0, 18.0, 90.0)
+		var near := _local_distance() <= NEAR_SOUND_DIST
+		SFX.play_at(get_tree(), "explosion_near" if near else "explosion_far", _to, -4.0, 18.0, 90.0)
 	if is_smoke:
 		# Sis: patlama yok — yerde duman bulutu kalır
 		var cloud: Node3D = SMOKE_CLOUD.new()

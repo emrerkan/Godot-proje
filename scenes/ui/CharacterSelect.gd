@@ -14,13 +14,13 @@ const SHARP_VIEWPORT := preload("res://scenes/ui/SharpViewport.gd")
 const CHARACTERS: Array[Dictionary] = [
 	{"name": "Tank",     "role": "Ön Hat",       "color": Color(0.9,  0.35, 0.25), "stats": {"Can": 150.0, "Hız": 5.5,  "Hasar": 22.0,  "Menzil": 45.0}},
 	{"name": "Visioner", "role": "Keşif",        "color": Color(0.25, 0.55, 1.0),  "stats": {"Can": 100.0, "Hız": 8.0,  "Hasar": 18.0,  "Menzil": 35.0}},
-	{"name": "Runner",   "role": "Hızlı Sızma",  "color": Color(0.25, 0.9,  0.35), "stats": {"Can": 75.0,  "Hız": 13.0, "Hasar": 11.0,  "Menzil": 25.0}},
+	{"name": "Runner",   "role": "Hızlı Sızma",  "color": Color(0.25, 0.9,  0.35), "stats": {"Can": 75.0,  "Hız": 10.0, "Hasar": 11.0,  "Menzil": 25.0}},
 	{"name": "Sniper",   "role": "Uzun Menzil",  "color": Color(0.95, 0.85, 0.15), "stats": {"Can": 80.0,  "Hız": 7.0,  "Hasar": 120.0, "Menzil": 130.0}},
 	{"name": "Medic",    "role": "Destek",       "color": Color(0.85, 0.35, 0.95), "stats": {"Can": 110.0, "Hız": 7.5,  "Hasar": 45.0,  "Menzil": 55.0}},
 ]
 
 const STAT_ORDER: Array[String] = ["Can", "Hız", "Hasar", "Menzil"]
-const STAT_MAX: Dictionary  = {"Can": 150.0, "Hız": 13.0, "Hasar": 120.0, "Menzil": 130.0}
+const STAT_MAX: Dictionary  = {"Can": 150.0, "Hız": 10.0, "Hasar": 120.0, "Menzil": 130.0}
 
 # Renkler ortak paletten (UITheme — "Sodyum & Gece Operasyonu")
 const COL_BG_TOP     := Color(0.13, 0.145, 0.16)     # sisli soğuk gri (v2 "Sis & Cam")

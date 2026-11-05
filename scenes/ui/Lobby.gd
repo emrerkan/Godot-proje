@@ -9,6 +9,17 @@ extends Control
 # Oda ayarları paneli
 var _map_option: OptionButton
 var _size_option: OptionButton
+var _mode_option: OptionButton
+const NUMBER_STEPPER := preload("res://scenes/ui/NumberStepper.gd")
+const TOGGLE_SWITCH := preload("res://scenes/ui/ToggleSwitch.gd")
+const SETTING_CAPTION_W := 190.0   # ayar satırlarında başlık sütunu (tüm kontroller aynı x'ten başlar)
+var _minutes_spin   # NumberStepper (SÜRE, taslak)
+var _minutes_row: Control
+var _cards_option   # NumberStepper (KART SAYISI, kartlı modda, taslak)
+var _cards_row: Control
+var _weapon_option: OptionButton   # SİLAH: normal / sadece bıçak (taslak)
+var _powers_draft := true          # özel güç taslağı (bıçak taslağında anahtar kapalı görünse de korunur)
+var _powers_toggle: Button  # ÖZEL GÜÇ aç/kapa anahtarı (ToggleSwitch, taslak)
 var _pw_status: Label
 var _pw_input: LineEdit
 var _pw_row: HBoxContainer
@@ -382,7 +393,7 @@ func _build_settings_panel() -> Control:
 	panel.add_theme_stylebox_override("panel", st)
 	UITheme.add_brackets(panel, UITheme.FRAME, 27)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 20)
+	box.add_theme_constant_override("separation", 14)   # satır sayısı arttı → 1080'e sığsın
 	panel.add_child(box)
 
 	var head := HBoxContainer.new()
@@ -419,12 +430,57 @@ func _build_settings_panel() -> Control:
 	_size_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
 	box.add_child(_setting_row("FORMAT", _size_option))
 
+	# Oyun modu: kartlı / kartsız (süreli) + süre
+	_mode_option = OptionButton.new()
+	_mode_option.add_item(tr("KARTLI"))
+	_mode_option.add_item(tr("KARTSIZ (SÜRELİ)"))
+	_mode_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
+	box.add_child(_setting_row("OYUN MODU", _mode_option))
+	_minutes_spin = NUMBER_STEPPER.new()
+	_minutes_spin.min_value = NetworkManager.MATCH_MINUTES_MIN
+	_minutes_spin.max_value = NetworkManager.MATCH_MINUTES_MAX
+	_minutes_spin.fmt = "%d dk"
+	_minutes_spin.snap = 5   # düğmeler 5'er dk (elle yazım serbest)
+	_minutes_spin.value = NetworkManager.MATCH_MINUTES_DEFAULT
+	_minutes_spin.control_height = 56.0
+	_minutes_spin.value_changed.connect(func(_v: int) -> void: _update_draft_ui())
+	_minutes_row = _setting_row("SÜRE", _minutes_spin)
+	box.add_child(_minutes_row)
+	# Kart sayısı: yalnız kartlı modda görünür (SÜRE satırıyla aynı yerde, biri görünürken öbürü gizli)
+	_cards_option = NUMBER_STEPPER.new()
+	_cards_option.min_value = NetworkManager.CARD_COUNT_MIN
+	_cards_option.max_value = NetworkManager.CARD_COUNT_MAX
+	_cards_option.fmt = "%d kart"
+	_cards_option.value = NetworkManager.CARD_COUNT_MIN
+	_cards_option.control_height = 56.0
+	_cards_option.value_changed.connect(func(_v: int) -> void: _update_draft_ui())
+	_cards_row = _setting_row("KART SAYISI", _cards_option)
+	box.add_child(_cards_row)
+
+	# Silah: normal / sadece bıçak
+	_weapon_option = OptionButton.new()
+	_weapon_option.add_item(tr("NORMAL"))
+	_weapon_option.add_item(tr("SADECE BIÇAK"))
+	_weapon_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
+	box.add_child(_setting_row("SİLAH", _weapon_option))
+
+	# Özel güç: aç/kapa anahtarı; açıklama tooltip'te (panel kısa kalsın)
+	_powers_toggle = TOGGLE_SWITCH.new()
+	_powers_toggle.tooltip_text = "Kapalıyken yerde güç çıkmaz, başlangıç güçleri verilmez"
+	_powers_toggle.toggled.connect(func(on: bool) -> void:
+		_powers_draft = on
+		_update_draft_ui())
+	box.add_child(_setting_row("ÖZEL GÜÇ", _powers_toggle))
+
 	# Şifre: mevcut durum + (host) yeni şifre yaz VEYA kaldır işaretle
 	_pw_status = UITheme.label("", 22, UITheme.TEXT)
 	box.add_child(_setting_row("ŞİFRE", _pw_status))
 	_pw_row = HBoxContainer.new()
 	_pw_row.add_theme_constant_override("separation", 10)
 	box.add_child(_pw_row)
+	var pw_pad := Control.new()  # kontrol sütunuyla hizala (başlık sütunu + satır boşluğu − bu satırın boşluğu)
+	pw_pad.custom_minimum_size = Vector2(SETTING_CAPTION_W + 17.0 - 10.0, 0)
+	_pw_row.add_child(pw_pad)
 	_pw_input = LineEdit.new()
 	_pw_input.placeholder_text = "Yeni şifre (boş = değiştirme)"
 	_pw_input.secret = true
@@ -450,6 +506,7 @@ func _build_settings_panel() -> Control:
 	# Kaydedilecek değişikliklerin özeti
 	_draft_note = UITheme.label("", 20, UITheme.TEXT_DIM)
 	_draft_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_draft_note.visible = false   # kullanıcı: "Kaydedilince: …" / "Değişiklik yok" yazmasın (KAYDET aktif/pasif mantığı aynen)
 	box.add_child(_draft_note)
 
 	# Alt butonlar: KAPAT (taslağı at) / KAYDET (uygula)
@@ -478,10 +535,19 @@ func _setting_row(caption: String, control: Control) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 17)
 	var cap := UITheme.label(caption, 17, UITheme.TEXT_DIM, UITheme.font_caps)
-	cap.custom_minimum_size = Vector2(133, 0)
+	cap.custom_minimum_size = Vector2(SETTING_CAPTION_W, 0)
 	cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(cap)
-	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Seçiciler/etiketler sağ kenara kadar dolar; stepper ve anahtar sütunun başına yaslı kalır
+	if control is OptionButton or control is Label:
+		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	else:
+		control.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		var spacer := Control.new()
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(control)
+		row.add_child(spacer)
+		return row
 	row.add_child(control)
 	return row
 
@@ -495,9 +561,20 @@ func _load_draft() -> void:
 	_size_option.select(NetworkManager.get_team_size() - NetworkManager.TEAM_SIZE_MIN)
 	_pw_input.text = ""
 	_pw_remove.set_pressed_no_signal(false)
+	_powers_draft = _current_powers()
+	_powers_toggle.set_pressed_no_signal(_powers_draft)
+	_weapon_option.select(1 if NetworkManager.get_weapon_mode() == "knife" else 0)
 	var is_host := NetworkManager.is_host()
+	_weapon_option.disabled = not is_host
 	_map_option.disabled = not is_host
 	_size_option.disabled = not is_host
+	_powers_toggle.disabled = not is_host
+	_mode_option.select(1 if NetworkManager.get_win_mode() == "timed" else 0)
+	_minutes_spin.set_value_no_signal(NetworkManager.get_match_minutes())
+	_mode_option.disabled = not is_host
+	_cards_option.set_value_no_signal(NetworkManager.get_card_count())
+	_cards_option.set_disabled(not is_host)
+	_minutes_spin.set_disabled(not is_host)
 	_pw_row.visible = is_host
 	_save_btn.visible = is_host
 	_settings_hint.text = "Değişiklikler KAYDET'e basınca uygulanır" if is_host else "Sadece oda sahibi değiştirebilir"
@@ -528,6 +605,29 @@ func _update_draft_ui() -> void:
 			overflow += maxi(NetworkManager.get_team_count(tid) - new_size, 0)
 		if overflow > 0:
 			changes.append(tr("%d oyuncu takımından çıkar") % overflow)
+	var cur_mode: String = NetworkManager.get_win_mode()
+	var new_mode := "timed" if _mode_option.selected == 1 else "cards"
+	var new_minutes: int = _minutes_spin.get_value()
+	_minutes_row.visible = new_mode == "timed"
+	_cards_row.visible = new_mode != "timed"
+	var new_cards: int = _cards_option.get_value()
+	if new_mode == "cards" and new_cards != NetworkManager.get_card_count():
+		changes.append(tr("kart sayısı → %d") % new_cards)
+	if new_mode != cur_mode:
+		if new_mode == "timed":
+			changes.append(tr("mod → kartsız, %d dk") % new_minutes)
+		else:
+			changes.append(tr("mod → kartlı"))
+	elif new_mode == "timed" and new_minutes != NetworkManager.get_match_minutes():
+		changes.append(tr("süre → %d dk") % new_minutes)
+	var new_weapon := "knife" if _weapon_option.selected == 1 else "normal"
+	if new_weapon != NetworkManager.get_weapon_mode():
+		changes.append(tr("silah → sadece bıçak") if new_weapon == "knife" else tr("silah → normal"))
+	# Özel güç her silah modunda seçilebilir (bıçakta özel silah doğmaz — PowerupManager)
+	_powers_toggle.set_pressed_no_signal(_powers_draft)
+	_powers_toggle.disabled = not NetworkManager.is_host()
+	if _powers_draft != _current_powers():
+		changes.append(tr("özel güç açık") if _powers_draft else tr("özel güç kapalı"))
 	if not _pw_input.text.strip_edges().is_empty():
 		changes.append(tr("şifre değişecek") if has_pw else tr("şifre eklenecek"))
 	elif _pw_remove.button_pressed and has_pw:
@@ -553,6 +653,20 @@ func _on_save_settings() -> void:
 	var new_size := NetworkManager.TEAM_SIZE_MIN + _size_option.selected
 	if new_size != NetworkManager.get_team_size():
 		NetworkManager.set_team_size(new_size)
+	var new_mode := "timed" if _mode_option.selected == 1 else "cards"
+	if new_mode != NetworkManager.get_win_mode():
+		NetworkManager.set_win_mode(new_mode)
+	var new_minutes: int = _minutes_spin.get_value()
+	if new_mode == "timed" and new_minutes != NetworkManager.get_match_minutes():
+		NetworkManager.set_match_minutes(new_minutes)
+	var new_cards: int = _cards_option.get_value()
+	if new_mode == "cards" and new_cards != NetworkManager.get_card_count():
+		NetworkManager.set_card_count(new_cards)
+	var new_weapon := "knife" if _weapon_option.selected == 1 else "normal"
+	if new_weapon != NetworkManager.get_weapon_mode():
+		NetworkManager.set_weapon_mode(new_weapon)
+	if _powers_draft != _current_powers():
+		NetworkManager.set_powers(_powers_draft)
 	var pw := _pw_input.text.strip_edges()
 	if not pw.is_empty():
 		NetworkManager.set_room_password(pw)
@@ -574,8 +688,19 @@ func _refresh_settings() -> void:
 	if _settings_summary == null:
 		return
 	var has_pw: bool = NetworkManager.room_settings.get("has_password", false)
-	_settings_summary.text = "%s  ·  %s%s" % [NetworkManager.get_format_text(), tr(String(NetworkManager.get_map_info()["name"])).to_upper(),
-		("  ·  " + tr("🔒 ŞİFRELİ")) if has_pw else ""]
+	_settings_summary.text = "%s  ·  %s%s%s%s" % [NetworkManager.get_format_text(), tr(String(NetworkManager.get_map_info()["name"])).to_upper(),
+		("  ·  " + tr("🔒 ŞİFRELİ")) if has_pw else "",
+		("  ·  " + tr("SADECE BIÇAK")) if NetworkManager.get_weapon_mode() == "knife" else "",
+		("  ·  " + tr("ÖZEL GÜÇ KAPALI")) if not _current_powers() else ""]
+	if NetworkManager.get_win_mode() == "timed":
+		_settings_summary.text += "  ·  " + tr("KARTSIZ · %d DK") % NetworkManager.get_match_minutes()
+	elif NetworkManager.get_card_count() > 1:
+		_settings_summary.text += "  ·  " + tr("%d KART") % NetworkManager.get_card_count()
+
+
+## Odanın kayıtlı güç ayarı (alan yoksa açık say)
+func _current_powers() -> bool:
+	return bool(NetworkManager.room_settings.get("powers", true))
 
 
 # ─────────────────────────────────────────────

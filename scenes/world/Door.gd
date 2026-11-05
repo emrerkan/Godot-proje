@@ -81,7 +81,7 @@ func _ready() -> void:
 		_label.position.y = 2.6
 	_light = get_node_or_null("OmniLight3D")
 	GameManager.door_unlock_changed.connect(_on_unlock_changed)
-	_on_unlock_changed(GameManager.door_unlock, GameManager.card_carrier_peer_id)
+	_on_unlock_changed(GameManager.door_unlock, GameManager.get_unlocking_team() if GameManager.has_method("get_unlocking_team") else -1)
 
 
 func _process(delta: float) -> void:
@@ -98,7 +98,7 @@ func _on_body_entered(_body: Node) -> void:
 
 
 ## Yerdeki çember sadece bölgeyi gösterir (aktifken nabız) — dolan yay kaldırıldı, ilerleme HUD'da (taşıyıcının üstünde bar)
-func _on_unlock_changed(ratio: float, _carrier: int) -> void:
+func _on_unlock_changed(ratio: float, _team_id: int) -> void:
 	_zone_mat.set_shader_parameter("progress", 0.0)
 	if _label:
 		_label.text = "ÇIKIŞ  ·  KİLİT AÇILIYOR" if ratio > 0.0 else "▲  ÇIKIŞ"

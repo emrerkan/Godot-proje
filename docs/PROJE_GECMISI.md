@@ -217,6 +217,16 @@
     **Özel silah** Q ile hazırlanır (lazer nişan), sol tık TEK atış, hazırken Q = vazgeç (güç slotta kalır); hasar 999, menzil 1000 m, duvardan geçer, ÇÖMELME KORUMAZ, takım arkadaşından geçer, ilk rakipte durur.
     **Tuzak çözücü** sadece tuzaktayken Q → 3 sn kendi kendine çözme (arkadaş kurtarması 4 sn), tuzakta değilken Q kullanılmaz + uyarı. Doğma ağırlıkları 10 / 5 / 10 (INVIS / SPECIAL_GUN / TRAP_BREAKER).
     Test tuşları 4 / - / =. Orkestra ile: UX spec (`docs/ux/new-powers.md`) → shader/3D (`InvisibilityShimmer`, `SpecialGunFx`) → Player/Weapon/Bullet → PowerupManager → HUD/Crosshair/Minimap → rutin. Ayrıntı CLAUDE.md "YENİ GÜÇLER".
+    Sonradan kullanıcı: lazer sadece kendisine görünsün + nişangahla aynı çizgi (mermi de nişana), tuzak çözücü tuzak dışında "boşa" atılabilsin, glif ✂ → ⊘ (emojiye düşüyordu), görünmezlik bitişinde rakip de mor→normal geçişini görsün.
+48. **Oda kuralları (2026-11-05/06, 4 aşamada)** — kullanıcı: kart sayısı, kartsız süreli mod, özellik aç/kapa, sadece bıçak. Ayarlar `NetworkManager.room_settings`
+    (`win_mode`, `card_count`, `match_minutes`, `powers`, `weapon_mode`), hem ODA KUR'da hem Lobby ⚙ ODA AYARLARI'nda (taslak), oda listesi çipleri.
+    Kararlar: **ÖZEL GÜÇ** (ad kullanıcıdan; "Özellikler" değil) CheckButton anahtarı; kapalıysa yerde güç + başlangıç gücü + Q yok.
+    **KARTSIZ** 3-30 dk, en çok öldüren takım kazanır, eşitlikte **BERABERLİK** (ani ölüm reddedildi — basit tutuldu). **SADECE BIÇAK** koşu +%15, bıçak beklemesi 0.6 sn,
+    sol tık bıçak, üst gövde Idle (ayrı bıçak klibi yok); özel güç bıçakta da açılabilir (kullanıcı) ama ÖZEL SİLAH doğmaz; arkadan bıçaklamada ekranda "arkadan" yazmaz (XP bonusu kalır).
+    **ÇOKLU KART** 1-3: tek çıkış, takım N kartın hepsini AYNI ANDA taşır, bir oyuncu çok kart taşıyabilir, ölünce kartlar halka şeklinde ayrı düşer (kullanıcı: "üst üste binmesin").
+    **Reddedilen alternatifler (kullanıcı: "diğerlerini de not et")**: (a) kart başına ayrı çıkış + takım biriktirir — ortak kart havuzunda kilitlenme (A 2, B 1 teslim → kimse 3'e ulaşamaz),
+    çözmek için kart yeniden doğurma gibi ek kural gerekirdi; (b) tek çıkış + teslimde biriktirme — aynı kilitlenme; (c) oyuncu başı 1 kart — 2 kişilik takımda 3 kart imkansız olurdu.
+    Maliyet: aşamalı, az ajan + Sonnet ile ~0.9M ajan token'ı (haftalık kullanım %10'dan başladı). `ui-programmer` ajan tipi Şef'in aktardığı onayı kabul etmiyor → UI işi general-purpose ajana.
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 

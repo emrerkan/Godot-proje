@@ -11,7 +11,8 @@ signal card_dropped(drop_pos: Vector3, carrier_team_id: int)
 ## method = öldüren hasarın kaynağı (Player.DAMAGE_*: 0 mermi, 1 patlama/tuzak, 2 bıçak, 3 arkadan bıçak)
 signal kill_happened(killer_peer_id: int, victim_peer_id: int, method: int)
 signal xp_gained(amount: int, reason: String)  # yerel oyuncu XP kazandı (HUD "+100 XP")
-signal door_unlock_changed(ratio: float, carrier_peer_id: int)  # kapı kilidi ilerlemesi (Door.gd + HUD)
+signal door_unlock_changed(ratio: float, team_id: int)  # kapı kilidi ilerlemesi + kilidi açan takım (-1 yok) (Door.gd + HUD)
+signal cards_changed  # kart alındı / düştü / doğdu (HUD + Minimap)
 ## ısınma: kaç oyuncu yüklendi (HUD hedef çipi); countdown >= 0 → herkes hazır, maç bu kadar sn sonra başlıyor
 signal warmup_status(loaded: int, total: int, seconds_left: int, countdown: int)
 
@@ -21,6 +22,10 @@ signal warmup_status(loaded: int, total: int, seconds_left: int, countdown: int)
 const DOOR_UNLOCK_TIME := 5.0
 const DOOR_UNLOCK_RADIUS := 3.0
 const DOOR_SYNC_INTERVAL := 0.1
+const TIMER_SYNC_INTERVAL := 5.0
+var match_time_left: float = -1.0      # tüm peer'larda: süreli maçta kalan sn, değilse -1 (HUD okur)
+var end_reason: String = ""            # "time" = süre doldu, "" = diğer (game_ended'dan önce set edilir)
+var _timer_sync_left := 0.0            # host
 var door_unlock := 0.0                # 0..1 (tüm peer'larda, host'tan gelir)
 var _door_sync_timer := 0.0
 
@@ -86,15 +91,15 @@ var door_scene: PackedScene = null
 var active_players: Dictionary = {}
 
 ## Kart durumu
-var card_instance: Node = null
+var cards: Dictionary = {}   # card_id:int -> Card node (tüm peer'larda; Card.carrier_peer = taşıyan peer, -1 yerde)
 var door_instance: Node = null
-var card_carrier_peer_id: int = -1  # -1 = kart yerde
+var _unlock_team := -1       # kilidi açılan takım (host hesaplar, herkese _door_unlock_rpc ile gider)
 
 ## Kişisel istatistikler: peer_id -> {kills, deaths}
 var player_stats: Dictionary = {}
 
 ## Migration: restore sırasında kullanılacak geçici pozisyonlar
-var _pending_card_pos: Vector3 = Vector3.ZERO
+var _pending_card_positions := PackedVector3Array()
 var _pending_door_pos: Vector3 = Vector3.ZERO
 var _pending_positions: Dictionary = {}  # oyuncu adı → son konum (migration)
 var _migrated_stats: Dictionary = {}     # oyuncu adı → {kills, deaths} (migration)
@@ -123,9 +128,10 @@ func start_game() -> void:
 @rpc("authority", "call_local", "reliable")
 func _start_game_rpc() -> void:
 	state = State.CHARACTER_SELECT
-	card_carrier_peer_id = -1
-	card_instance = null
+	cards.clear()
 	door_instance = null
+	door_unlock = 0.0
+	_unlock_team = -1
 	player_stats.clear()
 	# Yükleme perdesi: CharacterSelect _ready'de 5 önizleme modeli kurar (ana iş parçacığı birkaç kare kilitlenir)
 	LOADING.open(get_tree(), "YÜKLENİYOR", "Operatörler hazırlanıyor")
@@ -291,8 +297,13 @@ func _match_go_rpc() -> void:
 	var powerups := get_tree().current_scene.get_node_or_null("PowerupManager")
 	if powerups and powerups.has_method("grant_starting_items"):
 		powerups.grant_starting_items()
-	if NetworkManager.is_host():
-		_spawn_card_and_door()
+	if is_timed_match():
+		match_time_left = float(NetworkManager.get_match_minutes()) * 60.0
+		_timer_sync_left = TIMER_SYNC_INTERVAL
+	else:
+		match_time_left = -1.0
+		if NetworkManager.is_host():
+			_spawn_card_and_door()
 	emit_signal("game_started")
 
 
@@ -382,13 +393,43 @@ func _spawn_card_and_door() -> void:
 	# Hiç aday kalmazsa en uzak olanlar kullanılır (haritada her zaman bir kart/kapı olsun).
 	var card_points := _fair_points(_get_marker_positions("CardPoints"), CARD_MIN_FROM_SPAWN)
 	var door_points := _fair_points(_get_marker_positions("DoorPoints"), DOOR_MIN_FROM_SPAWN)
-	var card_pos: Vector3 = card_points.pick_random() if not card_points.is_empty() else Vector3.ZERO
 	var door_pos: Vector3 = door_points.pick_random() if not door_points.is_empty() else Vector3(-44.5, 0.0, -34.5)
-	_spawn_objects_rpc.rpc(card_pos, door_pos)
+	_spawn_objects_rpc.rpc(_pick_card_positions(card_points, maxi(get_card_total(), 1)), door_pos)
 
 
 const DOOR_MIN_FROM_SPAWN := 25.0   # kapı: hiçbir takımın spawn'ına bundan yakın olmasın (m)
 const CARD_MIN_FROM_SPAWN := 15.0
+const CARD_MIN_SPACING := 15.0      # kartlar arası en az (m); yetmezse kademeli düşer
+
+
+## n kart noktası: aralık şartıyla rastgele; yetmezse aralığı %70'e düşür; aday n'den azsa aynı noktayı ±1.5 m ofsetle kullan
+func _pick_card_positions(candidates: Array[Vector3], n: int) -> PackedVector3Array:
+	var pool: Array[Vector3] = candidates.duplicate()
+	pool.shuffle()
+	var chosen := PackedVector3Array()
+	if pool.is_empty():
+		pool.append(Vector3.ZERO)
+	var spacing := CARD_MIN_SPACING
+	while chosen.size() < n and spacing >= 1.0 and chosen.size() < pool.size():
+		for p: Vector3 in pool:
+			if chosen.size() >= n:
+				break
+			var ok := true
+			for c: Vector3 in chosen:
+				if Vector2(p.x - c.x, p.z - c.z).length() < spacing:
+					ok = false
+					break
+			if ok and not chosen.has(p):
+				chosen.append(p)
+		spacing *= 0.7
+	# Hâlâ eksikse (aday < n): aynı noktaları ofsetle tekrar kullan
+	var i := 0
+	while chosen.size() < n:
+		var base: Vector3 = pool[i % pool.size()]
+		var off := Vector3(randf_range(-1.5, 1.5), 0.0, randf_range(-1.5, 1.5))
+		chosen.append(base + off)
+		i += 1
+	return chosen
 
 func _fair_points(points: Array[Vector3], min_dist: float) -> Array[Vector3]:
 	var spawns: Array[Vector3] = []
@@ -432,11 +473,16 @@ func _get_marker_positions(group_name: String) -> Array[Vector3]:
 
 
 @rpc("authority", "call_local", "reliable")
-func _spawn_objects_rpc(card_pos: Vector3, door_pos: Vector3) -> void:
-	var card: Node = card_scene.instantiate()
-	get_tree().current_scene.add_child(card)
-	card.global_position = card_pos
-	card_instance = card
+func _spawn_objects_rpc(card_positions: PackedVector3Array, door_pos: Vector3) -> void:
+	cards.clear()
+	for i in card_positions.size():
+		var card: Node = card_scene.instantiate()
+		card.card_id = i
+		card.carrier_peer = -1
+		get_tree().current_scene.add_child(card)
+		card.global_position = card_positions[i]
+		cards[i] = card
+	cards_changed.emit()
 
 	var door: Node = door_scene.instantiate()
 	get_tree().current_scene.add_child(door)
@@ -449,60 +495,128 @@ func _spawn_objects_rpc(card_pos: Vector3, door_pos: Vector3) -> void:
 # ─────────────────────────────────────────────
 
 @rpc("any_peer", "reliable")
-func request_card_pickup(picker_peer_id: int) -> void:
+func request_card_pickup(picker_peer_id: int, card_id: int) -> void:
 	if not NetworkManager.is_host():
 		return
-	if card_carrier_peer_id != -1:
-		return
-	handle_card_pickup(picker_peer_id)
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != picker_peer_id:
+		return  # başkası adına alım yapılamaz
+	handle_card_pickup(picker_peer_id, card_id)
 
 
-func handle_card_pickup(picker_peer_id: int) -> void:
-	if not NetworkManager.is_host():
+const CARD_PICKUP_MAX_DIST := 3.0   # host doğrulaması: oyuncu-kart XZ mesafesi (m)
+
+func handle_card_pickup(picker_peer_id: int, card_id: int) -> void:
+	if not NetworkManager.is_host() or state != State.IN_GAME:
 		return
-	if card_carrier_peer_id != -1:
+	var card: Variant = cards.get(card_id)
+	if card == null or not is_instance_valid(card) or int(card.carrier_peer) != -1:
+		return  # kart yok / zaten taşınıyor
+	var player: Variant = active_players.get(picker_peer_id)
+	if player == null or not is_instance_valid(player) or player.is_dead:
+		return
+	var pp: Vector3 = (player as Node3D).global_position
+	var cp: Vector3 = (card as Node3D).global_position
+	if Vector2(pp.x - cp.x, pp.z - cp.z).length() > CARD_PICKUP_MAX_DIST:
 		return
 	var team_id: int = NetworkManager.players.get(picker_peer_id, {}).get("team_id", -1)
-	var player: Node = active_players.get(picker_peer_id)
-	var pos: Vector3 = player.global_position if player else Vector3.ZERO
-	_apply_card_pickup_rpc.rpc(picker_peer_id, pos, team_id)
+	_apply_card_pickup_rpc.rpc(card_id, picker_peer_id, pp, team_id)
 
 
 @rpc("authority", "call_local", "reliable")
-func _apply_card_pickup_rpc(carrier_peer_id: int, carrier_pos: Vector3, carrier_team_id: int) -> void:
-	card_carrier_peer_id = carrier_peer_id
-	if card_instance and is_instance_valid(card_instance):
-		card_instance.hide()
+func _apply_card_pickup_rpc(card_id: int, carrier_peer_id: int, carrier_pos: Vector3, carrier_team_id: int) -> void:
+	var card: Variant = cards.get(card_id)
+	if card != null and is_instance_valid(card):
+		card.carrier_peer = carrier_peer_id
+		(card as Node3D).hide()
 	var player: Node = active_players.get(carrier_peer_id)
-	if player:
+	if player and is_instance_valid(player):
 		player.pick_up_card()
 	if carrier_peer_id == NetworkManager.get_local_id():
 		gain_xp(XP_CARD_PICKUP, "Kart alındı")
 		_xp_carry_timer = 0.0
-	emit_signal("card_picked_up", carrier_peer_id, carrier_pos, carrier_team_id)
+	card_picked_up.emit(carrier_peer_id, carrier_pos, carrier_team_id)
+	cards_changed.emit()
 
 
 # ─────────────────────────────────────────────
 # Kart Düşürülmesi
 # ─────────────────────────────────────────────
 
-func handle_card_drop(drop_pos: Vector3) -> void:
+const CARD_DROP_RING_RADIUS := 0.9   # çoklu kart düşerken halka yarıçapı (m)
+const CARD_DROP_WALL_PULL := 0.3     # duvara çarpan konum duvardan bu kadar içeri çekilir (m)
+
+## Host: oyuncunun TÜM kartlarını center çevresine halka şeklinde (üst üste binmeden) düşür
+func _drop_cards_of(peer_id: int, center: Vector3) -> void:
 	if not NetworkManager.is_host():
 		return
-	var carrier_team: int = NetworkManager.players.get(card_carrier_peer_id, {}).get("team_id", -1)
-	_apply_card_drop_rpc.rpc(drop_pos, carrier_team)
+	var ids := PackedInt32Array()
+	for cid: int in cards:
+		var cn: Variant = cards[cid]
+		if cn != null and is_instance_valid(cn) and int(cn.carrier_peer) == peer_id:
+			ids.append(cid)
+	if ids.is_empty():
+		return
+	var n := ids.size()
+	var team: int = NetworkManager.players.get(peer_id, {}).get("team_id", -1)
+	# Işınlar oyuncu gövdelerine takılmasın
+	var exclude: Array[RID] = []
+	for p: Variant in active_players.values():
+		if p != null and is_instance_valid(p) and p is CollisionObject3D:
+			exclude.append((p as CollisionObject3D).get_rid())
+	var space := get_tree().root.world_3d.direct_space_state
+	var radius := CARD_DROP_RING_RADIUS
+	if n > 1:
+		radius = maxf(radius, 0.8 / (2.0 * sin(PI / n)))  # komşu mesafesi >= 0.8 m
+	var positions := PackedVector3Array()
+	for i in n:
+		var pos := center
+		if n > 1:
+			var ang := TAU * float(i) / float(n)
+			pos = center + Vector3(cos(ang), 0.0, sin(ang)) * radius
+		# Duvar: merkezden (y+0.5) konuma ışın; çarparsa içeri çek
+		var from := center + Vector3(0.0, 0.5, 0.0)
+		var to := Vector3(pos.x, from.y, pos.z)
+		if from.distance_to(to) > 0.01:
+			var wq := PhysicsRayQueryParameters3D.create(from, to, 1)
+			wq.exclude = exclude
+			var wh := space.intersect_ray(wq)
+			if not wh.is_empty():
+				var hp: Vector3 = wh["position"]
+				var back := (from - to).normalized()
+				var pulled := hp + back * CARD_DROP_WALL_PULL
+				if from.distance_to(pulled) > from.distance_to(hp):
+					pulled = from  # çok yakın: merkezde bırak
+				pos = Vector3(pulled.x, center.y, pulled.z)
+		# Zemin: yukarıdan aşağı
+		var gq := PhysicsRayQueryParameters3D.create(Vector3(pos.x, center.y + 1.0, pos.z), Vector3(pos.x, center.y - 4.0, pos.z), 1)
+		gq.exclude = exclude
+		var gh := space.intersect_ray(gq)
+		pos.y = float(gh["position"].y) if not gh.is_empty() else center.y
+		positions.append(pos)
+	_apply_card_drop_rpc.rpc(ids, positions, team)
 
 
 @rpc("authority", "call_local", "reliable")
-func _apply_card_drop_rpc(drop_pos: Vector3, carrier_team_id: int) -> void:
-	card_carrier_peer_id = -1
-	for player in active_players.values():
-		if is_instance_valid(player) and player.has_card:
+func _apply_card_drop_rpc(card_ids: PackedInt32Array, positions: PackedVector3Array, carrier_team_id: int) -> void:
+	var carriers: Array[int] = []
+	for i in card_ids.size():
+		var card: Variant = cards.get(card_ids[i])
+		if card == null or not is_instance_valid(card):
+			continue
+		var holder: int = int(card.carrier_peer)
+		if holder != -1 and not carriers.has(holder):
+			carriers.append(holder)
+		card.carrier_peer = -1
+		(card as Node3D).global_position = positions[i]
+		(card as Node3D).show()
+	for holder in carriers:
+		var player: Variant = active_players.get(holder)
+		if player != null and is_instance_valid(player):
 			player.drop_card()
-	if card_instance and is_instance_valid(card_instance):
-		card_instance.global_position = drop_pos
-		card_instance.show()
-	emit_signal("card_dropped", drop_pos, carrier_team_id)
+	for i in card_ids.size():
+		card_dropped.emit(positions[i], carrier_team_id)
+	cards_changed.emit()
 
 
 # ─────────────────────────────────────────────
@@ -516,10 +630,9 @@ func request_card_delivery(_carrier_peer_id: int) -> void:
 	pass
 
 
-func handle_card_delivered(carrier_peer_id: int) -> void:
+func handle_card_delivered(team_id: int) -> void:
 	if not NetworkManager.is_host() or state != State.IN_GAME:
 		return
-	var team_id: int = NetworkManager.players.get(carrier_peer_id, {}).get("team_id", -1)
 	state = State.ENDED
 	_end_game_rpc.rpc(team_id)
 
@@ -538,10 +651,10 @@ func handle_player_death(dead_peer_id: int, killer_peer_id: int, method: int = 0
 
 	_announce_kill_rpc.rpc(killer_peer_id, dead_peer_id, method)
 
-	if card_carrier_peer_id == dead_peer_id:
+	if get_cards_held(dead_peer_id) > 0:
 		var dead_player: Node = active_players.get(dead_peer_id)
-		var drop_pos: Vector3 = dead_player.global_position if dead_player else Vector3.ZERO
-		handle_card_drop(drop_pos)
+		var drop_pos: Vector3 = dead_player.global_position if dead_player and is_instance_valid(dead_player) else Vector3.ZERO
+		_drop_cards_of(dead_peer_id, drop_pos)
 
 	_schedule_respawn(dead_peer_id)
 
@@ -555,9 +668,9 @@ func _announce_kill_rpc(killer_peer_id: int, victim_peer_id: int, method: int) -
 	if killer_peer_id != victim_peer_id:
 		player_stats[killer_peer_id]["kills"] += 1
 	player_stats[victim_peer_id]["deaths"] += 1
-	# Kart düşürme RPC'si bundan SONRA gelir → card_carrier_peer_id hâlâ kurbanı gösteriyor
+	# Kart düşürme RPC'si bundan SONRA gelir → kartlar hâlâ kurbanın üzerinde
 	if killer_peer_id == NetworkManager.get_local_id() and killer_peer_id != victim_peer_id:
-		if card_carrier_peer_id == victim_peer_id:
+		if get_cards_held(victim_peer_id) > 0:
 			gain_xp(XP_KILL + XP_CARRIER_KILL_BONUS, "Kart taşıyıcısı öldürüldü")
 		else:
 			gain_xp(XP_KILL, "Düşman öldürüldü")
@@ -593,7 +706,8 @@ func _on_team_won(team_id: int) -> void:
 ## XP/state/sinyal mantığı — _end_game_rpc (normal maç sonu) ve restore_from_migration'daki
 ## instant_winner dalı (migration sonrası kesinleşmiş zafer) ortak kullanır. RPC DEĞİL: her peer
 ## kendi yerel kopyasını zaten elindeki bilgiyle (winning_team) çağırır, broadcast'e gerek yok.
-func _apply_end_game(winning_team: int) -> void:
+func _apply_end_game(winning_team: int, reason: String = "") -> void:
+	end_reason = reason
 	# Maç sonu XP'si game_ended'dan ÖNCE (HUD oyun sonu ekranı match_xp'yi gösterir)
 	if not _match_xp_closed:
 		_match_xp_closed = true
@@ -606,8 +720,8 @@ func _apply_end_game(winning_team: int) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _end_game_rpc(winning_team: int) -> void:
-	_apply_end_game(winning_team)
+func _end_game_rpc(winning_team: int, reason: String = "") -> void:
+	_apply_end_game(winning_team, reason)
 	if NetworkManager.is_host():
 		await get_tree().create_timer(RETURN_TO_LOBBY_DELAY).timeout
 		_return_to_lobby_rpc.rpc()
@@ -619,10 +733,12 @@ func _return_to_lobby_rpc() -> void:
 	state = State.LOBBY
 	active_players.clear()
 	player_stats.clear()
-	card_instance = null
+	cards.clear()
 	door_instance = null
-	card_carrier_peer_id = -1
 	door_unlock = 0.0
+	_unlock_team = -1
+	match_time_left = -1.0
+	end_reason = ""
 	match_xp = 0
 	_match_xp_closed = false
 	_xp_survive_timer = 0.0
@@ -642,17 +758,41 @@ func _return_to_lobby_rpc() -> void:
 
 func _update_door_unlock(delta: float) -> void:
 	var inside := false
-	var carrier: Variant = active_players.get(card_carrier_peer_id)
-	if card_carrier_peer_id != -1 and carrier != null and is_instance_valid(carrier) and not carrier.is_dead \
-			and door_instance and is_instance_valid(door_instance):
-		var cp: Vector3 = (carrier as Node3D).global_position
+	var total := get_card_total()
+	var team_now := -1
+	if total > 0 and door_instance and is_instance_valid(door_instance):
 		var dp: Vector3 = (door_instance as Node3D).global_position
-		inside = Vector2(cp.x - dp.x, cp.z - dp.z).length() <= DOOR_UNLOCK_RADIUS
+		for tid: int in _teams_with_cards():
+			if get_team_cards(tid) != total:
+				continue
+			# T'nin kart taşıyan HER oyuncusu canlı ve çıkış bölgesinde olmalı
+			var all_in := true
+			for pid: int in get_card_carriers():
+				if int(NetworkManager.players.get(pid, {}).get("team_id", -1)) != tid:
+					continue
+				var carrier: Variant = active_players.get(pid)
+				if carrier == null or not is_instance_valid(carrier) or carrier.is_dead:
+					all_in = false
+					break
+				var cp: Vector3 = (carrier as Node3D).global_position
+				if Vector2(cp.x - dp.x, cp.z - dp.z).length() > DOOR_UNLOCK_RADIUS:
+					all_in = false
+					break
+			if all_in:
+				inside = true
+				team_now = tid
+			break  # N kartın hepsini tutan en fazla bir takım olabilir
+	if team_now != _unlock_team and _unlock_team != -1 and door_unlock > 0.0:
+		door_unlock = 0.0  # takım değişti: sıfırdan
+		_door_sync_timer = 0.0
+		_send_door_unlock(0.0)
 	var prev := door_unlock
 	door_unlock = minf(door_unlock + delta / DOOR_UNLOCK_TIME, 1.0) if inside else 0.0
+	if inside:
+		_unlock_team = team_now
 	if door_unlock >= 1.0:
 		_send_door_unlock(1.0)
-		handle_card_delivered(card_carrier_peer_id)
+		handle_card_delivered(_unlock_team)
 		return
 	if door_unlock == prev:
 		return
@@ -664,16 +804,76 @@ func _update_door_unlock(delta: float) -> void:
 
 
 func _send_door_unlock(ratio: float) -> void:
+	var tid := _unlock_team if ratio > 0.0 else -1
 	if multiplayer.get_peers().size() > 0:
-		_door_unlock_rpc.rpc(ratio, card_carrier_peer_id)
+		_door_unlock_rpc.rpc(ratio, tid)
 	else:
-		_door_unlock_rpc(ratio, card_carrier_peer_id)
+		_door_unlock_rpc(ratio, tid)
 
 
 @rpc("authority", "call_local", "reliable")
-func _door_unlock_rpc(ratio: float, carrier_peer_id: int) -> void:
+func _door_unlock_rpc(ratio: float, team_id: int) -> void:
 	door_unlock = ratio
-	door_unlock_changed.emit(ratio, carrier_peer_id)
+	_unlock_team = team_id if ratio > 0.0 else -1
+	door_unlock_changed.emit(ratio, team_id)
+
+
+# ─────────────────────────────────────────────
+# Kart sorguları (tüm peer'larda)
+# ─────────────────────────────────────────────
+
+func get_card_total() -> int:
+	if is_timed_match():
+		return 0
+	return NetworkManager.get_card_count()
+
+
+func get_cards_held(peer_id: int) -> int:
+	var n := 0
+	for cn: Variant in cards.values():
+		if cn != null and is_instance_valid(cn) and int(cn.carrier_peer) == peer_id:
+			n += 1
+	return n
+
+
+func get_team_cards(team_id: int) -> int:
+	var n := 0
+	for cn: Variant in cards.values():
+		if cn == null or not is_instance_valid(cn):
+			continue
+		var holder: int = int(cn.carrier_peer)
+		if holder != -1 and int(NetworkManager.players.get(holder, {}).get("team_id", -1)) == team_id:
+			n += 1
+	return n
+
+
+func get_card_carriers() -> Array[int]:
+	var out: Array[int] = []
+	for cn: Variant in cards.values():
+		if cn == null or not is_instance_valid(cn):
+			continue
+		var holder: int = int(cn.carrier_peer)
+		if holder != -1 and not out.has(holder):
+			out.append(holder)
+	return out
+
+
+func is_card_carrier(peer_id: int) -> bool:
+	return get_cards_held(peer_id) > 0
+
+
+## Kilidi açılan takım (sayaç işlemiyorsa -1)
+func get_unlocking_team() -> int:
+	return _unlock_team if door_unlock > 0.0 else -1
+
+
+func _teams_with_cards() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in get_card_carriers():
+		var tid: int = int(NetworkManager.players.get(pid, {}).get("team_id", -1))
+		if tid >= 0 and not out.has(tid):
+			out.append(tid)
+	return out
 
 
 # ─────────────────────────────────────────────
@@ -712,7 +912,18 @@ func _process(delta: float) -> void:
 				_load_status_timer = LOAD_STATUS_INTERVAL
 				_send_load_status()
 		return
-	if NetworkManager.is_host():
+	# Süreli maç: her peer kendi sayar, host periyodik düzeltir ve bitişi ilan eder
+	if match_time_left >= 0.0:
+		match_time_left = maxf(match_time_left - delta, 0.0)
+		if NetworkManager.is_host():
+			if match_time_left <= 0.0:
+				_on_time_up()
+				return
+			_timer_sync_left -= delta
+			if _timer_sync_left <= 0.0:
+				_timer_sync_left = TIMER_SYNC_INTERVAL
+				_send_match_timer()
+	if NetworkManager.is_host() and is_instance_valid(door_instance):
 		_update_door_unlock(delta)
 		if state != State.IN_GAME:
 			return
@@ -723,7 +934,7 @@ func _process(delta: float) -> void:
 	if _xp_survive_timer >= XP_SURVIVE_INTERVAL:
 		_xp_survive_timer = 0.0
 		gain_xp(XP_SURVIVE, "Hayatta kalma")
-	if me.has_card:
+	if get_cards_held(NetworkManager.get_local_id()) > 0:
 		_xp_carry_timer += delta
 		if _xp_carry_timer >= XP_CARRY_INTERVAL:
 			_xp_carry_timer = 0.0
@@ -736,10 +947,10 @@ func _process(delta: float) -> void:
 
 func on_player_disconnected(peer_id: int) -> void:
 	# Kart taşıyıcıysa kartı düşür
-	if card_carrier_peer_id == peer_id:
+	if get_cards_held(peer_id) > 0:
 		var player: Node = active_players.get(peer_id)
 		var drop_pos: Vector3 = player.global_position if player and is_instance_valid(player) else Vector3.ZERO
-		handle_card_drop(drop_pos)
+		_drop_cards_of(peer_id, drop_pos)
 	# Player node'unu temizle
 	var p: Node = active_players.get(peer_id)
 	if p and is_instance_valid(p):
@@ -747,6 +958,50 @@ func on_player_disconnected(peer_id: int) -> void:
 	active_players.erase(peer_id)
 	_check_last_team_standing()
 	_check_all_loaded()  # yüklerken ayrılan beklenmesin
+
+
+func is_timed_match() -> bool:
+	return NetworkManager.get_win_mode() == "timed"
+
+
+func _send_match_timer() -> void:
+	if multiplayer.get_peers().size() > 0:
+		_match_timer_rpc.rpc(match_time_left)
+
+
+## Host -> clientlar: kalan süre düzeltmesi (her peer zaten kendi sayıyor)
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _match_timer_rpc(seconds_left: float) -> void:
+	if state == State.IN_GAME and match_live and match_time_left >= 0.0:
+		match_time_left = maxf(seconds_left, 0.0)
+
+
+## Host: süre doldu — en çok öldüren takım kazanır, eşitlikte beraberlik (-1)
+func _on_time_up() -> void:
+	if not NetworkManager.is_host() or state != State.IN_GAME:
+		return
+	var best := -1
+	var best_score := -1
+	var tied := false
+	var seen: Dictionary = {}
+	for pid in NetworkManager.players:
+		var tid: int = NetworkManager.players[pid].get("team_id", -1)
+		if tid < 0 or seen.has(tid):
+			continue
+		seen[tid] = true
+		var sc: int = int(TeamManager.scores.get(tid, 0))
+		if sc > best_score:
+			best_score = sc
+			best = tid
+			tied = false
+		elif sc == best_score:
+			tied = true
+	state = State.ENDED
+	var winner: int = -1 if (tied or best < 0) else best
+	if multiplayer.get_peers().size() > 0:
+		_end_game_rpc.rpc(winner, "time")
+	else:
+		_end_game_rpc(winner, "time")
 
 
 func _check_last_team_standing() -> void:
@@ -774,18 +1029,24 @@ func get_migration_state() -> Dictionary:
 	if state != State.IN_GAME:
 		return gstate
 	# Kart pozisyonu: taşıyıcıda mı yoksa yerde mi?
-	var card_pos := Vector3.ZERO
-	if card_carrier_peer_id != -1:
-		var carrier: Node = active_players.get(card_carrier_peer_id)
-		if carrier and is_instance_valid(carrier):
-			card_pos = carrier.global_position
-	elif card_instance and is_instance_valid(card_instance):
-		card_pos = card_instance.global_position
+	var card_positions: Array[Vector3] = []
+	for cid: int in cards:
+		var cn: Node = cards[cid]
+		if cn == null or not is_instance_valid(cn):
+			continue
+		var cpos: Vector3 = (cn as Node3D).global_position
+		var holder: int = int(cn.carrier_peer)
+		if holder != -1:
+			var carrier: Node = active_players.get(holder)
+			if carrier and is_instance_valid(carrier):
+				cpos = (carrier as Node3D).global_position
+		card_positions.append(cpos)
 	var door_pos := Vector3.ZERO
 	if door_instance and is_instance_valid(door_instance):
 		door_pos = door_instance.global_position
+	gstate["time_left"] = match_time_left
 	gstate["scores"]   = TeamManager.scores.duplicate()
-	gstate["card_pos"] = card_pos
+	gstate["card_positions"] = card_positions
 	gstate["door_pos"] = door_pos
 	# Oyuncu konumları (isimle; ölüler hariç — onlar spawn noktasında doğar)
 	var positions := {}
@@ -815,17 +1076,32 @@ func restore_from_migration(mig: Dictionary) -> void:
 	# da sonuç değişmez) haritayı YENİDEN YÜKLEMEDEN doğrudan zaferi ilan et — client ekranında
 	# gereksiz 'YÜKLENİYOR' perdesi hiç görünmesin (HUD zaten canlı, game_ended sinyaline bağlı).
 	if mig.has("instant_winner"):
-		_apply_end_game(int(mig["instant_winner"]))
+		_apply_end_game(int(mig["instant_winner"]), "")
 		if NetworkManager.is_host():
 			await get_tree().create_timer(RETURN_TO_LOBBY_DELAY).timeout
 			_return_to_lobby_rpc.rpc()
 		return
 	door_unlock = 0.0  # kilit ilerlemesi host değişince sıfırdan
+	end_reason = ""
+	_timer_sync_left = TIMER_SYNC_INTERVAL
+	if is_timed_match():
+		match_time_left = float(mig.get("time_left", -1.0))
+		if match_time_left < 0.0:
+			match_time_left = -1.0
+	else:
+		match_time_left = -1.0
 	# Skorları geri yükle
 	var saved_scores: Dictionary = mig.get("scores", {})
 	for tid in saved_scores:
 		TeamManager.scores[tid] = int(saved_scores[tid])
-	_pending_card_pos = mig.get("card_pos", Vector3.ZERO)
+	_pending_card_positions = PackedVector3Array()
+	var saved_cards: Variant = mig.get("card_positions", [])
+	if saved_cards is Array:
+		for cp: Variant in saved_cards:
+			if cp is Vector3:
+				_pending_card_positions.append(cp)
+	if _pending_card_positions.is_empty() and mig.has("card_pos"):
+		_pending_card_positions.append(mig["card_pos"])  # eski tek-kart anahtarı
 	_pending_door_pos = mig.get("door_pos", Vector3.ZERO)
 	_pending_positions = mig.get("positions", {}).duplicate()
 	# Kill/ölüm istatistikleri isimle taşınır, yeni peer id'lere geri eşlenir
@@ -834,8 +1110,7 @@ func restore_from_migration(mig: Dictionary) -> void:
 	state = State.IN_GAME
 	match_live = true
 	_local_loaded = true
-	card_carrier_peer_id = -1
-	card_instance = null
+	cards.clear()
 	door_instance = null
 	for p in active_players.values():
 		if is_instance_valid(p):
@@ -850,8 +1125,11 @@ func restore_from_migration(mig: Dictionary) -> void:
 	_spawn_local_player()
 	LOADING.close(get_tree(), MAP_SETTLE_FRAMES)
 	if NetworkManager.is_host():
-		# Kart ve kapıyı kaydedilen pozisyona spawn et
-		_spawn_objects_rpc.rpc(_pending_card_pos, _pending_door_pos)
+		# Kart ve kapıyı kaydedilen pozisyona spawn et (süreli maçta kart/kapı yok)
+		if not is_timed_match():
+			_spawn_objects_rpc.rpc(_pending_card_positions, _pending_door_pos)
+		else:
+			_send_match_timer()
 	emit_signal("game_started")
 	# Buraya gelindiğinde instant_winner yoktu, yani get_migration_remaining_team_count() birden
 	# fazlaydı — diğer takımların yeniden bağlanmasını bekle (hemen kontrol edilirse yeni host
@@ -879,9 +1157,11 @@ func _restore_stats_by_name(by_name: Dictionary) -> void:
 func return_to_menu() -> void:
 	active_players.clear()
 	player_stats.clear()
-	card_instance = null
+	cards.clear()
 	door_instance = null
-	card_carrier_peer_id = -1
+	door_unlock = 0.0
+	match_time_left = -1.0
+	end_reason = ""
 	state = State.MENU
 	match_live = false
 	_local_loaded = false

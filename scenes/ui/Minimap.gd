@@ -154,7 +154,7 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			if pid != NetworkManager.get_local_id():
 				draw_circle(pp, 6.7, TeamManager.get_color(tid))
 				draw_arc(pp, 11.7, 0.0, TAU, 16, Color(c, pulse), 2.5)
-			if pid == GameManager.card_carrier_peer_id:
+			if GameManager.is_card_carrier(pid):
 				var dia := PackedVector2Array([pp + Vector2(0, -25), pp + Vector2(8.3, -16.7), pp + Vector2(0, -8.3), pp + Vector2(-8.3, -16.7)])
 				draw_colored_polygon(dia, Color(1.0, 0.9, 0.1))
 				draw_arc(pp, 18.3, 0.0, TAU, 24, Color(1.0, 0.9, 0.1, pulse), 3.0)
@@ -184,8 +184,11 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			var dp := _w2m((door as Node3D).global_position)
 			draw_rect(Rect2(dp - Vector2(8.5, 8.5), Vector2(17, 17)), UITheme.ACCENT)
 			draw_arc(dp, 16.7, 0.0, TAU, 20, Color(UITheme.ACCENT, pulse), 2.5)
-		var card: Variant = GameManager.card_instance
-		if card != null and is_instance_valid(card) and (card as Node3D).visible:
+		for card: Variant in GameManager.cards.values():
+			if card == null or not is_instance_valid(card) or not (card as Node3D).visible:
+				continue
+			if int(card.carrier_peer) != -1:
+				continue
 			var cp := _w2m((card as Node3D).global_position)
 			var dia := PackedVector2Array([cp + Vector2(0, -10), cp + Vector2(8.3, 0), cp + Vector2(0, 10), cp + Vector2(-8.3, 0)])
 			draw_colored_polygon(dia, Color(1.0, 0.9, 0.1))

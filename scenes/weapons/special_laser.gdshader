@@ -9,8 +9,8 @@ shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
 group_uniforms renk;
-uniform vec4 beam_color : source_color = vec4(1.0, 0.22, 0.55, 1.0);   // INFO[SPECIAL_GUN].color
-uniform vec4 core_color : source_color = vec4(1.0, 0.75, 0.85, 1.0);   // ortadaki enerji şeridi
+uniform vec4 beam_color : source_color = vec4(1.0, 0.12, 0.12, 1.0);   // INFO[SPECIAL_GUN].color
+uniform vec4 core_color : source_color = vec4(1.0, 0.72, 0.68, 1.0);   // ortadaki enerji şeridi
 uniform float brightness : hint_range(0.0, 2.0) = 1.0;
 
 group_uniforms nabiz;

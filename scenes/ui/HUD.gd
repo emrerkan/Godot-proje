@@ -17,7 +17,6 @@ const SFX := preload("res://scenes/audio/Sfx.gd")
 const UNLOCK_TICK_SLOW := 0.5
 const UNLOCK_TICK_FAST := 0.12
 var _unlock_tick_t := 0.0
-var _unlock_carrier := -1
 
 ## Yeni güçler (docs/ux/new-powers.md) — PowerupManager.Type indeksleri (enum SONA eklendi, sabit: 7/8/9)
 const T_INVIS := 7
@@ -25,7 +24,7 @@ const T_SPECIAL := 8
 const T_BREAKER := 9
 ## INFO yoksa (çok erken kare) yedek renkler — asıl kaynak PowerupManager.INFO
 const COL_INVIS := Color(0.72, 0.62, 1.0)
-const COL_SPECIAL := Color(1.0, 0.22, 0.55)
+const COL_SPECIAL := Color(1.0, 0.12, 0.12)
 const COL_BREAKER := Color(0.80, 0.92, 0.36)
 const DENY_TEXT := "Sadece tuzaktayken kullanılır"   # PowerupManager.notice — ret geri bildirimi (slot kırmızı flaş + ses)
 const PLAYER_SCRIPT := preload("res://scenes/player/Player.gd")
@@ -34,7 +33,7 @@ var _kill_special: int = PLAYER_SCRIPT.DAMAGE_SPECIAL
 
 var _root: Control
 var _local_player: Node = null
-var _carrier_peer := -1
+var _unlock_team := -1
 
 # Skor
 var _score_rows: Array[Dictionary] = []  # {panel, value}
@@ -43,6 +42,9 @@ var _score_rows: Array[Dictionary] = []  # {panel, value}
 var _objective_chip: PanelContainer
 var _objective_lbl: Label
 var _alert_chip: PanelContainer
+var _time_chip: PanelContainer
+var _time_lbl: Label
+var _last_minute_warned := false
 var _alert_lbl: Label
 var _banner_tween: Tween = null
 var _unlock_panel: PanelContainer
@@ -62,6 +64,8 @@ var _hp_value: Label
 var _hp_max: Label
 var _health_bar: ProgressBar
 var _hp_fill: StyleBoxFlat
+var _ammo_box: VBoxContainer
+var _knife_box: VBoxContainer
 var _ammo_value: Label
 var _ammo_max: Label
 var _ammo_bar: ProgressBar
@@ -79,10 +83,11 @@ var _blind_rect: ColorRect
 var _blind_alpha := 0.0
 var _blind_hold := 0.0
 var _blind_fade := 1.0
-var _death_overlay: Control
-var _death_count: Label
-var _death_killer: Label
-var _death_time := 0.0
+var _death_overlay: Control          # DeathRecap.gd — BF1 tarzı alt bilgi bandı
+var _kill_notice: Control            # KillNotice.gd — öldürünce orta altta bildirim
+var _duel: Dictionary = {}           # rakip peer → [benim ona leşim, onun bana leşi] (ölüm bandı "SEN – RAKİP")
+## Öldürme bildirimi zaten gösterdiği için XP akışında tekrar yazılmayan nedenler (GameManager._announce_kill_rpc)
+const KILL_XP_REASONS := ["Düşman öldürüldü", "Kart taşıyıcısı öldürüldü", "Arkadan bıçaklandı", "Bıçakla öldürüldü"]
 var _scoreboard_panel: PanelContainer
 var _scoreboard_content: VBoxContainer
 var _scoreboard_visible := false
@@ -116,6 +121,7 @@ var _slot_col := UITheme.TEXT_DIM
 var _deny_t := 0.0                   # tuzak çözücü reddi — slot kenarı kırmızı flaş (sn)
 var _armed := false                  # yerel oyuncu özel silahı hazır (Player.special_armed_changed)
 var _local_trapped := false          # yerel oyuncu tuzakta (is_trapped poll)
+var _trapped_seen_ms := -100000      # son kez tuzakta görüldüğü an — ölüm RPC'si is_trapped'i poll'dan önce sıfırlayabilir
 
 # Durum çipleri (slotun sağı) — görünmezlik / özel silah hazır / tuzak çözücü "Q"
 var _chip_box: VBoxContainer
@@ -166,7 +172,6 @@ func _ready() -> void:
 	_root.add_child(_settings_window)   # pause menüsünün üstünde
 	_setup_end_overlay()
 
-	_carrier_peer = GameManager.card_carrier_peer_id
 	_refresh_scores()
 	_update_objective()
 
@@ -184,18 +189,22 @@ func _notification(what: int) -> void:
 
 func _process(delta: float) -> void:
 	_update_unlock_ticks(delta)
+	_update_time_chip()
 	# Menü/oyun sonu açıkken sohbet Enter ile açılmasın
 	_chat.enabled = not _pause_panel.visible and not _end_overlay.visible
 	_crosshair.allowed = _chat.enabled
 
 	# TAB skor tablosu (sohbete yazarken TAB kanal değiştirir)
 	var tab := Input.is_key_pressed(KEY_TAB) and not ChatBox.is_typing \
-		and not _pause_panel.visible and not _end_overlay.visible
+		and not _pause_panel.visible
 	if tab != _scoreboard_visible:
 		_scoreboard_visible = tab
 		_scoreboard_panel.visible = tab
 		if tab:
 			_refresh_scoreboard()
+			# Oyun sonu ekranı açıkken tablo onun ÜSTÜNDE görünsün
+			if _end_overlay.visible:
+				_scoreboard_panel.get_parent().move_to_front()
 
 	_update_carrier_bar_position()
 	_update_trap_bar_position()
@@ -231,12 +240,9 @@ func _process(delta: float) -> void:
 	var dead: bool = _local_player != null and is_instance_valid(_local_player) and _local_player.is_dead
 	if dead and not _death_overlay.visible and not _end_overlay.visible:
 		_death_overlay.visible = true
-		_death_time = RESPAWN_TIME
+		_death_overlay.start_countdown(RESPAWN_TIME)
 	elif not dead and _death_overlay.visible:
 		_death_overlay.visible = false
-	if _death_overlay.visible:
-		_death_time = maxf(_death_time - delta, 0.0)
-		_death_count.text = "%d" % ceili(_death_time) if _death_time > 0.0 else "…"
 
 	# Oyun sonu — lobiye otomatik dönüş geri sayımı (kozmetik; dönüşü GameManager RPC'si yapar)
 	if _end_overlay.visible:
@@ -244,7 +250,7 @@ func _process(delta: float) -> void:
 		_end_countdown_lbl.text = tr("%d sn sonra lobiye dönülüyor") % ceili(_end_countdown_remaining)
 
 	# Kart sendeyse hedef çipi nabız atar
-	if _carrier_peer == NetworkManager.get_local_id() and _carrier_peer != -1:
+	if GameManager.is_card_carrier(NetworkManager.get_local_id()):
 		_objective_chip.modulate.a = 0.75 + 0.25 * sin(Time.get_ticks_msec() / 150.0)
 	else:
 		_objective_chip.modulate.a = 1.0
@@ -358,6 +364,7 @@ func _setup_objective() -> void:
 	wrap.add_child(_objective_chip)
 	_objective_lbl = UITheme.label("", 22, UITheme.ACCENT, UITheme.font_caps)
 	_objective_chip.add_child(_objective_lbl)
+	_build_time_chip(col)
 
 	# Kapı kilidi ilerlemesi (biri kilit bölgesindeyken herkese görünür)
 	var unlock_wrap := CenterContainer.new()
@@ -386,6 +393,7 @@ func _setup_objective() -> void:
 	ubox.add_child(_unlock_bar)
 	_build_carrier_bar()
 	GameManager.door_unlock_changed.connect(_on_door_unlock_changed)
+	GameManager.cards_changed.connect(_update_objective)
 
 	var alert_wrap := CenterContainer.new()
 	col.add_child(alert_wrap)
@@ -487,6 +495,15 @@ func _setup_player_card() -> void:
 	_ammo_bar.add_theme_stylebox_override("fill", _ammo_fill)
 	_ammo_bar.add_theme_stylebox_override("background", UITheme.style(Color(1, 1, 1, 0.07), 5))
 	ammo_box.add_child(_ammo_bar)
+	_ammo_box = ammo_box
+	# Bıçak modu göstergesi (varsayılan gizli; _on_local_player_spawned açar)
+	_knife_box = VBoxContainer.new()
+	_knife_box.add_theme_constant_override("separation", 7)
+	_knife_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_knife_box.visible = false
+	_knife_box.add_child(UITheme.label("SOL TIK · BIÇAK", 17, UITheme.TEXT_DIM, UITheme.font_caps))
+	_knife_box.add_child(UITheme.label("BIÇAK", 50, UITheme.TEXT, UITheme.font_mono))
+	stats.add_child(_knife_box)
 
 	# Dayanıklılık: koşu (Shift) + çömelme (Ctrl) — _process'te yerel oyuncudan okunur
 	var stamina_row := HBoxContainer.new()
@@ -580,6 +597,10 @@ func _setup_item_slot() -> void:
 	_build_status_chips()
 	_on_item_changed(-1)
 	_build_trap_bar()
+	# Güçler oda kuralıyla kapalıysa envanter slotu ve güç durum çipleri hiç görünmez
+	if not NetworkManager.powers_enabled():
+		_item_slot.visible = false
+		_chip_box.visible = false
 
 
 ## XP kazanımları — güç slotunun üstünde kısa süreli "+100 XP  Düşman öldürüldü" satırları
@@ -600,7 +621,7 @@ func _setup_xp_feed() -> void:
 
 
 func _on_xp_gained(amount: int, reason: String) -> void:
-	if _xp_feed == null:
+	if _xp_feed == null or reason in KILL_XP_REASONS:
 		return
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 13)
@@ -628,7 +649,10 @@ func _setup_test_hint() -> void:
 	box.add_theme_constant_override("separation", 3)
 	chip.add_child(box)
 	box.add_child(UITheme.label("TEST MODU", 15, UITheme.ACCENT, UITheme.font_caps))
-	for line: String in ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "4 Görünmezlik   - Özel silah   = Tuzak çözücü", "5 Önüne güç doğur   Q Kullan"]:
+	var lines: Array[String] = ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "4 Görünmezlik   - Özel silah   = Tuzak çözücü", "5 Önüne güç doğur   Q Kullan"]
+	if not NetworkManager.powers_enabled():
+		lines = ["7 Kart/kapı göster"]
+	for line: String in lines:
 		box.add_child(UITheme.label(line, 18, UITheme.TEXT_DIM))
 	_ignore_mouse_recursive(chip)
 
@@ -763,6 +787,8 @@ func _update_power_status(delta: float) -> void:
 	var valid: bool = _local_player != null and is_instance_valid(_local_player)
 	var dead: bool = valid and _local_player.is_dead
 	var trapped: bool = valid and bool(_local_player.is_trapped)
+	if trapped:
+		_trapped_seen_ms = Time.get_ticks_msec()
 	if trapped != _local_trapped:
 		_local_trapped = trapped
 		_refresh_chips()
@@ -924,33 +950,66 @@ func _setup_minimap() -> void:
 
 
 func _setup_death_overlay() -> void:
-	_death_overlay = ColorRect.new()
-	(_death_overlay as ColorRect).color = Color(0.04, 0.0, 0.01, 0.55)
-	_death_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_death_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_death_overlay.visible = false
+	_kill_notice = preload("res://scenes/ui/KillNotice.gd").new()
+	_root.add_child(_kill_notice)
+	_death_overlay = preload("res://scenes/ui/DeathRecap.gd").new()
 	_root.add_child(_death_overlay)
 
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_death_overlay.add_child(center)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 7)
-	center.add_child(box)
-	var t := UITheme.label("ETKİSİZ HALE GETİRİLDİN", 23, UITheme.DANGER, UITheme.font_caps)
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(t)
-	_death_count = UITheme.label("3", 120, UITheme.TEXT, UITheme.font_mono)
-	_death_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_death_count)
-	var sub := UITheme.label("YENİDEN DOĞUŞ", 18, UITheme.TEXT_DIM, UITheme.font_caps)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(sub)
-	_death_killer = UITheme.label("", 22, UITheme.TEXT_DIM)
-	_death_killer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_death_killer)
-	_ignore_mouse_recursive(_death_overlay)
+
+## Öldürme yöntemi → DeathRecap/KillNotice anahtarı. Bomba ve tuzak aynı hasar türünü (1) kullanır:
+## kurban o an tuzaktaysa tuzak sayılır (sadece yerel kurbanda bilinir).
+func _method_key(method: int, victim_trapped: bool) -> String:
+	if method == GameManager.KILL_BACKSTAB:
+		return "backstab"
+	if method == GameManager.KILL_KNIFE:
+		return "knife"
+	if method == _kill_special:
+		return "special"
+	if method == PLAYER_SCRIPT.DAMAGE_EXPLOSION:
+		return "trap" if victim_trapped else "bomb"
+	return "bullet"
+
+
+## Ölüm bandı verisi (yerel oyuncu öldü)
+func _present_death(killer_peer_id: int, method: int, kd: Dictionary) -> void:
+	var local_id := NetworkManager.get_local_id()
+	var info := {
+		"self_kill": killer_peer_id == local_id,
+		"killer_name": kd.get("name", "???"),
+		"killer_team": kd.get("team_id", -1),
+		"killer_char": kd.get("character", ""),
+		"method_key": _method_key(method, _local_trapped or Time.get_ticks_msec() - _trapped_seen_ms < 1000 or killer_peer_id == local_id),
+		"special_color": _power_info(T_SPECIAL).get("color", COL_SPECIAL),
+	}
+	if info["self_kill"]:
+		info["killer_team"] = _get_local_team()
+	var st: Dictionary = GameManager.player_stats.get(killer_peer_id, {})
+	info["kills"] = st.get("kills", 0)
+	info["deaths"] = st.get("deaths", 0)
+	var killer_node: Node = GameManager.active_players.get(killer_peer_id)
+	info["killer_hp"] = ceili(killer_node.health) if is_instance_valid(killer_node) and not killer_node.is_dead else -1
+	var d: Array = _duel.get(killer_peer_id, [0, 0])
+	info["duel_me"] = d[0]
+	info["duel_them"] = d[1]
+	_death_overlay.present(info)
+
+
+## Öldürme bildirimi (yerel oyuncu öldürdü) — XP GameManager._announce_kill_rpc ile aynı hesap
+func _present_kill(victim_peer_id: int, method: int, vname: String, vcol: Color) -> void:
+	var carrier: bool = GameManager.get_cards_held(victim_peer_id) > 0  # kart düşürme sinyali bundan SONRA gelir
+	var xp: int = GameManager.XP_KILL + (GameManager.XP_CARRIER_KILL_BONUS if carrier else 0)
+	var title := "KART TAŞIYICI ÖLDÜRÜLDÜ" if carrier else "DÜŞMAN ÖLDÜRÜLDÜ"
+	match _method_key(method, false):
+		"backstab":
+			xp += GameManager.XP_BACKSTAB_BONUS
+			title = "BIÇAKLA ÖLDÜRME"   # kullanıcı: "arkadan" yazmasın, sadece bıçak (XP bonusu aynı)
+		"knife":
+			xp += GameManager.XP_KNIFE_BONUS
+			title = "BIÇAKLA ÖLDÜRME"
+		"special":
+			title = "ÖZEL SİLAHLA ÖLDÜRME"
+		# bomba/tuzak aynı hasar türü ve kurbanın tuzak durumu ölümde sıfırlanıyor → genel başlık kalır
+	_kill_notice.show_kill(title, xp, vname, vcol)
 
 
 func _setup_scoreboard() -> void:
@@ -1138,6 +1197,10 @@ func _on_local_player_spawned(player: Node) -> void:
 	_refresh_scores()
 	_update_objective()
 
+	# Bıçak modu: mermi/şarjör gizli, yerine "BIÇAK" etiketi
+	var knife_mode := NetworkManager.get_weapon_mode() == "knife"
+	_ammo_box.visible = not knife_mode
+	_knife_box.visible = knife_mode
 	# Başlangıç ammo göstergesini karakter silahına göre ayarla
 	if player.current_weapon:
 		_on_ammo_changed(player.current_weapon.current_ammo, player.current_weapon.max_ammo, false)
@@ -1294,7 +1357,7 @@ func _refresh_scoreboard() -> void:
 			var is_me: bool = pid == local_id
 			var player_name: String = data.get("name", "???")
 			# Kart taşıyıcısı sadece kendi takımında gösterilir
-			if pid == _carrier_peer and tid == local_team:
+			if GameManager.is_card_carrier(pid) and tid == local_team:
 				player_name = "◆ " + player_name
 			if is_me:
 				player_name = tr("%s  (Sen)") % player_name
@@ -1373,7 +1436,54 @@ func _on_match_started() -> void:
 	_show_countdown(0)
 	_update_objective()
 	if was_warmup:
-		_show_banner("▶  MAÇ BAŞLADI  ·  KARTI BUL", UITheme.SUCCESS)
+		_show_banner("▶  MAÇ BAŞLADI  ·  SADECE BIÇAK" if NetworkManager.get_weapon_mode() == "knife" \
+			else "▶  MAÇ BAŞLADI  ·  KAZANMAK İÇİN ÖLDÜR" if _is_timed() else "▶  MAÇ BAŞLADI  ·  KARTI BUL", UITheme.SUCCESS)
+
+
+## Süreli (kartsız) maç mı? GameManager alanı/fonksiyonu henüz yoksa false
+func _is_timed() -> bool:
+	return GameManager.has_method("is_timed_match") and bool(GameManager.call("is_timed_match"))
+
+
+## Üst orta KALAN SÜRE çipini kur (hedef çipinin altında, col içinde)
+func _build_time_chip(col: VBoxContainer) -> void:
+	var tw := CenterContainer.new()
+	col.add_child(tw)
+	_time_chip = PanelContainer.new()
+	_time_chip.visible = false
+	_time_chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 17, Color(1, 1, 1, 0.18), 1, 27, 8))
+	tw.add_child(_time_chip)
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 14)
+	_time_chip.add_child(hb)
+	hb.add_child(UITheme.label("KALAN SÜRE", 18, UITheme.TEXT_DIM, UITheme.font_caps))
+	_time_lbl = UITheme.label("0:00", 28, UITheme.TEXT, UITheme.font_mono)
+	hb.add_child(_time_lbl)
+
+
+func _update_time_chip() -> void:
+	if _time_chip == null:
+		return
+	var left: float = float(GameManager.get("match_time_left")) if "match_time_left" in GameManager else -1.0
+	var show := _is_timed() and GameManager.match_live and left >= 0.0
+	_time_chip.visible = show
+	if not show:
+		return
+	var secs := ceili(left)
+	_time_lbl.text = "%d:%02d" % [secs / 60, secs % 60]
+	var col := UITheme.TEXT
+	if left <= 10.0:
+		col = UITheme.DANGER
+		_time_chip.modulate.a = 0.85 + 0.15 * sin(Time.get_ticks_msec() / 120.0)
+	elif left <= 60.0:
+		col = UITheme.ACCENT
+		_time_chip.modulate.a = 1.0
+	else:
+		_time_chip.modulate.a = 1.0
+	_time_lbl.add_theme_color_override("font_color", col)
+	if left <= 60.0 and not _last_minute_warned:
+		_last_minute_warned = true
+		_show_banner("SON 1 DAKİKA", UITheme.ACCENT)
 
 
 func _update_objective() -> void:
@@ -1384,13 +1494,31 @@ func _update_objective() -> void:
 	if not GameManager.match_live:
 		text = _warmup_text if not _warmup_text.is_empty() else tr("ISINMA  ·  OYUNCULAR BEKLENİYOR")
 		col = UITheme.TEXT
-	elif _carrier_peer == -1:
+	elif _is_timed():
+		text = tr("EN ÇOK ÖLDÜREN TAKIM KAZANIR")
+	elif GameManager.get_card_total() > 1:
+		var total: int = GameManager.get_card_total()
+		var mine: int = GameManager.get_team_cards(local_team)
+		var enemy_all := -1
+		for t_id: int in range(4):
+			if t_id != local_team and GameManager.get_team_cards(t_id) >= total:
+				enemy_all = t_id
+		if mine >= total:
+			text = tr("TÜM KARTLAR SİZDE · ÇIKIŞA GÖTÜRÜN")
+			col = UITheme.SUCCESS
+		elif enemy_all >= 0:
+			text = tr("%s TAKIMI TÜM KARTLARI TOPLADI") % TeamManager.get_team_name(enemy_all).to_upper()
+			col = UITheme.DANGER
+		else:
+			text = tr("KARTLAR · %d/%d") % [mine, total]
+	elif GameManager.get_card_carriers().is_empty():
 		text = tr("◆  KART YERDE  ·  BUL VE AL")
-	elif _carrier_peer == local_id:
+	elif GameManager.is_card_carrier(local_id):
 		text = tr("◆  KART SENDE  ·  KAPININ ÇEMBERİNDE %d SN KAL") % int(GameManager.DOOR_UNLOCK_TIME)
 		col = UITheme.SUCCESS
 	else:
-		var tid: int = NetworkManager.players.get(_carrier_peer, {}).get("team_id", -1)
+		var carrier_peer: int = GameManager.get_card_carriers()[0]
+		var tid: int = NetworkManager.players.get(carrier_peer, {}).get("team_id", -1)
 		if tid == local_team:
 			text = tr("◆  KART TAKIMINDA  ·  TAŞIYICIYI KORU")
 			col = TeamManager.get_color(tid)
@@ -1421,12 +1549,18 @@ func _show_banner(text: String, color: Color) -> void:
 
 
 func _on_card_picked_up(carrier_peer_id: int, _carrier_pos: Vector3, carrier_team_id: int) -> void:
-	_carrier_peer = carrier_peer_id
 	_update_objective()
 	var team_name := TeamManager.get_team_name(carrier_team_id).to_upper()
 	# Kendi takımın aldıysa yükselen çan, rakip aldıysa inen uyarı
 	SFX.play_ui(get_tree(), "card_pickup" if carrier_team_id == _get_local_team() else "card_alert", -2.0)
-	if carrier_peer_id == NetworkManager.get_local_id():
+	var total: int = GameManager.get_card_total()
+	if total > 1:
+		var held: int = GameManager.get_team_cards(carrier_team_id)
+		if carrier_peer_id == NetworkManager.get_local_id():
+			_show_banner(tr("KART ALINDI · %d/%d") % [held, total], UITheme.SUCCESS)
+		else:
+			_show_banner(tr("⚠  %s TAKIM KARTI ALDI!") % team_name + "  ·  %d/%d" % [held, total], TeamManager.get_color(carrier_team_id))
+	elif carrier_peer_id == NetworkManager.get_local_id():
 		_show_banner("KARTI ALDIN!  KAPIYA KOŞ", UITheme.SUCCESS)
 	else:
 		_show_banner(tr("⚠  %s TAKIM KARTI ALDI!") % team_name, TeamManager.get_color(carrier_team_id))
@@ -1481,7 +1615,7 @@ func _update_unlock_ticks(delta: float) -> void:
 	if _unlock_tick_t > 0.0:
 		return
 	_unlock_tick_t = lerpf(UNLOCK_TICK_SLOW, UNLOCK_TICK_FAST, _last_unlock)
-	var tid: int = NetworkManager.players.get(_unlock_carrier, {}).get("team_id", -1)
+	var tid: int = _unlock_team
 	if tid == _get_local_team():
 		SFX.play_ui(get_tree(), "unlock_tick", -6.0, 1.0 + _last_unlock * 0.5)
 	else:
@@ -1489,23 +1623,23 @@ func _update_unlock_ticks(delta: float) -> void:
 
 
 ## Kapı kilidi: taşıyıcıya karakter üstü bar, takımına "KORU", rakiplere "DURDUR" + kalan süre (üst panel)
-func _on_door_unlock_changed(ratio: float, carrier_peer_id: int) -> void:
+func _on_door_unlock_changed(ratio: float, unlock_team_id: int) -> void:
 	var was := _last_unlock
 	_last_unlock = ratio
-	_unlock_carrier = carrier_peer_id
+	_unlock_team = unlock_team_id
 	_carrier_bar.visible = false
 	if ratio <= 0.0 or ratio >= 1.0:
 		_unlock_panel.visible = false
 		if ratio <= 0.0 and was > 0.0:
 			SFX.play_ui(get_tree(), "unlock_reset", -4.0)
 		# Taşıyıcı çemberden çıktıysa (hâlâ kart sendeyse) uyar
-		if ratio <= 0.0 and was > 0.0 and carrier_peer_id == NetworkManager.get_local_id() and _carrier_peer == carrier_peer_id:
+		if ratio <= 0.0 and was > 0.0 and unlock_team_id == _get_local_team() and GameManager.is_card_carrier(NetworkManager.get_local_id()):
 			_show_banner("✕  KİLİT SIFIRLANDI  ·  ÇEMBERDE KAL", UITheme.DANGER)
 		return
-	var tid: int = NetworkManager.players.get(carrier_peer_id, {}).get("team_id", -1)
+	var tid: int = unlock_team_id
 	var col := UITheme.ACCENT
 	var text := ""
-	if carrier_peer_id == NetworkManager.get_local_id():
+	if tid == _get_local_team() and GameManager.is_card_carrier(NetworkManager.get_local_id()):
 		_carrier_bar_lbl.text = tr("KİLİT AÇILIYOR  ·  %.1f sn") % ((1.0 - ratio) * GameManager.DOOR_UNLOCK_TIME)
 		_carrier_bar_fill.value = ratio
 		_carrier_bar.visible = true
@@ -1618,10 +1752,12 @@ func _on_trap_rescue_changed(trapped_peer: int, ratio: float, rescuer_peer: int)
 
 
 func _on_card_dropped(_drop_pos: Vector3, carrier_team_id: int) -> void:
-	_carrier_peer = -1
 	_update_objective()
 	var team_name := TeamManager.get_team_name(carrier_team_id).to_upper()
-	_show_banner(tr("◆  %s TAKIM KARTI DÜŞÜRDÜ!") % team_name, TeamManager.get_color(carrier_team_id))
+	var drop_text := tr("◆  %s TAKIM KARTI DÜŞÜRDÜ!") % team_name
+	if GameManager.get_card_total() > 1:
+		drop_text += "  ·  %d/%d" % [GameManager.get_team_cards(carrier_team_id), GameManager.get_card_total()]
+	_show_banner(drop_text, TeamManager.get_color(carrier_team_id))
 
 
 # ─────────────────────────────────────────────
@@ -1641,21 +1777,24 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int, method: int) ->
 	var kcol: Color = TeamManager.get_color(kd.get("team_id", -1))
 	var vcol: Color = TeamManager.get_color(vd.get("team_id", -1))
 
+	# İkili skor (ölüm bandındaki "SEN – RAKİP")
+	if killer_peer_id != victim_peer_id:
+		if killer_peer_id == local_id:
+			var d: Array = _duel.get(victim_peer_id, [0, 0])
+			d[0] += 1
+			_duel[victim_peer_id] = d
+		elif victim_peer_id == local_id:
+			var d: Array = _duel.get(killer_peer_id, [0, 0])
+			d[1] += 1
+			_duel[killer_peer_id] = d
+
 	var border := Color.TRANSPARENT
 	if victim_peer_id == local_id:
 		border = Color(UITheme.DANGER, 0.8)
-		if killer_peer_id == local_id:
-			_death_killer.text = tr("Kendi tuzağına yakalandın")
-		elif method == GameManager.KILL_BACKSTAB:
-			_death_killer.text = tr("Seni arkadan bıçaklayan: %s") % kname
-		elif method == GameManager.KILL_KNIFE:
-			_death_killer.text = tr("Seni bıçaklayan: %s") % kname
-		elif method == _kill_special:
-			_death_killer.text = tr("Seni özel silahla vuran: %s") % kname
-		else:
-			_death_killer.text = tr("Seni vuran: %s") % kname
+		_present_death(killer_peer_id, method, kd)
 	elif killer_peer_id == local_id:
 		border = Color(UITheme.ACCENT, 0.8)
+		_present_kill(victim_peer_id, method, vname, vcol)
 
 	var row := PanelContainer.new()
 	row.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -1705,14 +1844,25 @@ func _on_leave_pressed() -> void:
 func _on_game_ended(winning_team: int) -> void:
 	_pause_panel.hide()
 	_scoreboard_panel.hide()
+	_scoreboard_visible = false
 	_death_overlay.hide()
 	var won := winning_team == _get_local_team()
 	SFX.play_ui(get_tree(), "match_win" if won else "match_lose", -2.0)
 	var team_color := TeamManager.get_color(winning_team)
-	_end_title.text = "ZAFER" if won else "YENİLGİ"
-	_end_title.add_theme_color_override("font_color", team_color if won else UITheme.DANGER)
-	_end_sub.text = tr("%s TAKIMI KAZANDI") % TeamManager.get_team_name(winning_team).to_upper()
-	_end_sub.add_theme_color_override("font_color", team_color)
+	if winning_team < 0:
+		_end_title.text = "BERABERLİK"
+		_end_title.add_theme_color_override("font_color", UITheme.TEXT)
+		_end_sub.text = "SÜRE DOLDU · SKORLAR EŞİT"
+		_end_sub.add_theme_color_override("font_color", UITheme.TEXT)
+	else:
+		_end_title.text = "ZAFER" if won else "YENİLGİ"
+		_end_title.add_theme_color_override("font_color", team_color if won else UITheme.DANGER)
+		var win_name: String = TeamManager.get_team_name(winning_team).to_upper()
+		if str(GameManager.get("end_reason")) == "time":
+			_end_sub.text = tr("SÜRE DOLDU · %s TAKIMI KAZANDI") % win_name
+		else:
+			_end_sub.text = tr("%s TAKIMI KAZANDI") % win_name
+		_end_sub.add_theme_color_override("font_color", team_color)
 	var stats: Dictionary = GameManager.player_stats.get(NetworkManager.get_local_id(), {"kills": 0, "deaths": 0})
 	_end_stats.text = tr("%d KILL   ·   %d ÖLÜM\n+%d XP KAZANILDI   ·   PROFİL: %d XP") % [
 		stats.get("kills", 0), stats.get("deaths", 0), GameManager.match_xp, PROFILE.get_xp()]

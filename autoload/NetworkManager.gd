@@ -19,6 +19,12 @@ const TEAM_COUNT := 4
 const TEAM_SIZE_MIN := 2   # 2v2v2v2
 const TEAM_SIZE_MAX := 5   # 5v5v5v5
 const MAX_PLAYERS := TEAM_COUNT * TEAM_SIZE_MAX  # ENet üst sınırı; gerçek kapasite get_max_players()
+## Oda kuralları sınırları (win_mode cards/timed, card_count, match_minutes, powers, weapon_mode normal/knife)
+const CARD_COUNT_MIN := 1
+const CARD_COUNT_MAX := 3
+const MATCH_MINUTES_MIN := 3
+const MATCH_MINUTES_MAX := 30
+const MATCH_MINUTES_DEFAULT := 10
 
 ## Seçilebilir haritalar (Lobby ayarları, GameManager sahne yükleme, oda listesi)
 ## max_team: haritanın kaldırabildiği en büyük takım boyutu (oda formatı bunu aşamaz — set_map/set_team_size kırpar).
@@ -113,6 +119,16 @@ func create_server(player_name: String, p_room_name: String = "", p_password: St
 		room_settings["map"] = get_map_info(String(p_settings["map"]))["id"]
 	if p_settings.has("team_size"):
 		room_settings["team_size"] = clampi(int(p_settings["team_size"]), TEAM_SIZE_MIN, get_map_max_team())
+	if p_settings.has("win_mode") and (String(p_settings["win_mode"]) == "cards" or String(p_settings["win_mode"]) == "timed"):
+		room_settings["win_mode"] = String(p_settings["win_mode"])
+	if p_settings.has("card_count"):
+		room_settings["card_count"] = clampi(int(p_settings["card_count"]), CARD_COUNT_MIN, CARD_COUNT_MAX)
+	if p_settings.has("match_minutes"):
+		room_settings["match_minutes"] = clampi(int(p_settings["match_minutes"]), MATCH_MINUTES_MIN, MATCH_MINUTES_MAX)
+	if p_settings.has("powers"):
+		room_settings["powers"] = bool(p_settings["powers"])
+	if p_settings.has("weapon_mode") and (String(p_settings["weapon_mode"]) == "normal" or String(p_settings["weapon_mode"]) == "knife"):
+		room_settings["weapon_mode"] = String(p_settings["weapon_mode"])
 	RoomManager.create_room(p_room_name, p_password)
 	emit_signal("server_created")
 	emit_signal("player_list_updated")
@@ -648,7 +664,68 @@ func _chat_receive(msg: Dictionary) -> void:
 # ─────────────────────────────────────────────
 
 static func _default_settings() -> Dictionary:
-	return {"map": MAPS[0]["id"], "team_size": TEAM_SIZE_MAX, "has_password": false}
+	return {"map": MAPS[0]["id"], "team_size": TEAM_SIZE_MAX, "has_password": false,
+		"win_mode": "cards", "card_count": 1, "match_minutes": MATCH_MINUTES_DEFAULT, "powers": true, "weapon_mode": "normal"}
+
+
+# Oda kuralları getter'ları — anahtar yoksa varsayılan (eski sürüm host'larla uyum)
+func get_win_mode() -> String:
+	var m := String(room_settings.get("win_mode", "cards"))
+	return m if m == "timed" else "cards"
+
+
+func get_card_count() -> int:
+	return clampi(int(room_settings.get("card_count", 1)), CARD_COUNT_MIN, CARD_COUNT_MAX)
+
+
+func get_match_minutes() -> int:
+	return clampi(int(room_settings.get("match_minutes", MATCH_MINUTES_DEFAULT)), MATCH_MINUTES_MIN, MATCH_MINUTES_MAX)
+
+
+func get_weapon_mode() -> String:
+	var m := String(room_settings.get("weapon_mode", "normal"))
+	return m if m == "knife" else "normal"
+
+
+## Bıçak modunda güçler HER ZAMAN kapalı
+## Bıçak modunda da açılabilir (kullanıcı isteği); bıçakta sadece ÖZEL SİLAH doğmaz (PowerupManager — tüfek yok)
+func powers_enabled() -> bool:
+	return bool(room_settings.get("powers", true))
+
+
+func set_powers(enabled: bool) -> void:
+	if not is_host() or is_game_running():
+		return
+	room_settings["powers"] = enabled
+	_push_settings()
+
+
+func set_win_mode(mode: String) -> void:
+	if not is_host() or is_game_running() or (mode != "cards" and mode != "timed"):
+		return
+	room_settings["win_mode"] = mode
+	_push_settings()
+
+
+func set_card_count(n: int) -> void:
+	if not is_host() or is_game_running():
+		return
+	room_settings["card_count"] = clampi(n, CARD_COUNT_MIN, CARD_COUNT_MAX)
+	_push_settings()
+
+
+func set_match_minutes(m: int) -> void:
+	if not is_host() or is_game_running():
+		return
+	room_settings["match_minutes"] = clampi(m, MATCH_MINUTES_MIN, MATCH_MINUTES_MAX)
+	_push_settings()
+
+
+func set_weapon_mode(mode: String) -> void:
+	if not is_host() or is_game_running() or (mode != "normal" and mode != "knife"):
+		return
+	room_settings["weapon_mode"] = mode
+	_push_settings()
 
 
 func get_team_size() -> int:
@@ -698,6 +775,8 @@ func get_room_status() -> Dictionary:
 	return {
 		"team_size": get_team_size(), "max_players": get_max_players(),
 		"map_name": get_map_info()["name"], "state": "game" if is_game_running() else "lobby",
+		"powers": powers_enabled(), "weapon_mode": get_weapon_mode(), "win_mode": get_win_mode(),
+		"card_count": get_card_count(), "match_minutes": get_match_minutes(),
 	}
 
 

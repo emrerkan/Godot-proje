@@ -38,7 +38,7 @@ const INFO := {
 	Type.SMOKE:     {"name": "SİS BOMBASI",   "glyph": "≋", "color": Color(0.72, 0.78, 0.86), "desc": "Fareye fırlat, görüşü kapatan sis bulutu"},
 	Type.TRAP:      {"name": "TUZAK",         "glyph": "▽", "color": Color(0.55, 0.5, 0.42),  "desc": "Yere bırak, düşmanı yakalar"},
 	Type.INVIS:        {"name": "GÖRÜNMEZLİK",  "glyph": "◐", "color": Color(0.72, 0.62, 1.0),  "desc": "6 sn rakiplerden gizlenir, ateşle bozulur"},
-	Type.SPECIAL_GUN:  {"name": "ÖZEL SİLAH",   "glyph": "⊕", "color": Color(1.0, 0.22, 0.55),  "desc": "Tek atış · duvardan geçer · menzil sınırsız"},
+	Type.SPECIAL_GUN:  {"name": "ÖZEL SİLAH",   "glyph": "⊕", "color": Color(1.0, 0.12, 0.12),  "desc": "Tek atış · duvardan geçer · menzil sınırsız"},
 	Type.TRAP_BREAKER: {"name": "TUZAK ÇÖZÜCÜ", "glyph": "⊘", "color": Color(0.80, 0.92, 0.36), "desc": "Tuzaktayken kendini kurtarır"},  # ✂ Windows'ta emojiye düşüyordu
 }
 ## ENEMY_SAT artık doğmaz (tek uydu kararı — INTEL_SAT tüm takımların oyuncularını gösterir); index sabit kaldığı için enum'da duruyor
@@ -145,6 +145,8 @@ func _process(delta: float) -> void:
 		_update_traps(delta)
 	if not NetworkManager.is_host() or GameManager.state != GameManager.State.IN_GAME or not GameManager.match_live or _points.is_empty():
 		return  # maç başlamadan (yükleme beklemesi) güç doğmaz
+	if not NetworkManager.powers_enabled():
+		return  # oda kuralı: özellikler kapalı → güç doğmaz
 	_spawn_timer -= delta
 	if _spawn_timer > 0.0:
 		return
@@ -231,7 +233,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if TEST_MODE and _handle_test_key(k.physical_keycode):
 		get_viewport().set_input_as_handled()
 		return
-	if k.physical_keycode != USE_KEY:
+	if k.physical_keycode != USE_KEY or not NetworkManager.powers_enabled():
 		return
 	var me := _local_player()
 	var item := get_item(NetworkManager.get_local_id())
@@ -293,6 +295,8 @@ func _handle_test_key(code: Key) -> bool:
 	var me := _local_player()
 	if me == null or me.is_dead:
 		return false
+	if not NetworkManager.powers_enabled() and (TEST_KEYS.has(code) or code == TEST_KEY_SPAWN or code == TEST_KEY_ENEMY_TRAP):
+		return false  # güçler kapalı: güç veren/doğuran test tuşları yok (7 kart/kapı çalışır)
 	if TEST_KEYS.has(code):
 		if NetworkManager.is_host():
 			_request_test_give(TEST_KEYS[code])
@@ -324,8 +328,10 @@ func _handle_test_key(code: Key) -> bool:
 
 @rpc("any_peer", "reliable")
 func _request_test_give(type: int) -> void:
-	if not NetworkManager.is_host() or not TEST_MODE or not INFO.has(type):
+	if not NetworkManager.is_host() or not TEST_MODE or not NetworkManager.powers_enabled() or not INFO.has(type):
 		return  # host da debug build olmalı
+	if type == Type.SPECIAL_GUN and NetworkManager.get_weapon_mode() == "knife":
+		return  # bıçak modunda özel silah yok (tüfek yok)
 	var peer := multiplayer.get_remote_sender_id()
 	if peer == 0:
 		peer = 1
@@ -336,7 +342,7 @@ func _request_test_give(type: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _request_test_spawn(pos: Vector3) -> void:
-	if not NetworkManager.is_host() or not TEST_MODE:
+	if not NetworkManager.is_host() or not TEST_MODE or not NetworkManager.powers_enabled():
 		return
 	var id := _next_id
 	_next_id += 1
@@ -346,7 +352,7 @@ func _request_test_spawn(pos: Vector3) -> void:
 ## Takımsız (team -1) tuzak: kimsenin takımıyla eşleşmez → isteyen dahil herkes tetikler.
 @rpc("any_peer", "reliable")
 func _request_test_trap() -> void:
-	if not NetworkManager.is_host() or not TEST_MODE:
+	if not NetworkManager.is_host() or not TEST_MODE or not NetworkManager.powers_enabled():
 		return
 	var peer := multiplayer.get_remote_sender_id()
 	if peer == 0:
@@ -378,12 +384,18 @@ func _local_team() -> int:
 	return NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
 
 
+## Bıçak modunda ÖZEL SİLAH doğmaz (tüfekle ateşlenir, bıçak modunda tüfek yok)
 func _pick_type() -> int:
+	var knife := NetworkManager.get_weapon_mode() == "knife"
 	var total := 0
 	for t: int in WEIGHTS:
+		if knife and t == Type.SPECIAL_GUN:
+			continue
 		total += WEIGHTS[t]
 	var roll := randi() % total
 	for t: int in WEIGHTS:
+		if knife and t == Type.SPECIAL_GUN:
+			continue
 		roll -= WEIGHTS[t]
 		if roll < 0:
 			return t
@@ -471,7 +483,7 @@ func local_touched(id: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _request_pickup(id: int) -> void:
-	if not NetworkManager.is_host():
+	if not NetworkManager.is_host() or not NetworkManager.powers_enabled():
 		return
 	var peer := multiplayer.get_remote_sender_id()
 	if peer == 0:
@@ -516,6 +528,8 @@ func _set_item_rpc(peer_id: int, type: int, picked_up: bool = false, silent: boo
 ## RPC yok: herkes aynı players listesinden aynı sonucu YEREL hesaplar → oyun başlar başlamaz slotta, host'un
 ## envanteri de aynı (kullanım host'ta doğrulanır). Sadece maç başı bir kez.
 func grant_starting_items() -> void:
+	if not NetworkManager.powers_enabled():
+		return  # oda kuralı: özellikler (güçler) kapalı → başlangıç gücü de yok
 	for pid: int in NetworkManager.players:
 		var character: String = NetworkManager.players[pid].get("character", "")
 		if STARTING_ITEMS.has(character) and get_item(pid) == NONE:
@@ -544,7 +558,7 @@ func _on_peer_left(peer: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _request_use(aim: Vector3) -> void:
-	if not NetworkManager.is_host():
+	if not NetworkManager.is_host() or not NetworkManager.powers_enabled():
 		return
 	var peer := multiplayer.get_remote_sender_id()
 	if peer == 0:
@@ -619,7 +633,7 @@ func _toggle_special_gun(peer: int) -> void:
 ## iyimser uygulamıştır; host burada yetkili kararı verir ve herkese _special_gun_rpc yollar.
 @rpc("any_peer", "reliable")
 func _request_special_set(want_armed: bool) -> void:
-	if not NetworkManager.is_host():
+	if not NetworkManager.is_host() or not NetworkManager.powers_enabled():
 		return
 	var peer := multiplayer.get_remote_sender_id()
 	if peer == 0:

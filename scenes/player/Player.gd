@@ -32,7 +32,7 @@ const SELF_RIM_SHADER: Shader = preload("res://scenes/player/SelfVisibility.gdsh
 const CHARACTER_STATS: Dictionary = {
 	"Tank":     {"health": 150.0, "speed": 5.5},
 	"Visioner": {"health": 100.0, "speed": 8.0},
-	"Runner":   {"health": 75.0,  "speed": 13.0},
+	"Runner":   {"health": 75.0,  "speed": 10.0},
 	"Sniper":   {"health": 80.0,  "speed": 7.0},
 	"Medic":    {"health": 110.0, "speed": 7.5},
 }
@@ -52,7 +52,11 @@ var health: float = 100.0
 var is_dead: bool = false
 var current_weapon: Node = null
 var is_local: bool = false
-var has_card: bool = false
+var cards_held: int = 0
+var has_card: bool:
+	get:
+		return cards_held > 0
+var _card_base_text: String = ""
 var is_trapped: bool = false   # Ayı kapanı — tam hareketsiz/çaresiz (PowerupManager._trap_trigger_rpc/_trap_freed_rpc)
 
 var _char_mesh: Node3D = null
@@ -185,6 +189,13 @@ const STAB_KEY := KEY_V
 const STAB_DURATION := 0.9        # klip bu süreye sıkıştırılır (darbe klipte ~0.5/2.17 → ~0.21 s)
 const STAB_HIT_TIME := 0.22
 const STAB_COOLDOWN := 1.0        # basıştan basışa
+const KNIFE_SPEED_MULT := 1.15    # sadece bıçak modu: koşu hızı çarpanı (yükseltmeden sonra)
+const KNIFE_STAB_COOLDOWN := 0.6  # sadece bıçak modu: bekleme (< STAB_DURATION → ardışık bıçak animasyonu yeniden başlar)
+
+
+## Oda ayarı "sadece bıçak" mı (room_settings maç içinde değişmez, her peer aynı okur)
+func is_knife_mode() -> bool:
+	return NetworkManager.get_weapon_mode() == "knife"
 const STAB_RANGE := 1.9           # m (gövde merkezleri arası)
 const STAB_CONE_COS := 0.5        # nişan yönünden ±60°
 const STAB_RANGE_TOLERANCE := 1.2 # host doğrulaması: gecikmeli konum farkı payı
@@ -262,6 +273,8 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	_upgrade_mult = PROFILE.multipliers(NetworkManager.players.get(p_peer_id, {}).get("upgrades", {}))
 	max_health = char_stats["health"] * _upgrade_mult["health"]
 	speed      = char_stats["speed"] * _upgrade_mult["speed"]
+	if is_knife_mode():
+		speed *= KNIFE_SPEED_MULT
 
 	peer_id = p_peer_id
 	team_id = p_team_id
@@ -303,6 +316,7 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 			var knife: Node3D = HAND_RIFLE_SCRIPT.build_knife_mesh()
 			sk.add_child(knife)
 			_hand_rifle.knife = knife
+			_hand_rifle.knife_only = is_knife_mode()
 			sk.add_child(_hand_rifle)
 		_anim_player = _find_anim_player(_char_mesh)
 		_play_idle()
@@ -581,8 +595,10 @@ func _equip_default_weapon() -> void:
 	_add_render_layer(current_weapon, BODY_LIGHT_LAYER_BIT)
 	_disable_shadow_casting(current_weapon)
 	# Üst gövde taban pozu: tüfek nişanda
-	if _upper and _anim_player and _anim_player.has_animation(ANIM_AIM):
-		_upper.set_base(_anim_player.get_animation(ANIM_AIM))
+	# (bıçak modunda tüfek pozu yok → tüfeksiz Idle duruşu)
+	var base_anim: StringName = ANIM_IDLE if is_knife_mode() else ANIM_AIM
+	if _upper and _anim_player and _anim_player.has_animation(base_anim):
+		_upper.set_base(_anim_player.get_animation(base_anim))
 
 
 # ─────────────────────────────────────────────
@@ -1022,7 +1038,9 @@ func _handle_local_input(delta: float) -> void:
 		shoot_pressed = Input.is_action_pressed("shoot")
 	if _shoot_blocked and not Input.is_action_pressed("shoot"):
 		_shoot_blocked = false
-	if special_armed:
+	if is_knife_mode():
+		pass   # sadece bıçak: tüfek ateşi yok (sol tık _handle_stab_input'ta)
+	elif special_armed:
 		# Özel silah hazır: sol tık BASIŞI = TEK atış (şarjör/ateş hızından bağımsız); normal tüfek susar
 		if Input.is_action_just_pressed("shoot") and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
 			_fire_special()
@@ -1030,14 +1048,17 @@ func _handle_local_input(delta: float) -> void:
 	elif shoot_pressed and not _shoot_blocked and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
 		current_weapon.try_shoot(peer_id, team_id)
 
-	if Input.is_action_just_pressed("reload") and current_weapon and not typing:
+	if Input.is_action_just_pressed("reload") and current_weapon and not typing and not is_knife_mode():
 		current_weapon.reload()
 
 	# Pozisyon senkronizasyonu
 	_sync_timer += delta
 	if _sync_timer >= SYNC_RATE:
 		_sync_timer = 0.0
-		if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0:
+		# Maç bitince (ENDED) yayın durur: lobiye dönüşte karşı tarafta Player node'u silinmişken gelen paketler
+		# "Node not found: ImportedMap/Player_…" / "Invalid packet received" hatası basıyordu (zararsız ama gürültü)
+		if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0 \
+				and GameManager.state == GameManager.State.IN_GAME:
 			_broadcast_state.rpc(global_position, rotation.y, move_mode | (AIR_FLAG if _airborne else 0))
 
 
@@ -1096,8 +1117,11 @@ func _handle_stab_input(delta: float) -> void:
 	var down := not typing and (Input.is_physical_key_pressed(STAB_KEY) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
 	var pressed := down and not _stab_was_down
 	_stab_was_down = down
+	var knife_mode := is_knife_mode()
+	if knife_mode and not typing and Input.is_action_pressed("shoot"):
+		pressed = true   # bıçak modu: sol tık (basılı tutunca bekleme bitince tekrar)
 	if pressed and _stab_cooldown <= 0.0 and _flip == Flip.NONE:
-		_stab_cooldown = STAB_COOLDOWN
+		_stab_cooldown = KNIFE_STAB_COOLDOWN if knife_mode else STAB_COOLDOWN
 		_stab_pending = STAB_HIT_TIME
 		_stab_lunge = STAB_LUNGE_TIME if not is_trapped else 0.0
 		_break_invisibility()   # bıçaklama görünmezliği ANINDA bozar
@@ -1359,7 +1383,7 @@ func _die(killer_peer_id: int, source: int = DAMAGE_BULLET) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _apply_death() -> void:
 	is_dead = true
-	has_card = false
+	drop_card()
 	is_trapped = false
 	_clear_power_states()   # görünmezlik + hazır özel silah sıfırlanır (cesedin görünmesi için gizlemeler geri alınır)
 	_death_token += 1
@@ -1410,7 +1434,7 @@ func respawn(spawn_pos: Vector3) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _apply_respawn(spawn_pos: Vector3) -> void:
 	is_dead = false
-	has_card = false
+	drop_card()
 	is_trapped = false
 	_clear_power_states()
 	health = max_health
@@ -1445,15 +1469,21 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 # ─────────────────────────────────────────────
 
 func pick_up_card() -> void:
-	has_card = true
-	# Sadece taşıyıcının kendi takımı (ve kendisi) görür
+	cards_held += 1
+	if _card_base_text == "":
+		_card_base_text = card_indicator.text
+	# 2+ kartta "×n" eklenir
+	card_indicator.text = _card_base_text if cards_held < 2 else "%s ×%d" % [_card_base_text, cards_held]
+	# Sadece taşıyıcının kendi takımı (ve kendisi) görür; görünmezken gösterge de gizli
 	var local_id  := NetworkManager.get_local_id()
 	var local_team: int = NetworkManager.players.get(local_id, {}).get("team_id", -1)
-	card_indicator.visible = (local_team == team_id)
+	card_indicator.visible = (local_team == team_id) and not is_hidden_from_local()
 
 
 func drop_card() -> void:
-	has_card = false
+	cards_held = 0
+	if _card_base_text != "":
+		card_indicator.text = _card_base_text
 	card_indicator.visible = false
 
 

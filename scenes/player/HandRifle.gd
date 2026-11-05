@@ -39,6 +39,10 @@ func _ready() -> void:
 		_thumb = sk.find_bone("thumb_02_r")
 
 
+## Sadece bıçak modu: tüfek hep gizli, bıçak hep sağ elde; aim_error 0 (nişan düzeltmesi yok)
+var knife_only := false
+
+
 func show_knife(duration: float) -> void:
 	_knife_time = duration
 
@@ -46,6 +50,15 @@ func show_knife(duration: float) -> void:
 func _process_modification_with_delta(delta: float) -> void:
 	var sk := get_skeleton()
 	if sk == null or rifle == null or _grip < 0 or _support < 0:
+		return
+	if knife_only and knife:
+		aim_error = 0.0
+		aim_valid = false
+		rifle.visible = false
+		var on := _middle >= 0 and _thumb >= 0
+		knife.visible = on
+		if on:
+			_place_knife(sk)
 		return
 	if knife:
 		_knife_time = maxf(_knife_time - delta, 0.0)

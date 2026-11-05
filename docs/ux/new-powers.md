@@ -58,7 +58,7 @@ Mevcut glifler: `✸ ✚ ◈ ◉ ✦ ≋ ▽` (güçler), `● ▲ ■ ◆` (tak
 | Tip (index) | `name` | `glyph` | `color` | `desc` | Yedek glif* |
 |---|---|---|---|---|---|
 | INVIS (7) | `GÖRÜNMEZLİK` | `◐` (yarı dolu daire = "yarı görünür") | `Color(0.72, 0.62, 1.0)` lavanta | `6 sn rakiplerden gizlenir, ateşle bozulur` | `◑` |
-| SPECIAL_GUN (8) | `ÖZEL SİLAH` | `⊕` (daire içinde artı = nişangah) | `Color(1.0, 0.22, 0.55)` kızıl-eflatun (**AD düzeltti**, bkz. §11.1) | `Tek atış · duvardan geçer · menzil sınırsız` | `+` |
+| SPECIAL_GUN (8) | `ÖZEL SİLAH` | `⊕` (daire içinde artı = nişangah) | `Color(1.0, 0.12, 0.12)` lazer kırmızısı (2026-11-05 kullanıcı isteği; önceki kızıl-eflatun (1.0,0.22,0.55) idi, bkz. §11.1 gerekçesi) | `Tek atış · duvardan geçer · menzil sınırsız` | `+` |
 | TRAP_BREAKER (9) | `TUZAK ÇÖZÜCÜ` | `✂` (makas = kesip çık) | `Color(0.80, 0.92, 0.36)` limon (**AD düzeltti**, bkz. §11.1) | `Tuzaktayken kendini kurtarır` | `⊘` |
 
 \* **Glif doğrulaması (ui-programmer):** üç glifi 57 px (slot) ve 22 px (kill feed) çizin. Kare kutu (tofu) ya da renkli emoji

@@ -23,6 +23,8 @@ const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const SETTINGS_WINDOW := preload("res://scenes/ui/SettingsWindow.gd")
 const GAME_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
 const SFX := preload("res://scenes/audio/Sfx.gd")
+const NUMBER_STEPPER := preload("res://scenes/ui/NumberStepper.gd")
+const TOGGLE_SWITCH := preload("res://scenes/ui/ToggleSwitch.gd")
 
 ## OYNA alt menüsü: [anahtar, metin, panel başlığı] — anahtar = _pages anahtarı
 const PLAY_ITEMS := [["browse", "ODALAR"], ["create", "ODA KUR"], ["code", "KOD İLE KATIL"]]
@@ -72,14 +74,35 @@ var _empty_state: Control
 var _scan_dot: Label
 var _room_count_lbl: Label
 
+# Oda filtreleri (çoklu seçim; hiçbiri seçili değilse = hepsi). Seçimler settings.cfg [room_filter]
+const FILTER_KEYS: Array[String] = ["map", "format", "time", "cards", "power", "pw"]
+const FILTER_TITLES := {"map": "HARİTA", "format": "FORMAT", "time": "SÜRE", "cards": "KART", "power": "ÖZEL GÜÇ", "pw": "ŞİFRE"}
+const TIME_RANGES := [[3, 5], [6, 10], [11, 15], [16, 20], [21, 30]]
+const TIME_TEXTS: Array[String] = ["3-5 dk", "6-10 dk", "11-15 dk", "16-20 dk", "21-30 dk"]
+var _room_filters: Dictionary = {}      # anahtar → Array (seçili değerler: harita adı / team_size / aralık indeksi / kart sayısı / "on"|"off" / "pw"|"nopw")
+var _filter_buttons: Dictionary = {}    # anahtar → Button
+var _filter_popups: Dictionary = {}     # anahtar → PopupMenu
+var _filter_clear_btn: Button
+var _filter_empty: Control              # filtre sonrası oda kalmadı
+
 # Oda kur
 var _room_name_input: LineEdit
 var _password_input: LineEdit
 var _map_option: OptionButton
 var _map_limit_lbl: Label           # "EN FAZLA 3v3v3v3" (haritanın sınırı)
 var _size_buttons: Array[Button] = []   # 2v2v2v2 … 5v5v5v5 (ButtonGroup)
+var _weapon_buttons: Array[Button] = []   # NORMAL / SADECE BIÇAK (ButtonGroup)
+var _weapon_mode := "normal"
+var _powers_pref := true                  # kullanıcının özel güç tercihi (bıçakta anahtar kapalı görünse de korunur)
+var _powers_toggle: Button        # ODA KUR: özel güç aç/kapa (settings.cfg [room] powers)
 var _players_lbl: Label             # "12 OYUNCU"
 var _team_size := 0
+var _win_mode := "cards"                 # ODA KUR: "cards" / "timed"
+var _match_minutes := 10
+var _mode_buttons: Array[Button] = []
+var _minutes_spin               # NumberStepper
+var _cards_spin              # ODA KUR: kart sayısı (kartlı modda SÜRE yerine)
+var _card_count := 1
 var _host_btn: Button
 
 # Kod ile katıl
@@ -103,8 +126,9 @@ func _ready() -> void:
 	NetworkManager.kicked.connect(_on_kicked)
 	RoomManager.rooms_updated.connect(_refresh_room_list)
 
+	_load_room_filters()
 	_build_ui()
-	MENU_MUSIC.play(get_tree())   # karakter seçimine kadar sürer (lobi de çalar, kesilmez)
+	MENU_MUSIC.play(get_tree()) # karakter seçimine kadar sürer (lobi de çalar, kesilmez)
 	_name_input.text = _load_name()
 	_show_tab("browse")
 	_update_listening()
@@ -613,6 +637,10 @@ func _build_browse_page() -> Control:
 	refresh.pressed.connect(_on_refresh_pressed.bind(refresh))
 	header.add_child(refresh)
 
+	page.add_child(_build_filter_bar())
+	header.add_child(_filter_clear_btn)
+	header.move_child(_filter_clear_btn, refresh.get_index())   # TEMİZLE · Yenile
+
 	var stack := Control.new()
 	stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	page.add_child(stack)
@@ -631,6 +659,24 @@ func _build_browse_page() -> Control:
 	empty.set_anchors_preset(Control.PRESET_FULL_RECT)
 	stack.add_child(empty)
 	_empty_state = empty
+	# Filtre sonrası oda kalmadı
+	var fe := CenterContainer.new()
+	fe.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fe.visible = false
+	stack.add_child(fe)
+	_filter_empty = fe
+	var fe_box := VBoxContainer.new()
+	fe_box.add_theme_constant_override("separation", 17)
+	fe.add_child(fe_box)
+	var fe_lbl := UITheme.label("Filtreye uyan oda yok", 28, UITheme.TEXT, UITheme.font_bold)
+	fe_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	fe_box.add_child(fe_lbl)
+	var fe_btn := Button.new()
+	fe_btn.text = "FİLTRELERİ TEMİZLE"
+	fe_btn.theme_type_variation = "GhostButton"
+	fe_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	fe_btn.pressed.connect(_clear_room_filters)
+	fe_box.add_child(fe_btn)
 	var empty_box := VBoxContainer.new()
 	empty_box.add_theme_constant_override("separation", 10)
 	empty.add_child(empty_box)
@@ -662,11 +708,9 @@ func _build_browse_page() -> Control:
 
 func _build_create_page() -> Control:
 	var page := VBoxContainer.new()
-	page.add_theme_constant_override("separation", 20)
+	page.add_theme_constant_override("separation", 16)
+	# Açıklama satırı ("Odan yerel ağda yayınlanır…") kaldırıldı: oda kuralları satırları eklendikçe pencere 1080'e sığmıyordu
 	page.add_child(UITheme.label("Yeni Oda Kur", 33, UITheme.TEXT, UITheme.font_bold))
-	var info := UITheme.label("Odan yerel ağda yayınlanır. Arkadaşların listeden ya da oda kodunla katılabilir.", 22, UITheme.TEXT_DIM)
-	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	page.add_child(info)
 	# Oda adı + şifre yan yana (panel kısa kalsın — ekranı kaplamasın)
 	var id_row := HBoxContainer.new()
 	id_row.add_theme_constant_override("separation", 20)
@@ -716,6 +760,79 @@ func _build_create_page() -> Control:
 		_size_buttons.append(b)
 	_players_lbl = UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	page.add_child(_caption_field("FORMAT", _players_lbl, seg))
+
+	# Oyun modu: KARTLI / KARTSIZ (süreli) + süre
+	var mode_row := HBoxContainer.new()
+	mode_row.add_theme_constant_override("separation", 10)
+	var mode_group := ButtonGroup.new()
+	for mi in 2:
+		var mb := Button.new()
+		mb.text = "KARTSIZ" if mi == 1 else "KARTLI"
+		mb.toggle_mode = true
+		mb.button_group = mode_group
+		mb.focus_mode = Control.FOCUS_NONE
+		mb.custom_minimum_size.y = 67
+		mb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mb.toggled.connect(func(on: bool) -> void:
+			if on:
+				_select_mode("timed" if mi == 1 else "cards"))
+		mode_row.add_child(mb)
+		_mode_buttons.append(mb)
+	_minutes_spin = NUMBER_STEPPER.new()
+	_minutes_spin.min_value = NetworkManager.MATCH_MINUTES_MIN
+	_minutes_spin.max_value = NetworkManager.MATCH_MINUTES_MAX
+	_minutes_spin.fmt = "%d dk"
+	_minutes_spin.snap = 5   # düğmeler 5'er dk (elle yazım serbest)
+	_minutes_spin.value = NetworkManager.MATCH_MINUTES_DEFAULT
+	_minutes_spin.control_height = 67.0
+	_minutes_spin.value_changed.connect(func(v: int) -> void: _match_minutes = v)
+	mode_row.add_child(_minutes_spin)
+	_cards_spin = NUMBER_STEPPER.new()
+	_cards_spin.min_value = NetworkManager.CARD_COUNT_MIN
+	_cards_spin.max_value = NetworkManager.CARD_COUNT_MAX
+	_cards_spin.fmt = "%d kart"
+	_cards_spin.value = NetworkManager.CARD_COUNT_MIN
+	_cards_spin.control_height = 67.0
+	_cards_spin.value_changed.connect(func(v: int) -> void: _card_count = v)
+	mode_row.add_child(_cards_spin)
+	page.add_child(_caption_field("OYUN MODU", UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps), mode_row))
+
+	# Özel güç anahtarı (Lobby ODA AYARLARI ile aynı; oda kurulduktan sonra da ⚙ ile değişir)
+	# Tek satır, iki sütun: SOL silah modu (bölümlü düğme), SAĞ özel güç anahtarı
+	var powers_row := HBoxContainer.new()
+	powers_row.add_theme_constant_override("separation", 27)
+	var weapon_col := VBoxContainer.new()
+	weapon_col.add_theme_constant_override("separation", 7)
+	weapon_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	weapon_col.add_child(UITheme.label("SİLAH", 18, UITheme.TEXT_DIM, UITheme.font_caps))
+	var weapon_seg := HBoxContainer.new()
+	weapon_seg.add_theme_constant_override("separation", 10)
+	var weapon_group := ButtonGroup.new()
+	for wi in 2:
+		var wb := Button.new()
+		wb.text = "SADECE BIÇAK" if wi == 1 else "NORMAL"
+		wb.toggle_mode = true
+		wb.button_group = weapon_group
+		wb.focus_mode = Control.FOCUS_NONE
+		wb.custom_minimum_size.y = 67
+		wb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		wb.toggled.connect(func(on: bool) -> void:
+			if on:
+				_select_weapon("knife" if wi == 1 else "normal"))
+		weapon_seg.add_child(wb)
+		_weapon_buttons.append(wb)
+	weapon_col.add_child(weapon_seg)
+	powers_row.add_child(weapon_col)
+	var powers_col := VBoxContainer.new()
+	powers_col.add_theme_constant_override("separation", 7)
+	powers_col.add_child(UITheme.label("ÖZEL GÜÇ", 18, UITheme.TEXT_DIM, UITheme.font_caps))
+	_powers_toggle = TOGGLE_SWITCH.new()
+	_powers_toggle.custom_minimum_size.y = 67
+	_powers_toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_powers_toggle.toggled.connect(func(on: bool) -> void: _powers_pref = on)
+	powers_col.add_child(_powers_toggle)
+	powers_row.add_child(powers_col)
+	page.add_child(powers_row)
 	_load_room_prefs()
 
 	page.add_child(_spacer(7))
@@ -900,6 +1017,14 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 	chips.add_child(_room_chip("● OYUNDA" if in_game else "● BEKLEMEDE", UITheme.DANGER if in_game else UITheme.SUCCESS))
 	chips.add_child(_room_chip(NetworkManager.get_format_text(team_size), UITheme.ACCENT))
 	chips.add_child(_room_chip(tr(map_name).to_upper(), UITheme.TEXT_DIM))
+	if str(room.get("weapon_mode", "normal")) == "knife":
+		chips.add_child(_room_chip("SADECE BIÇAK", UITheme.ACCENT))
+	if not bool(room.get("powers", true)):   # eski host'larda alan yok → açık say
+		chips.add_child(_room_chip("ÖZEL GÜÇ KAPALI", UITheme.TEXT_DIM))
+	if str(room.get("win_mode", "cards")) == "timed":
+		chips.add_child(_room_chip(tr("KARTSIZ · %d DK") % int(room.get("match_minutes", 10)), UITheme.TEXT_DIM))
+	elif int(room.get("card_count", 1)) > 1:
+		chips.add_child(_room_chip(tr("%d KART") % int(room.get("card_count", 1)), UITheme.ACCENT))
 
 	# Doluluk
 	var cap_box := VBoxContainer.new()
@@ -986,6 +1111,27 @@ func _caption_field(caption: String, info: Label, control: Control) -> Control:
 	return box
 
 
+func _select_mode(mode: String) -> void:
+	_win_mode = mode
+	var idx := 1 if mode == "timed" else 0
+	# set_pressed_no_signal ButtonGroup'taki diğer düğmeyi BIRAKMAZ → ikisi de basılı görünüyordu; ikisini açıkça ayarla
+	for i in _mode_buttons.size():
+		_mode_buttons[i].set_pressed_no_signal(i == idx)
+	_minutes_spin.visible = mode == "timed"
+	_cards_spin.visible = mode != "timed"
+
+
+## Silah modu: "normal" / "knife". Özel güç her iki modda da seçilebilir (bıçakta özel silah doğmaz)
+func _select_weapon(mode: String) -> void:
+	_weapon_mode = "knife" if mode == "knife" else "normal"
+	var idx := 1 if _weapon_mode == "knife" else 0
+	for i in _weapon_buttons.size():
+		_weapon_buttons[i].set_pressed_no_signal(i == idx)
+	_powers_toggle.disabled = false
+	_powers_toggle.set_pressed_no_signal(_powers_pref)
+	_powers_toggle.tooltip_text = tr("Kapalıyken yerde güç çıkmaz, başlangıç güçleri verilmez")
+
+
 func _select_size(size: int) -> void:
 	_team_size = size
 	_players_lbl.text = tr("%d OYUNCU") % (size * NetworkManager.TEAM_COUNT)
@@ -1015,6 +1161,16 @@ func _load_room_prefs() -> void:
 			_map_option.select(i)
 	_team_size = clampi(int(cfg.get_value("room", "team_size", NetworkManager.TEAM_SIZE_MAX)),
 		NetworkManager.TEAM_SIZE_MIN, NetworkManager.TEAM_SIZE_MAX)
+	_powers_pref = bool(cfg.get_value("room", "powers", true))
+	_select_weapon(str(cfg.get_value("room", "weapon_mode", "normal")))
+	var wm: String = str(cfg.get_value("room", "win_mode", "cards"))
+	_win_mode = wm if wm == "timed" else "cards"
+	_match_minutes = clampi(int(cfg.get_value("room", "match_minutes", NetworkManager.MATCH_MINUTES_DEFAULT)),
+		NetworkManager.MATCH_MINUTES_MIN, NetworkManager.MATCH_MINUTES_MAX)
+	_card_count = clampi(int(cfg.get_value("room", "card_count", 1)), NetworkManager.CARD_COUNT_MIN, NetworkManager.CARD_COUNT_MAX)
+	_select_mode(_win_mode)
+	_minutes_spin.set_value_no_signal(_match_minutes)
+	_cards_spin.set_value_no_signal(_card_count)
 	_update_size_options()
 
 
@@ -1023,6 +1179,11 @@ func _save_room_prefs(map_id: String, size: int) -> void:
 	cfg.load(SETTINGS_PATH)
 	cfg.set_value("room", "map", map_id)
 	cfg.set_value("room", "team_size", size)
+	cfg.set_value("room", "powers", _powers_pref)
+	cfg.set_value("room", "weapon_mode", _weapon_mode)
+	cfg.set_value("room", "win_mode", _win_mode)
+	cfg.set_value("room", "match_minutes", _match_minutes)
+	cfg.set_value("room", "card_count", _card_count)
 	cfg.save(SETTINGS_PATH)
 
 
@@ -1135,16 +1296,234 @@ func _refresh_room_list() -> void:
 	for child in _room_list.get_children():
 		child.queue_free()
 	var rooms := RoomManager.discovered_rooms
+	var shown: Array[String] = []
+	for code: String in rooms:
+		if _room_matches_filters(rooms[code]):
+			shown.append(code)
+	var filtering := _has_room_filters()
 	_empty_state.visible = rooms.is_empty()
-	_room_scroll.visible = not rooms.is_empty()
+	_room_scroll.visible = not shown.is_empty()
+	if _filter_empty:
+		_filter_empty.visible = not rooms.is_empty() and shown.is_empty()
 	if _rooms_badge:
-		_rooms_badge.text = "" if rooms.is_empty() else str(rooms.size())
+		if rooms.is_empty():
+			_rooms_badge.text = ""
+		else:
+			_rooms_badge.text = ("%d / %d" % [shown.size(), rooms.size()]) if filtering else str(rooms.size())
 	if not RoomManager.is_listening():
 		_room_count_lbl.text = "DİNLEME PORTU MEŞGUL · TEKRAR DENENİYOR..."
+	elif rooms.is_empty():
+		_room_count_lbl.text = tr("TARANIYOR...")
+	elif filtering:
+		_room_count_lbl.text = tr("%d / %d ODA") % [shown.size(), rooms.size()]
 	else:
-		_room_count_lbl.text = tr("TARANIYOR...") if rooms.is_empty() else tr("%d ODA BULUNDU") % rooms.size()
-	for code: String in rooms:
+		_room_count_lbl.text = tr("%d ODA BULUNDU") % rooms.size()
+	for code: String in shown:
 		_room_list.add_child(_build_room_row(code, rooms[code]))
+	_update_filter_ui()
+
+
+# ─────────────────────────────────────────────
+#  Oda filtreleri
+# ─────────────────────────────────────────────
+
+## Dışarıdan da çağrılabilir: listeyi mevcut filtrelerle yeniden süzer
+func _apply_room_filters() -> void:
+	_refresh_room_list()
+
+
+func _has_room_filters() -> bool:
+	for key: String in FILTER_KEYS:
+		if not (_room_filters.get(key, []) as Array).is_empty():
+			return true
+	return false
+
+
+func _clear_room_filters() -> void:
+	for key: String in FILTER_KEYS:
+		_room_filters[key] = []
+	_save_room_filters()
+	_apply_room_filters()
+
+
+func _load_room_filters() -> void:
+	var cfg := ConfigFile.new()
+	var ok := cfg.load(SETTINGS_PATH) == OK
+	for key: String in FILTER_KEYS:
+		var arr: Array = []
+		if ok:
+			var v: Variant = cfg.get_value("room_filter", key, [])
+			if v is Array:
+				arr = (v as Array).duplicate()
+		_room_filters[key] = arr
+
+
+func _save_room_filters() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	for key: String in FILTER_KEYS:
+		cfg.set_value("room_filter", key, _room_filters.get(key, []))
+	cfg.save(SETTINGS_PATH)
+
+
+## Oda bu filtrelere uyuyor mu? (kategoriler VE; kategori içi VEYA; süre+kart birleşik)
+func _room_matches_filters(room: Dictionary) -> bool:
+	var f_map: Array = _room_filters.get("map", [])
+	if not f_map.is_empty() and not (str(room.get("map_name", "Labirent")) in f_map):
+		return false
+	var f_fmt: Array = _room_filters.get("format", [])
+	if not f_fmt.is_empty() and not (int(room.get("team_size", NetworkManager.TEAM_SIZE_MAX)) in f_fmt):
+		return false
+	var f_pow: Array = _room_filters.get("power", [])
+	if not f_pow.is_empty() and not (("on" if bool(room.get("powers", true)) else "off") in f_pow):
+		return false
+	var f_pw: Array = _room_filters.get("pw", [])
+	if not f_pw.is_empty() and not (("pw" if bool(room.get("has_password", false)) else "nopw") in f_pw):
+		return false
+	var f_time: Array = _room_filters.get("time", [])
+	var f_cards: Array = _room_filters.get("cards", [])
+	if not f_time.is_empty() or not f_cards.is_empty():
+		var ok := false
+		if str(room.get("win_mode", "cards")) == "timed":
+			var mins := int(room.get("match_minutes", 10))
+			for idx in f_time:
+				var r: Array = TIME_RANGES[int(idx)]
+				if mins >= int(r[0]) and mins <= int(r[1]):
+					ok = true
+		else:
+			ok = int(room.get("card_count", 1)) in f_cards
+		if not ok:
+			return false
+	return true
+
+
+## Kategori seçenekleri: [[değer, metin], …]
+func _filter_options(key: String) -> Array:
+	var out: Array = []
+	match key:
+		"map":
+			for m: Dictionary in NetworkManager.MAPS:
+				out.append([str(m["name"]), tr(str(m["name"]))])
+		"format":
+			for s in range(2, 6):
+				out.append([s, NetworkManager.get_format_text(s)])
+		"time":
+			for i in TIME_TEXTS.size():
+				out.append([i, tr(TIME_TEXTS[i])])
+		"cards":
+			for n in range(1, 4):
+				out.append([n, tr("%d kart") % n])
+		"power":
+			out.append(["on", tr("ÖZEL GÜÇ AÇIK")])
+			out.append(["off", tr("ÖZEL GÜÇ KAPALI")])
+		"pw":
+			out.append(["pw", tr("ŞİFRELİ")])
+			out.append(["nopw", tr("ŞİFRESİZ")])
+	return out
+
+
+func _build_filter_bar() -> Control:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 13)
+	var flow := HFlowContainer.new()
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flow.add_theme_constant_override("h_separation", 10)
+	flow.add_theme_constant_override("v_separation", 10)
+	bar.add_child(flow)
+	for key: String in FILTER_KEYS:
+		var btn := Button.new()
+		btn.add_theme_font_size_override("font_size", 17)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.pressed.connect(_open_filter_popup.bind(key))
+		flow.add_child(btn)
+		_filter_buttons[key] = btn
+		var pop := PopupMenu.new()
+		pop.hide_on_checkable_item_selection = false
+		# Temanın onay kutusu ikonları karanlıkta görünmüyordu → kodla çizilen belirgin kutular
+		pop.add_theme_icon_override("checked", _filter_check_icon(true))
+		pop.add_theme_icon_override("unchecked", _filter_check_icon(false))
+		pop.add_theme_constant_override("h_separation", 14)
+		pop.add_theme_constant_override("item_start_padding", 14)
+		pop.id_pressed.connect(_on_filter_item_pressed.bind(key))
+		btn.add_child(pop)
+		_filter_popups[key] = pop
+	# TEMİZLE çubuğa DEĞİL başlık satırına (Yenile'nin yanına) eklenir — _build_browse_page; çubukta satırı kaydırıyordu
+	_filter_clear_btn = Button.new()
+	_filter_clear_btn.text = "TEMİZLE"
+	_filter_clear_btn.theme_type_variation = "GhostButton"
+	_filter_clear_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_filter_clear_btn.pressed.connect(_clear_room_filters)
+	_update_filter_ui()
+	return bar
+
+
+## Filtre listesi onay kutusu: boş = ince beyaz çerçeveli kare, seçili = içi dolu beyaz kare (pahsız, 22 px)
+func _filter_check_icon(checked: bool) -> ImageTexture:
+	var s := 22
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var edge := Color(1, 1, 1, 0.9 if checked else 0.55)
+	for i in s:
+		for t in 2:
+			img.set_pixel(i, t, edge)
+			img.set_pixel(i, s - 1 - t, edge)
+			img.set_pixel(t, i, edge)
+			img.set_pixel(s - 1 - t, i, edge)
+	if checked:
+		img.fill_rect(Rect2i(5, 5, s - 10, s - 10), Color(1, 1, 1, 0.95))
+	return ImageTexture.create_from_image(img)
+
+
+func _open_filter_popup(key: String) -> void:
+	var btn: Button = _filter_buttons[key]
+	var pop: PopupMenu = _filter_popups[key]
+	pop.clear()
+	var sel: Array = _room_filters.get(key, [])
+	var opts := _filter_options(key)
+	for i in opts.size():
+		pop.add_check_item(str(opts[i][1]), i)
+		pop.set_item_checked(i, opts[i][0] in sel)
+	pop.reset_size()
+	pop.popup(Rect2i(Vector2i(btn.get_screen_position() + Vector2(0, btn.size.y)), Vector2i(0, 0)))
+
+
+func _on_filter_item_pressed(id: int, key: String) -> void:
+	var opts := _filter_options(key)
+	if id < 0 or id >= opts.size():
+		return
+	var value: Variant = opts[id][0]
+	var sel: Array = _room_filters.get(key, [])
+	if value in sel:
+		sel.erase(value)
+	else:
+		sel.append(value)
+	_room_filters[key] = sel
+	var pop: PopupMenu = _filter_popups[key]
+	pop.set_item_checked(pop.get_item_index(id), value in sel)
+	_save_room_filters()
+	_apply_room_filters()
+
+
+## Düğme metinleri ("HARİTA · 2 ▾") + seçili düğmeye beyaz kenar + TEMİZLE görünürlüğü
+func _update_filter_ui() -> void:
+	for key: String in FILTER_KEYS:
+		if not _filter_buttons.has(key):
+			continue
+		var btn: Button = _filter_buttons[key]
+		var n := (_room_filters.get(key, []) as Array).size()
+		btn.text = (tr(FILTER_TITLES[key]) + (" · %d" % n if n > 0 else "") + " ▾")
+		if n > 0 and btn.is_inside_tree():
+			var base := btn.get_theme_stylebox("normal") as StyleBoxFlat
+			if base:
+				var sb := base.duplicate() as StyleBoxFlat
+				sb.border_color = UITheme.FRAME
+				sb.set_border_width_all(1)
+				sb.bg_color = UITheme.SURFACE_3
+				btn.add_theme_stylebox_override("normal", sb)
+		else:
+			btn.remove_theme_stylebox_override("normal")
+	if _filter_clear_btn:
+		_filter_clear_btn.visible = _has_room_filters()
 
 
 func _on_room_join_btn(room_code: String, room_name: String, room_ip: String, has_password: bool) -> void:
@@ -1196,7 +1575,8 @@ func _on_host_pressed() -> void:
 	_save_room_prefs(map_id, size)
 	_set_busy(true)
 	_set_status("Sunucu oluşturuluyor...", "busy")
-	NetworkManager.create_server(player_name, r_name, _password_input.text, {"map": map_id, "team_size": size})
+	NetworkManager.create_server(player_name, r_name, _password_input.text, {"map": map_id, "team_size": size, "powers": _powers_pref, "weapon_mode": _weapon_mode,
+		"win_mode": _win_mode, "match_minutes": _match_minutes, "card_count": _card_count})
 
 
 func _on_code_text_changed(new_text: String) -> void:

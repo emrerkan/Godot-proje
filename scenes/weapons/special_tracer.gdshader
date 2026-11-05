@@ -9,7 +9,7 @@ shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
 group_uniforms renk;
-uniform vec4 tracer_color : source_color = vec4(1.0, 0.93, 0.95, 1.0);
+uniform vec4 tracer_color : source_color = vec4(1.0, 0.93, 0.9, 1.0);
 uniform float strength : hint_range(0.0, 2.0) = 1.0;           // çekirdek 1.0, hale ~0.45
 
 group_uniforms sekil;

@@ -69,7 +69,7 @@ func _apply(f: float) -> void:
 
 
 func _test_reveal() -> bool:
-	if _target != GameManager.card_instance and _target != GameManager.door_instance:
+	if not _target.is_in_group("cards") and _target != GameManager.door_instance:
 		return false  # sadece kart + kapı (güçler değil)
 	var scene := get_tree().current_scene
 	var pm: Node = scene.get_node_or_null("PowerupManager") if scene else null

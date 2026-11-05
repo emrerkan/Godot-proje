@@ -20,7 +20,7 @@ const KICK := 11.7
 
 ## Özel silah hazırken (Player.special_armed_changed): saçılmasız sabit halka + 4 çentik (⊕), kırmızı-eflatun — docs/ux/new-powers.md §3.6
 ## Renk = PowerupManager.INFO[SPECIAL_GUN].color ile aynı
-const SPECIAL_COLOR := Color(1.0, 0.22, 0.55)
+const SPECIAL_COLOR := Color(1.0, 0.12, 0.12)
 const SPECIAL_RING_R := 15.0
 const SPECIAL_TICK_END := 24.0
 
@@ -125,6 +125,13 @@ func _draw() -> void:
 	var outline := Color(0, 0, 0, 0.75)
 	if _armed:
 		_draw_special(c, outline)
+		return
+	if NetworkManager.get_weapon_mode() == "knife":
+		# Yakın dövüş nişanı: saçılma/tepme/şarjör halkası yok — küçük sabit nokta + ince halka
+		draw_arc(c, 13.0, 0.0, TAU, 32, outline, 5.0, true)
+		draw_arc(c, 13.0, 0.0, TAU, 32, Color(UITheme.TEXT, 0.9), 2.0, true)
+		draw_circle(c, 3.8, outline)
+		draw_circle(c, 2.2, UITheme.ACCENT)
 		return
 	var col := UITheme.DANGER if _empty else UITheme.ACCENT
 	var g := _gap + _kick
