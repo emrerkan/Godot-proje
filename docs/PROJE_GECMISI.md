@@ -227,6 +227,11 @@
     **Reddedilen alternatifler (kullanıcı: "diğerlerini de not et")**: (a) kart başına ayrı çıkış + takım biriktirir — ortak kart havuzunda kilitlenme (A 2, B 1 teslim → kimse 3'e ulaşamaz),
     çözmek için kart yeniden doğurma gibi ek kural gerekirdi; (b) tek çıkış + teslimde biriktirme — aynı kilitlenme; (c) oyuncu başı 1 kart — 2 kişilik takımda 3 kart imkansız olurdu.
     Maliyet: aşamalı, az ajan + Sonnet ile ~0.9M ajan token'ı (haftalık kullanım %10'dan başladı). `ui-programmer` ajan tipi Şef'in aktardığı onayı kabul etmiyor → UI işi general-purpose ajana.
+49. **İstatistik sekmesi (2026-11-06)** — kullanıcı kararları: "vurmak" = **öldürmek**, isabet tutulmaz; her karakter için **kazanma oranı**; yer = PROFİL penceresinde **İSTATİSTİK** sekmesi;
+    **önce yerel**, backend hazır olunca depolama değişir (`MatchStats.gd` tek nokta, doğrulanmamış sayılar Steam'e taşınmaz). Karakter başına en az 5 maç şartı (az veride "yeterli veri yok" yerine analiz boş kalır).
+    **Erken çıkış yenilgi sayılır, galibiyet değil** (`abandoned`: maç sayılır, kazanılmaz). Sohbet geçmişi YALNIZCA şikâyette tutulur (DB planı; aydınlatma metnine maç istatistikleri + şikâyet kaydı eklenecek).
+    Toplamlar maç listesinden ayrı (son 100) → eski maçlar silinince düşmez. Bilinen sınırlar: pencereyi kapatma / host kopması maçı kaydetmeyebilir (return_to_menu çalışmaz);
+    host migration'da kayıt isimle eşleşir (peer id değişir).
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 

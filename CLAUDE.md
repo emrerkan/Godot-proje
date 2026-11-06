@@ -34,7 +34,12 @@ Ağ: `register_player(..., powers)` + `_apply_character_selection(..., powers)` 
 Uygulama: PowerupManager `_m(peer)` (kullanan/atan) — sağlık `_use_heal` (kritik çarpan, `_heal_over_time`, grup), fırlatma menzili,
 `_bomb_rpc` atanın fitil/uçuş/yarıçap/sis değerleri (her peer aynı hesap, RPC'ye alan eklenmedi), `_on_bomb_exploded.bind(thrower, team)`
 flaş körlük çarpanları, `_radar_smokes` + `hidden_from_satellite` (Minimap uydu çizimi), Trap.setup koyanın `trap_*` değerleri,
-HUD kurtarma `trap_rescue_time`. UpgradePage: sekmeler KARAKTER/GÜÇ GELİŞİMİ, güç sekmesi ağaç tuvali (`_draw_links`) + detay paneli.
+HUD kurtarma `trap_rescue_time`. UpgradePage: sekmeler KARAKTER/GÜÇ GELİŞİMİ/İSTATİSTİK, güç sekmesi ağaç tuvali (`_draw_links`) + detay paneli.
+**İstatistik (YEREL, doğrulanmamış)** — `scenes/profile/MatchStats.gd` (statik, preload; depolama TAMAMEN burada → backend'e geçişte sadece bu dosya değişir):
+`user://stats.cfg`; karakter başına `{matches, wins, kills, deaths}` toplamları, maç listesinden AYRI (son `RECENT_MAX` 100 maç + en iyi maç; eski kayıt atılınca toplamlar düşmez).
+Sonuç `win/loss/draw/abandoned` (draw ve abandoned maç sayılır, galibiyet değil). İSABET tutulmaz (kullanıcı: vurmak = öldürmek). `insights()` = `{text, args}` çeviri anahtarları
+(karakter başına en az 5 maç, eğilim için 25 maç). Kayıt: `GameManager._apply_end_game` (win/loss/draw) + `return_to_menu` (maç sürerken ayrılma → abandoned); `match_live` false (ısınma) ise kaydetmez.
+Test: `_set_save_path_for_tests(yol)`. UI: `scenes/ui/StatsPage.gd` (UpgradePage İSTATİSTİK sekmesi; üst şerit toplamlar, karakter başına öldürme/ölüm çubukları + K/D + MAÇ + KAZANMA, sağda ANALİZ).
 
 ## Ayarlar — `scenes/settings/GameSettings.gd` (class_name, statik, `preload`) + `scenes/ui/SettingsWindow.gd`
 `user://options.cfg` (oyuncu adı ayrı: user://settings.cfg). `DEFAULTS` / `PRESETS` (Düşük-Orta-Yüksek-Ultra). `apply_once` UITheme.apply'dan

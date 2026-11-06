@@ -13,6 +13,7 @@ extends VBoxContainer
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const POWER_TREES := preload("res://scenes/profile/PowerTrees.gd")
 const ICONS := preload("res://scenes/ui/IconSet.gd")
+const STATS_PAGE := preload("res://scenes/ui/StatsPage.gd")
 const SFX := preload("res://scenes/audio/Sfx.gd")
 const ROLES := {"Tank": "Ön Hat", "Visioner": "Keşif", "Runner": "Hızlı Sızma", "Sniper": "Uzun Menzil", "Medic": "Destek"}
 
@@ -42,6 +43,7 @@ const BUTTON_FONT_COLORS: Array[String] = ["font_color", "font_hover_color", "fo
 var _tab_buttons: Dictionary = {}      # "char"/"power" → Button
 var _char_page: VBoxContainer
 var _power_page: VBoxContainer
+var _stats_page: VBoxContainer         # İSTATİSTİK sekmesi (StatsPage.gd)
 var _xp_chip: PanelContainer
 var _xp_lbl: Label
 var _level_lbl: Label
@@ -81,6 +83,7 @@ func _ready() -> void:
 	# Sabit pencere: güç sekmesi karakter sekmesi kadar yüksek (her karakterde aynı — satır yükseklikleri sabit) →
 	# karakter/ağaç/sekme değişince panel zıplamaz. Güç sekmesi ölçülmez: sarılan etiketler layout'tan önce dev yükseklik verir.
 	_power_page.custom_minimum_size.y = _char_page.get_combined_minimum_size().y
+	_stats_page.custom_minimum_size.y = _char_page.get_combined_minimum_size().y
 
 
 func _build() -> void:
@@ -89,7 +92,7 @@ func _build() -> void:
 	header.add_theme_constant_override("separation", 10)
 	add_child(header)
 	var group := ButtonGroup.new()
-	for t: Array in [["char", "KARAKTER GELİŞİMİ"], ["power", "GÜÇ GELİŞİMİ"]]:
+	for t: Array in [["char", "KARAKTER GELİŞİMİ"], ["power", "GÜÇ GELİŞİMİ"], ["stats", "İSTATİSTİK"]]:
 		var b := _tab_button(t[1], group)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(_show_tab.bind(t[0]))
@@ -126,6 +129,10 @@ func _build() -> void:
 	_power_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(_power_page)
 	_build_power_page(_power_page)
+
+	_stats_page = STATS_PAGE.new()
+	_stats_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	add_child(_stats_page)
 
 
 func _chip_style(border: Color) -> StyleBoxFlat:
@@ -279,6 +286,9 @@ func _show_tab(which: String) -> void:
 		(_tab_buttons[t] as Button).set_pressed_no_signal(t == which)
 	_char_page.visible = which == "char"
 	_power_page.visible = which == "power"
+	_stats_page.visible = which == "stats"
+	if which == "stats":
+		_stats_page.refresh()   # her açılışta veriyi yeniden oku, çubuklar dolsun
 
 
 ## Klavye/gamepad girişi: sayfada odak yokken ilk yön tuşu odağı AKTİF alt sekmeye koyar (GUI'den önce, `_input`);
@@ -296,7 +306,13 @@ func _input(event: InputEvent) -> void:
 	var f := get_viewport().gui_get_focus_owner()
 	if f != null and is_ancestor_of(f):
 		return
-	var target: Control = _char_buttons.get(_character) if _char_page.visible else (_tree_buttons.get(_tree, {}) as Dictionary).get("btn")
+	var target: Control
+	if _stats_page.visible:
+		target = _tab_buttons.get("stats")   # istatistik sekmesinde odaklanacak içerik yok → sekme düğmesi
+	elif _char_page.visible:
+		target = _char_buttons.get(_character)
+	else:
+		target = (_tree_buttons.get(_tree, {}) as Dictionary).get("btn")
 	if target != null and target.is_visible_in_tree():
 		target.grab_focus()
 		get_viewport().set_input_as_handled()
@@ -328,6 +344,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _cycle(dir: int) -> void:
+	if _stats_page.visible:
+		return   # istatistik sekmesinde alt sekme yok
 	if _char_page.visible:
 		var i := PROFILE.CHARACTERS.find(_character)
 		_select(PROFILE.CHARACTERS[posmod(i + dir, PROFILE.CHARACTERS.size())])
@@ -345,6 +363,8 @@ func refresh(animate_stat: String = "", animate_xp: bool = false) -> void:
 	_level_lbl.text = tr("PROFİL SEVİYESİ %d") % PROFILE.profile_level()
 	_refresh_char(animate_stat)
 	_refresh_power()
+	if _stats_page.visible:
+		_stats_page.refresh()
 
 
 func _update_xp(animate: bool) -> void:

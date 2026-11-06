@@ -77,6 +77,10 @@ var match_xp := 0                     # bu maçta kazanılan (oyun sonu ekranı)
 var _xp_survive_timer := 0.0
 var _xp_carry_timer := 0.0
 var _match_xp_closed := false
+## İstatistik (profil → İSTATİSTİK sekmesi): maç başına TEK kayıt. XP bayrağıyla aynı yerlerde sıfırlanır,
+## restore_from_migration SIFIRLAMAZ (aynı maç sürüyor).
+const MATCH_STATS := preload("res://scenes/profile/MatchStats.gd")
+var _match_stats_recorded := false
 
 enum State { MENU, LOBBY, CHARACTER_SELECT, IN_GAME, ENDED }
 
@@ -162,6 +166,7 @@ func _begin_actual_game_rpc() -> void:
 	_xp_survive_timer = 0.0
 	_xp_carry_timer = 0.0
 	_match_xp_closed = false
+	_match_stats_recorded = false
 	door_unlock = 0.0
 	match_live = false
 	_local_loaded = false
@@ -715,8 +720,30 @@ func _apply_end_game(winning_team: int, reason: String = "") -> void:
 		var my_team: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
 		if my_team >= 0 and my_team == winning_team:
 			gain_xp(XP_WIN, "Zafer")
+	# İstatistik kaydı game_ended'dan ÖNCE (profil/HUD sinyalde güncel veriyi okuyabilsin)
+	var stats_team: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
+	if winning_team == -1:
+		_record_match_stats("draw")
+	elif stats_team == winning_team:
+		_record_match_stats("win")
+	else:
+		_record_match_stats("loss")
 	state = State.ENDED
 	emit_signal("game_ended", winning_team)
+
+
+## Yerel oyuncunun bu maçını MatchStats'a yazar (maç başına bir kez). Gerçek maç başlamadıysa (yükleme/ısınma),
+## karakter ya da takım yoksa (izleyici) kaydetmez.
+func _record_match_stats(result: String) -> void:
+	if _match_stats_recorded or not match_live:
+		return
+	var me: Dictionary = NetworkManager.players.get(NetworkManager.get_local_id(), {})
+	var character: String = me.get("character", "")
+	if character.is_empty() or int(me.get("team_id", -1)) < 0:
+		return
+	var st: Dictionary = player_stats.get(NetworkManager.get_local_id(), {})
+	MATCH_STATS.record_match(character, int(st.get("kills", 0)), int(st.get("deaths", 0)), result)
+	_match_stats_recorded = true
 
 
 @rpc("authority", "call_local", "reliable")
@@ -741,6 +768,7 @@ func _return_to_lobby_rpc() -> void:
 	end_reason = ""
 	match_xp = 0
 	_match_xp_closed = false
+	_match_stats_recorded = false
 	_xp_survive_timer = 0.0
 	_xp_carry_timer = 0.0
 	if NetworkManager.is_host():
@@ -1155,6 +1183,9 @@ func _restore_stats_by_name(by_name: Dictionary) -> void:
 
 
 func return_to_menu() -> void:
+	# Maç sürerken menüye dönen = terk (player_stats temizlenmeden önce kaydet; yüklemede atılan match_live false → kaydedilmez)
+	if state == State.IN_GAME:
+		_record_match_stats("abandoned")
 	active_players.clear()
 	player_stats.clear()
 	cards.clear()
