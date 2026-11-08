@@ -372,7 +372,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   `NetworkManager.MAPS` id embassy/quantum/desert/forest/hospital/subway/warehouse/port → hepsi `scenes/world/ImportedMap.tscn`
   (+ `glb` yolu, `max_team` 3/5/5/4/2/3/4/5 — `get_map_max_team`, `set_map` takım boyutunu kırpar, Lobby format seçeneklerini kapatır). `ImportedMap.gd`:
   GLB'yi örnekler (`MapModel`), `HIDDEN_KEYWORDS` gizler (`CardVisual_*` + **takım spawn platformları `Pad_Team*`** — kullanıcı:
-  takım bölgeleri işaretli olmasın; çarpışmaları da yok), mesh başına trimesh çarpışma (`NO_COLLISION_KEYWORDS`: yaprak/su/neon/holo/Pad_Team), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
+  takım bölgeleri işaretli olmasın; çarpışmaları da yok), mesh başına trimesh çarpışma (`NO_COLLISION_KEYWORDS`: yaprak/su/neon/holo/Pad_Team/Decal/Scatter/Grass — yeni harita üretim kuralları `asset model/haritalar/HARITA_PROMPTLARI.md`), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
   `TeamManager.register_spawn_points` (SpawnPoints çocukları SIRAYLA takım 0-3), 1 m yükseklik taraması (hücre boyu kutu
   `cast_motion` = hücrenin EN YÜKSEK yüzeyi; tek ışın 0.4 m ince duvarları kaçırıyordu) → `_wall` maskesi. Zemini olmayan hücre
   (Liman su havuzu, çarpışmasız) → `_build_void_walls` görünmez kutu, `VOID_WALL_LAYER` 16: sadece oyuncu çarpar (Player maskesine

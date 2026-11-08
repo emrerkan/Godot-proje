@@ -27,7 +27,8 @@ Eski haritaların koordinat rehberi: [HARITALAR_TEKNIK_REHBERI_AI.md](HARITALAR_
 
 ### Mesh adına göre davranış (büyük/küçük harf duyarlı)
 
-- **Çarpışmasız:** `Canopy, Needles, Frond, Neon, LED, Holo, CardVisual, Beacon, GlowRing, Water, Pool, Basin, Screen, Glass, Light, Lamp, Horn, Pad_Team`
+- **Çarpışmasız:** `Canopy, Needles, Frond, Neon, LED, Holo, CardVisual, Beacon, GlowRing, Water, Pool, Basin, Screen, Glass, Light, Lamp, Horn, Pad_Team, Decal, Scatter, Grass`
+  (`Decal, Scatter, Grass` v2 için 2026-11-08'de eklendi; eski 8 GLB'de bu adları taşıyan nesne yok — kontrol edildi.)
   - Tuzak: `WaterTower`, `StreetLight_Pole`, `Glass_Wall`, `Lighthouse` gibi katı nesneler de çarpışmasız olur → içinden geçilir.
   - Duvardaki cam pencere `Glass` adıyla boşluk gibi davranır → pencere boşluğu yapılmamalı.
 - **Gizlenir:** `CardVisual`, `Pad_Team` (takım bölgeleri işaretlenmesin — kullanıcı kararı).
@@ -80,11 +81,14 @@ Oyun içinde doğrulanmadı; yeni haritalar bu yüzden tek seviyeli tasarlandı.
 | Spawn ofseti (±1.7, ±1.7) | 5 nokta 2.4 m yarıçap içinde kalır; kapı 25 m kuralı spawn merkezine değil her noktaya uygulandığı için pay bırakıldı. |
 | Kapı çevresi 3.5 m boş | Kilit yarıçapı 3 m + çember görseli. |
 | Kaide 0.45 m, yarıçap ≤ 0.4 m | Kart alanı 1×1×1 m; daha geniş kaide oyuncunun karta değmesini engeller. |
-| Prosedürel doku yok | Blender glTF dışa aktarıcısı prosedürel düğümleri aktarmaz; düz renk veya bake edilmiş doku. |
+| Gerçek PBR doku veya bake (v2) | Blender glTF dışa aktarıcısı prosedürel düğümleri aktarmaz. v1 bu yüzden "düz renk" diyordu → sonuç dokusuz/oyuncak gibi çıktı. v2: CC0 fotogrametri dokular (ambientCG, Poly Haven), yoksa prosedürel shader → 2K bake; kahraman nesnelerde eskime katmanları bake. |
+| Decal + serpiştirme (v2) | Yükseklik kuralı zemini düz tutuyor; gerçekçilik zemin dokusu, alfa maskeli decal (iz, leke, birikinti) ve küçük kırıntılarla verilir. Bunlar `Decal/Scatter/Grass` adıyla çarpışmasız. Alfa `MASK` (BLEND sıralama sorunu çıkarır). |
+| Pürüzlü detay = ayrı nesne (v2) | Her görünür mesh trimesh çarpışma alıyor; gövdeden çıkıntılı kablo/anten görünmez takılma yaratır → `_Canopy`/`_Scatter` adlı ayrı nesne veya ≤ 5 cm. |
+| GLTF_SEPARATE dışa aktarım (v2) | Dokulu tek GLB 100 MB'ı aşabilir (GitHub dosya sınırı). Ayrı `.gltf + .bin + textures/` her dosyayı küçük tutar. `ImportedMap` `load_threaded_request` ile `.gltf`'i de PackedScene olarak yükler. |
 | Emission sadece küçük yüzeyde, ≤ 2 | Kuantum haritası "fenere ihtiyaç yok" denecek kadar parlaktı (iki kez kısıldı), Liman suyu tüm haritayı aydınlatıyordu. |
 | Işık/kamera yok | Oyun ışığı kendi kurar (otomatik duvar lambaları + el feneri). |
 | Takım platformu yok | Kullanıcı kararı: takım bölgeleri işaretli olmasın. Oyun `Pad_Team`'i zaten gizliyor. |
-| Bütçe 40-120 bin üçgen, ~500 nesne | Eski haritalar 27-255 bin; menüde iGPU performansı sorun olmuştu. Her mesh ayrı trimesh çarpışma alıyor. |
+| Bütçe 350-700 bin üçgen, ≤ 900 nesne, ≤ 30 malzeme, 2K doku (v2) | v1'deki 40-120 bin aşırı low-poly sonuç verdi. Üstten kamerada ekranda ~25×15 m görünür, frustum culling mesh başına çalışır → 20×20 m parçalara bölmek önemli. iGPU'da menü performansı sorun olmuştu; ilk v2 haritasında FPS ölçülmeli, gerekirse bütçe düşürülür. Her mesh ayrı trimesh çarpışma alıyor (yükleme süresi artar). |
 
 ---
 
@@ -121,11 +125,11 @@ gözetildi. Kart kapının dibinde doğarsa maç kısa sürebilir — gerekirse 
 
 ## 6. GLB'yi oyuna ekleme
 
-1. GLB'yi `asset model/haritalar/` içine koy. Çöl, Orman ve Liman mevcut dosya adlarını kullanır (eskisini istersen önce yedekle);
-   Hastane ve Metro'nun adı değişir:
-   - `Map5_Karantina_Hastanesi_3v3v3v3.glb`
-   - `Map6_Yeralti_Metro_Istasyonu_4v4v4v4.glb`
-2. `autoload/NetworkManager.gd` → `MAPS` satırları:
+1. v2 çıktısı `.gltf + .bin + textures/` klasörüdür. Her haritayı kendi klasörüne koy (ör. `asset model/haritalar/Map3_Col/`),
+   böylece doku adları çakışmaz. Eski `.glb` dosyaları silinmeden kalabilir. v2 dosya adları:
+   - `Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5.gltf`, `Map4_Gece_Orman_Radar_Ussu_4v4v4v4.gltf`, `Map8_Gece_Konteyner_Limani_5v5v5v5.gltf`
+   - `Map5_Karantina_Hastanesi_3v3v3v3.gltf`, `Map6_Yeralti_Metro_Istasyonu_4v4v4v4.gltf`
+2. `autoload/NetworkManager.gd` → `MAPS` satırlarında `glb` yolu yeni `.gltf` dosyasını göstermeli (anahtar adı `glb` kalır). Ayrıca:
    - Hastane: `glb` yolu + `max_team: 3`
    - Metro: `glb` yolu + `max_team: 4`
    - Liman: `water_floor: true` olmalı; `water_emission` satırda duruyor (su artık emission'sız üretildiği için gereksiz olabilir).
@@ -136,12 +140,25 @@ gözetildi. Kart kapının dibinde doğarsa maç kısa sürebilir — gerekirse 
    - Kenarlardan/sudan dışarı düşülüyor mu.
    - Saydamlaşma tek duvar parçası mı yoksa bütün bina mı.
    - El feneri olmadan harita fazla aydınlık mı (gerekirse `emission_scale` / `lamp_scale`).
-   - Yükleme süresi (tarama alanla orantılı; eski haritalarda 1.2–3.6 s).
+   - Yükleme süresi (tarama alanla orantılı; eski haritalarda 1.2–3.6 s; v2'de daha çok mesh → trimesh üretimi uzar).
+   - FPS (özellikle iGPU) ve el fenerinde normal map'lerin okunması; decal'lerde z-fighting / alfa kenarları.
+   - Dokulu çıktıyı commit etmeden önce toplam boyut (GitHub dosya başına 100 MB sınırı; tek dosya büyükse Git LFS).
 
 ---
 
-## 7. Açık işler
+## 7. Bpy ile gerçekçiliğin sınırı
+
+Tamamen Python ile üretilen geometri, iyi dokularla bile el yapımı/fotogrametri asset'lerin seviyesine
+tam ulaşmaz (özellikle kaya, ağaç, araç). Sonuç yetmezse önerilen yol **hibrit**: betik yerleşimi, duvarları,
+zemini ve noktaları üretir; kahraman nesneler (uçak, araçlar, kayalar, ağaçlar) Poly Haven / Sketchfab CC0 /
+satın alınmış asset paketlerinden içe aktarılıp betiğin bıraktığı yer tutuculara (`…_Placeholder` Empty) yerleştirilir.
+Godot tarafında da ortam (sis, SSAO, renk düzenleme) ayarı gerçekçiliğe ciddi katkı verir; içe aktarılan haritalarda henüz haritaya özel ortam yok.
+
+---
+
+## 8. Açık işler
 
 - Elçilik Kompleksi, Yeraltı Kuantum Labirenti ve Lojistik Depo Labirenti için aynı formatta prompt hazırlanmadı.
 - Yükseklik kuralının (bölüm 2) eski Metro/Liman'da oyun içinde doğrulanması.
 - Kart-kapı arası en az mesafe kodda yok (bölüm 4 notu).
+- v2 prompt'larıyla ilk harita üretildikten sonra: FPS ölçümü, bütçenin teyidi, gerekirse haritaya özel Godot ortamı.

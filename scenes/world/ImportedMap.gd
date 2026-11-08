@@ -22,6 +22,8 @@ const NO_COLLISION_KEYWORDS: Array[String] = [
 	"Canopy", "Needles", "Frond", "Neon", "LED", "Holo", "CardVisual", "Beacon", "GlowRing",
 	"Water", "Pool", "Basin", "Screen", "Glass", "Light", "Lamp", "Horn", "HospitalRedCross", "ER_RedGuideLine",
 	"Pad_Team",
+	# Gerçekçi harita üretimi (HARITA_PROMPTLARI.md): yer decal'leri, serpiştirilmiş taş/enkaz kırıntısı, ot öbekleri
+	"Decal", "Scatter", "Grass",
 ]
 const HIDDEN_KEYWORDS: Array[String] = ["CardVisual", "Pad_Team"]
 const CANOPY_KEYWORDS: Array[String] = ["Canopy", "Needles", "Frond"]
