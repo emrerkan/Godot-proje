@@ -44,6 +44,8 @@ const STRINGS := {
 	"Yeraltı Kuantum Labirenti": "Underground Quantum Maze",
 	"Çöl Kargo Uçağı Enkazı": "Desert Cargo Plane Wreck",
 	"Gece Orman Radar Üssü": "Night Forest Radar Base",
+	"Çöl Kargo Uçağı Enkazı v3": "Desert Cargo Plane Wreck v3",
+	"Gece Orman Radar Üssü v3": "Night Forest Radar Base v3",
 	"Karantina Hastanesi": "Quarantine Hospital",
 	"Yeraltı Metro İstasyonu": "Underground Metro Station",
 	"Lojistik Depo Labirenti": "Logistics Warehouse Maze",
@@ -655,4 +657,10 @@ const STRINGS := {
 	"%d/%d KAZANILDI": "%d/%d WON",
 	"%s: öldürme %d · ölüm %d · K/D %.2f · %d maç · %d galibiyet": "%s: %d kills · %d deaths · K/D %.2f · %d matches · %d wins",
 	"%s ile henüz maç yok": "No matches with %s yet",
+	# Botlar (Lobby / HUD / CharacterSelect)
+	"BOT": "BOT",
+	"+ BOT": "+ BOT",
+	"Bu takıma bot ekle": "Add a bot to this team",
+	"Botu çıkar": "Remove bot",
+	"BOT · otomatik": "BOT · auto",
 }

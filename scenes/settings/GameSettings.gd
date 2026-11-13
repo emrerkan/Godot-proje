@@ -14,6 +14,7 @@ extends RefCounted
 const SAVE_PATH := "user://options.cfg"
 const FPS_COUNTER := preload("res://scenes/settings/FpsCounter.gd")
 const LANG := preload("res://scenes/settings/Lang.gd")
+const SCENE_LIGHTING := preload("res://scenes/world/SceneLighting.gd")
 
 enum WindowMode { WINDOWED, BORDERLESS, EXCLUSIVE }
 enum AA { OFF, FXAA, MSAA_2X, MSAA_4X }
@@ -133,7 +134,9 @@ static func apply_all(tree: SceneTree) -> void:
 	_ensure_loaded()
 	var root := tree.root
 	LANG.apply(String(get_value("language")))
-	if _has_file:
+	# Komut satırında --resolution verildiyse (editörde çok pencereli test) kayıtlı pencere ayarı ezmesin.
+	# Motor argümanları OS.get_cmdline_args()'a DÜŞMEZ → pencere proje varsayılanından farklı boyutta açıldıysa dışarıdan verilmiştir.
+	if _has_file and not _window_size_from_cli():
 		_apply_window()
 	DisplayServer.window_set_vsync_mode([DisplayServer.VSYNC_DISABLED, DisplayServer.VSYNC_ENABLED,
 		DisplayServer.VSYNC_ADAPTIVE][clampi(int(get_value("vsync")), 0, 2)])
@@ -155,12 +158,30 @@ static func apply_all(tree: SceneTree) -> void:
 	RenderingServer.positional_soft_shadow_filter_set_quality([
 		RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW,
 		RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][clampi(sh, 0, 3)])
+	# Oyun içindeysek haritanın post-process'i (SSAO kaliteye bağlı) yeniden uygulanır
+	SCENE_LIGHTING.apply_tree(tree)
 
 	# Arayüz ölçeği (UITheme taban 1920×1080 — 1'in üstü ekrana sığmaz)
 	root.content_scale_factor = clampf(float(get_value("ui_scale")), 0.8, 1.0)
 
 	_apply_audio()
 	_apply_fps_counter(tree)
+
+
+## Sadece ilk uygulamada anlamlı (apply_once): pencere hâlâ projenin açılış boyutunda değilse --resolution verilmiştir
+static var _cli_checked := false
+static func _window_size_from_cli() -> bool:
+	if _cli_checked:
+		return false   # sonraki uygulamalar (Ayarlar → UYGULA) oyuncunun seçimidir
+	_cli_checked = true
+	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+		return false
+	var w := int(ProjectSettings.get_setting("display/window/size/window_width_override", 0))
+	var h := int(ProjectSettings.get_setting("display/window/size/window_height_override", 0))
+	if w <= 0 or h <= 0:
+		w = int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152))
+		h = int(ProjectSettings.get_setting("display/window/size/viewport_height", 648))
+	return DisplayServer.window_get_size() != Vector2i(w, h)
 
 
 static func _apply_window() -> void:

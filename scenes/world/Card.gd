@@ -47,9 +47,17 @@ func _on_body_entered(body: Node) -> void:
 func _try_pickup(body: Node) -> void:
 	if not visible:
 		return
-	if _request_cd > 0.0:
-		return
 	if not (body is CharacterBody3D):
+		return
+	# Bot: SADECE host simüle eder → ağ isteği yok, doğrudan host fonksiyonu (ortak bekleme süresine dokunmaz,
+	# aynı anda giren insan oyuncunun isteğini geciktirmesin). Diğer şartları handle_card_pickup da doğrular.
+	if body.get("is_bot") == true:
+		if NetworkManager.is_host() and not body.get("is_dead"):
+			var _bot_blocked = body.get("_card_pickup_blocked")
+			if _bot_blocked == null or (_bot_blocked as float) <= 0.0:
+				GameManager.handle_card_pickup(int(body.get("peer_id")), card_id)
+		return
+	if _request_cd > 0.0:
 		return
 	if body.get("peer_id") != NetworkManager.get_local_id():
 		return

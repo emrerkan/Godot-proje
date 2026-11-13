@@ -27,6 +27,14 @@ signal special_armed_changed(armed: bool)
 const GRAVITY := 9.8
 const SYNC_RATE: float = 0.05
 const BODY_LIGHT_LAYER_BIT: int = 20  # BodyLight'ın sadece karakter mesh'ine değmesi için özel render layer
+## Sinematik aydınlatma (SceneLighting.gd ile birlikte): fener hafif sıcak, etrafta turuncu "Halo" havuzu.
+## Halo HERKESE görünür (kullanıcı kararı: ışık = konumunu ele verir). Flashlight'ın çocuğu → ölüm/görünmezlikte
+## fenerle birlikte otomatik gizlenir. Gölgeli (ince duvarlardan sızmasın), kısa menzil → gölge geçişi ucuz.
+const FLASHLIGHT_COLOR := Color(1.0, 0.88, 0.72)
+const HALO_COLOR := Color(1.0, 0.56, 0.26)
+const HALO_ENERGY := 1.4
+const HALO_RANGE := 4.5
+const HALO_HEIGHT := 1.6
 const SELF_RIM_SHADER: Shader = preload("res://scenes/player/SelfVisibility.gdshader")
 
 const CHARACTER_STATS: Dictionary = {
@@ -160,6 +168,9 @@ const MAX_AIM_CORR := 1.4      # ~80° en fazla düzeltme
 var _aim_corr := 0.0
 var _leg_yaw := 0.0
 var _mesh_base_basis := Basis.IDENTITY
+## Karakter modelinin GÖRSEL ölçeği (kullanıcı: tepeden kamerada küçük kalıyordu). Sadece CharacterMesh büyür —
+## çarpışma kutusu/hız/vuruş alanı aynı; mermi çıkış yüksekliği Weapon.visual_scale ile eski hizada tutulur.
+const CHARACTER_VISUAL_SCALE := 1.3
 const SPINE_TWIST_SCRIPT := preload("res://scenes/player/SpineTwistModifier.gd")
 const UPPER_BODY_SCRIPT := preload("res://scenes/player/UpperBodyLayer.gd")
 const HAND_RIFLE_SCRIPT := preload("res://scenes/player/HandRifle.gd")
@@ -265,6 +276,23 @@ var _special_fx_checked := false
 var _special_laser: Node3D = null
 var _shoot_blocked := false            # özel atıştan sonra tuş bırakılana dek normal ateş yok (tam otomatik tüfek)
 
+# ── Bot (NetworkManager.is_bot) — ağda sahte oyuncu, SADECE host simüle eder ──
+# is_local'in anlamı DEĞİŞMEZ (kamera/HUD/ses dinleyicisi/self-rim/dayanıklılık HUD'ı/Crosshair hep yerel İNSAN oyuncu).
+# _input_driven: girdi + fizik + konum yayını bu peer'da mı yürüyor (yerel insan VEYA host'taki bot).
+# Bot girdisi BotBrain → set_bot_input (her kare); bıçak/takla/zıplama/çömelme/güç YOK. Botsuz maçta bu alanlar hiç okunmaz.
+const BOT_SEMI_REPRESS := 0.12         # tek atışlık silah: tetik basılı kalırsa silah hazır olunca bu kadar sonra yeniden "tıklar"
+var is_bot := false
+var _input_driven := false
+var _bot_driven := false               # is_bot VE bu peer host (bot girdisini bu node işler)
+var _bot_move := Vector3.ZERO          # dünya XZ, normalize ya da sıfır
+var _bot_aim := Vector3.ZERO           # dünya nişan noktası
+var _bot_has_aim := false
+var _bot_fire := false                 # tetik basılı
+var _bot_fire_prev := false            # önceki karede basılı mıydı (tek atışlıkta kenar algılama)
+var _bot_reload_req := false           # tek kare şarjör isteği (tüketilene kadar tutulur)
+var _bot_run := false
+var _bot_repress_t := 0.0
+
 
 func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner") -> void:
 	character_type = p_character
@@ -279,6 +307,10 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	peer_id = p_peer_id
 	team_id = p_team_id
 	is_local = (p_peer_id == NetworkManager.get_local_id())
+	# Bot: girdiyi/fiziği host sürer (diğer peer'larda uzak oyuncu gibi _broadcast_state ile gelir)
+	is_bot = NetworkManager.is_bot(p_peer_id)
+	_bot_driven = is_bot and not is_local and NetworkManager.is_host()
+	_input_driven = is_local or _bot_driven
 	floor_snap_length = 0.3  # Zemin tespitini güvenilir yapar, hız dalgalanmasını engeller
 	_use_capsule_shape()
 	collision_mask |= VOID_WALL_LAYER   # ImportedMap su kenarı engeli (sadece oyuncuyu durdurur, mermi/bomba geçer)
@@ -298,7 +330,8 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 		# Karaktere göre kıyafet (SurvivalistModel.apply_outfit)
 		if _char_mesh.has_method("apply_outfit"):
 			_char_mesh.apply_outfit(p_character)
-		# Bacaklar hareket yönüne / üst gövde nişana (bkz _update_leg_facing)
+		_char_mesh.scale = Vector3.ONE * CHARACTER_VISUAL_SCALE
+		# Bacaklar hareket yönüne / üst gövde nişana (bkz _update_leg_facing) — taban basis ölçeği de taşır
 		_mesh_base_basis = _char_mesh.transform.basis
 		var skeletons := _char_mesh.find_children("*", "Skeleton3D", true, false)
 		if not skeletons.is_empty() and _spine_twist == null:
@@ -343,6 +376,8 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	# Body ışığı sadece yerel oyuncuda — uzak oyuncuların üzerinde hale olmasın
 	body_light.visible = is_local
 
+	_setup_halo_light()
+
 	if _fx_light == null:
 		_fx_light = OmniLight3D.new()
 		_fx_light.position = Vector3(0, 1.1, 0)
@@ -357,6 +392,29 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	reset_physics_interpolation()
 
 	_equip_default_weapon()
+
+
+func _setup_halo_light() -> void:
+	flashlight.light_color = FLASHLIGHT_COLOR
+	if flashlight.has_node("Halo"):
+		return
+	var halo := OmniLight3D.new()
+	halo.name = "Halo"
+	# Flashlight root'a göre (0, 1.3, -0.5) → halo gövdenin tam üstünde dursun
+	halo.position = Vector3(0.0, HALO_HEIGHT - flashlight.position.y, -flashlight.position.z)
+	halo.light_color = HALO_COLOR
+	halo.light_energy = HALO_ENERGY
+	halo.light_specular = 0.3
+	halo.omni_range = HALO_RANGE
+	halo.omni_attenuation = 1.3
+	# Gölge SADECE yerel oyuncunun halesinde (kullanıcı kararı 2026-11-13): uzak oyuncu (insan/bot) başına
+	# gölgeli omni çöl haritasında 79 → 14 FPS'e düşürüyordu. Bedeli: uzak hale ince duvar arkasına hafif sızabilir.
+	halo.shadow_enabled = is_local
+	halo.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+	halo.distance_fade_enabled = true   # uzaktaki oyuncuların halesi kamerada zaten görünmez — maliyet sınırlı
+	halo.distance_fade_begin = 40.0
+	halo.distance_fade_length = 8.0
+	flashlight.add_child(halo)
 
 
 func _add_render_layer(node: Node, layer_bit: int) -> void:
@@ -577,11 +635,13 @@ func _equip_default_weapon() -> void:
 	# Mermi eldeki tüfeğin namlusundan çıksın (Weapon/Muzzle gövde ortasında kalıyordu)
 	if _hand_rifle and _hand_rifle.rifle:
 		current_weapon.visual_muzzle = _hand_rifle.rifle.get_node_or_null("Muzzle")
+		current_weapon.visual_scale = CHARACTER_VISUAL_SCALE
 	if is_local:
 		current_weapon.ammo_changed.connect(
 			func(cur: int, tot: int, rel: bool): emit_signal("ammo_changed", cur, tot, rel)
 		)
-		# Şarjör değişimi başladı → herkese Reload animasyonu
+	if _input_driven:
+		# Şarjör değişimi başladı → herkese Reload animasyonu (yerel oyuncu ya da host'taki bot yayınlar)
 		current_weapon.ammo_changed.connect(func(_c: int, _t: int, rel: bool) -> void:
 			if rel:
 				_broadcast_action(Action.RELOAD))
@@ -712,9 +772,10 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_flip_timer(delta)
 	_stab_timer = maxf(_stab_timer - delta, 0.0)
-	if is_local:
-		_handle_stab_input(delta)  # tuzaktayken de (_handle_local_input erken döner)
-		_handle_local_input(delta)
+	if _input_driven:
+		if is_local:
+			_handle_stab_input(delta)  # tuzaktayken de (_handle_local_input erken döner) — bot bıçak kullanmaz
+		_handle_local_input(delta)    # bot: girdi set_bot_input'tan
 	else:
 		_interpolate_remote(delta)
 	_update_animation(delta)
@@ -964,12 +1025,14 @@ func _handle_local_input(delta: float) -> void:
 	if _card_pickup_blocked > 0.0:
 		_card_pickup_blocked -= delta
 
-	# Sohbete yazılırken hareket/ateş/şarjör tuşları devre dışı (nişan + senkron devam eder)
-	var typing := ChatBox.is_typing
+	# Sohbete yazılırken hareket/ateş/şarjör tuşları devre dışı (nişan + senkron devam eder) — bot sohbet etmez
+	var typing := ChatBox.is_typing if is_local else false
 
-	# WASD hareketi (X/Z düzlemi) — önce yatay hız, sonra yerçekimi
+	# WASD hareketi (X/Z düzlemi) — önce yatay hız, sonra yerçekimi. Bot: BotBrain'in yönü
 	var dir := Vector3.ZERO
-	if not typing:
+	if _bot_driven:
+		dir = _bot_move
+	elif not typing:
 		if Input.is_action_pressed("move_up"):    dir.z -= 1
 		if Input.is_action_pressed("move_down"):  dir.z += 1
 		if Input.is_action_pressed("move_left"):  dir.x -= 1
@@ -977,7 +1040,8 @@ func _handle_local_input(delta: float) -> void:
 	dir = dir.normalized()
 
 	# Hareket modu: varsayılan yürüyüş; Ctrl = çömelme, Shift = koşu (ikisi de süreli + yenilenir)
-	var space_down := not typing and Input.is_physical_key_pressed(KEY_SPACE)
+	# Bot zıplamaz / takla atmaz (Space hep bırakılmış sayılır)
+	var space_down := not typing and not _bot_driven and Input.is_physical_key_pressed(KEY_SPACE)
 	var space_pressed := space_down and not _space_was_down
 	_space_was_down = space_down
 	_flip_cooldown = maxf(_flip_cooldown - delta, 0.0)
@@ -1031,24 +1095,40 @@ func _handle_local_input(delta: float) -> void:
 		look_at(flat_aim, Vector3.UP)
 
 	# Ateş et (semi-auto: sadece tıklama anında; otomatik: basılı tutunca)
+	# Bot: tetik durumu set_bot_input'tan, "tıklama anı" _bot_trigger_pressed kenar algılamasından
+	var shoot_held: bool
+	var shoot_just: bool
+	if _bot_driven:
+		shoot_held = _bot_fire
+		shoot_just = _bot_trigger_pressed(delta)
+		_bot_fire_prev = _bot_fire
+	else:
+		shoot_held = Input.is_action_pressed("shoot")
+		shoot_just = Input.is_action_just_pressed("shoot")
 	var shoot_pressed: bool
 	if current_weapon and current_weapon.is_semi_auto:
-		shoot_pressed = Input.is_action_just_pressed("shoot")
+		shoot_pressed = shoot_just
 	else:
-		shoot_pressed = Input.is_action_pressed("shoot")
-	if _shoot_blocked and not Input.is_action_pressed("shoot"):
+		shoot_pressed = shoot_held
+	if _shoot_blocked and not shoot_held:
 		_shoot_blocked = false
 	if is_knife_mode():
 		pass   # sadece bıçak: tüfek ateşi yok (sol tık _handle_stab_input'ta)
 	elif special_armed:
 		# Özel silah hazır: sol tık BASIŞI = TEK atış (şarjör/ateş hızından bağımsız); normal tüfek susar
-		if Input.is_action_just_pressed("shoot") and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
+		if shoot_just and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
 			_fire_special()
 			_shoot_blocked = true   # tuş basılı kalırsa tam otomatik tüfek hemen ateşlemesin
 	elif shoot_pressed and not _shoot_blocked and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
 		current_weapon.try_shoot(peer_id, team_id)
 
-	if Input.is_action_just_pressed("reload") and current_weapon and not typing and not is_knife_mode():
+	var reload_pressed: bool
+	if _bot_driven:
+		reload_pressed = _bot_reload_req
+		_bot_reload_req = false
+	else:
+		reload_pressed = Input.is_action_just_pressed("reload")
+	if reload_pressed and current_weapon and not typing and not is_knife_mode():
 		current_weapon.reload()
 
 	# Pozisyon senkronizasyonu
@@ -1060,6 +1140,54 @@ func _handle_local_input(delta: float) -> void:
 		if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0 \
 				and GameManager.state == GameManager.State.IN_GAME:
 			_broadcast_state.rpc(global_position, rotation.y, move_mode | (AIR_FLAG if _airborne else 0))
+
+
+# ─────────────────────────────────────────────
+# Bot girdisi (BotBrain her kare çağırır — sadece host'taki bot node'unda etkili)
+# ─────────────────────────────────────────────
+
+## move_dir: dünya XZ (sıfır ya da normalize), aim_pos: dünya nişan noktası, fire: tetik BASILI,
+## reload: tek kare istek (bir sonraki fizik karesinde tüketilir), run: koşu (dayanıklılık kurallarına tabi)
+func set_bot_input(move_dir: Vector3, aim_pos: Vector3, fire: bool, reload: bool, run: bool) -> void:
+	if not _bot_driven:
+		return
+	var flat := Vector3(move_dir.x, 0.0, move_dir.z)
+	_bot_move = flat.normalized() if flat.length_squared() > 0.0001 else Vector3.ZERO
+	_bot_aim = aim_pos
+	_bot_has_aim = true
+	_bot_fire = fire
+	if reload:
+		_bot_reload_req = true
+	_bot_run = run
+
+
+## Bot tetiği için "tıklama anı": basılmaya başladığı kare. Basılı tutulmaya devam ederse silah hazır olunca
+## BOT_SEMI_REPRESS sonra yeniden tıklar (insan gibi) — tek atışlık silah (Sniper/Medic) tetiği bırakılmasa da susmaz,
+## seri ateş ise silahın fire_rate'iyle zaten sınırlı.
+func _bot_trigger_pressed(delta: float) -> bool:
+	if not _bot_fire:
+		_bot_repress_t = 0.0
+		return false
+	if not _bot_fire_prev:
+		_bot_repress_t = 0.0
+		return true
+	if current_weapon == null or current_weapon.is_reloading or not current_weapon.fire_timer.is_stopped():
+		_bot_repress_t = 0.0
+		return false
+	_bot_repress_t += delta
+	if _bot_repress_t >= BOT_SEMI_REPRESS:
+		_bot_repress_t = 0.0
+		return true
+	return false
+
+
+func _reset_bot_input() -> void:
+	_bot_move = Vector3.ZERO
+	_bot_fire = false
+	_bot_fire_prev = false
+	_bot_reload_req = false
+	_bot_run = false
+	_bot_repress_t = 0.0
 
 
 ## Çarpışma şekli: tscn'deki kutu (0.8×1.8×0.8) keskin alt kenarıyla 10 cm'lik zemin farkına bile takılıyordu
@@ -1249,8 +1377,13 @@ func _flip_speed() -> float:
 ## Tükenen dayanıklılık kilitlenir, *_UNLOCK seviyesine dolana kadar o mod kullanılamaz. Bırakınca
 ## STAMINA_REGEN_DELAY sonra dolar. Çömelmesi biten oyuncu otomatik kalkar.
 func _update_move_mode(dir: Vector3, typing: bool, delta: float) -> void:
-	var want_crouch := not typing and Input.is_physical_key_pressed(KEY_CTRL) and not _airborne
-	var want_sprint := not typing and Input.is_physical_key_pressed(KEY_SHIFT) and dir != Vector3.ZERO
+	# Bot çömelmez; koşuyu BotBrain ister (aynı dayanıklılık/kilit kuralları)
+	var want_crouch := not typing and not _bot_driven and Input.is_physical_key_pressed(KEY_CTRL) and not _airborne
+	var want_sprint: bool
+	if _bot_driven:
+		want_sprint = _bot_run and dir != Vector3.ZERO
+	else:
+		want_sprint = not typing and Input.is_physical_key_pressed(KEY_SHIFT) and dir != Vector3.ZERO
 	move_mode = MoveMode.WALK
 
 	if want_crouch and not crouch_locked and crouch_stamina > 0.0:
@@ -1302,6 +1435,9 @@ func is_crouching() -> bool:
 
 
 func _get_aim_target() -> Vector3:
+	if _bot_driven:
+		# Bot: BotBrain'in nişan noktası (host'un kamerası/faresi DEĞİL); henüz yoksa mevcut bakış yönü
+		return _bot_aim if _bot_has_aim else global_position - global_transform.basis.z
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return global_position + Vector3(0, 0, -1)
@@ -1325,6 +1461,9 @@ func _interpolate_remote(delta: float) -> void:
 @rpc("any_peer", "unreliable_ordered")
 func _broadcast_state(pos: Vector3, aim_y: float, mode: int = MoveMode.WALK) -> void:
 	if is_local:
+		return
+	# Bot: durumu SADECE host yayınlar (host'taki bot node'u kendi fiziğini sürer, dışarıdan gelen yok sayılır)
+	if is_bot and (_bot_driven or multiplayer.get_remote_sender_id() != 1):
 		return
 	_target_position = pos
 	_target_aim_y = aim_y
@@ -1447,6 +1586,8 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 	_death_token += 1
 	_reset_leg_facing()
 	_reset_stamina()
+	if is_bot:
+		_reset_bot_input()   # ölmeden önceki tetik/şarjör isteği yeni hayata taşınmasın
 	_card_pickup_blocked = 0.5
 	reset_physics_interpolation()
 	if _char_mesh:
@@ -1509,9 +1650,9 @@ func _setup_ally_name_label() -> void:
 	name_label.modulate = TeamManager.get_color(team_id).lightened(0.25)
 	if UITheme.font_bold:
 		name_label.font = UITheme.font_bold
-	name_label.font_size = 34
-	name_label.outline_size = 10
+	name_label.font_size = 44   # kullanıcı: ×1.3 (34'tü)
+	name_label.outline_size = 13
 	name_label.outline_modulate = Color(0.0, 0.0, 0.0, 0.9)
-	name_label.position = Vector3(0, 2.3, 0)  # kart göstergesinin (2.7) altında
+	name_label.position = Vector3(0, 2.85, 0)  # büyütülmüş gövdenin (CHARACTER_VISUAL_SCALE) başı üstü, kart göstergesinin (3.3) altı
 	name_label.no_depth_test = true
 	name_label.visible = _is_local_ally() and not is_dead

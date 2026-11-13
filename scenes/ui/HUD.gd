@@ -1,8 +1,8 @@
 ## HUD.gd
 ## Oyun içi ekran. UI tamamen kodla kurulur (tscn sadece CanvasLayer), görünüm UITheme paletinden gelir.
-##   Sol üst   : takım skorları (kill)            Üst orta : hedef (kart) durumu + uyarı bandı
-##   Sağ üst   : kill feed                         Sağ alt  : minimap (Minimap.gd)
-##   Sol alt   : oyuncu kartı (karakter, can, mermi + şarjör ilerlemesi)
+##   Üst orta  : hedef (kart) durumu + uyarı bandı (sol üst skor paneli kaldırıldı — skor TAB tablosunda)
+##   Sağ üst   : kill feed                         Sağ alt  : minimap (Minimap.gd, başlıksız)
+##   Sol alt   : oyuncu kartı (%70 ölçek; karakter, can, mermi + şarjör ilerlemesi)
 ##   Katmanlar : düşük can vinyeti, ölüm/yeniden doğuş, TAB skor tablosu, ESC menü, oyun sonu.
 ## Oyun mantığına dokunmaz — sadece GameManager/TeamManager/Player sinyallerini dinler.
 
@@ -12,6 +12,10 @@ const KILL_FEED_MAX := 5
 const RESPAWN_TIME := 3.0  # GameManager._schedule_respawn ile aynı
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const XP_POPUP_MAX := 4
+## Sol alt oyuncu kartı ölçeği (kullanıcı: %30 küçük). Kart 567 px tasarlanır → ekranda ~397 px
+const PLAYER_CARD_SCALE := 0.7
+## Güç slotu + XP akışı kartın sağında: 27 kenar + 567×ölçek + 19 boşluk
+const SIDE_COL_X := 27 + int(567 * PLAYER_CARD_SCALE) + 19
 const SFX := preload("res://scenes/audio/Sfx.gd")
 ## Kapı kilidi bip aralığı: başta yavaş, açılmaya yaklaştıkça hızlanır (konumsuz — kapının yerini ele vermez)
 const UNLOCK_TICK_SLOW := 0.5
@@ -34,9 +38,6 @@ var _kill_special: int = PLAYER_SCRIPT.DAMAGE_SPECIAL
 var _root: Control
 var _local_player: Node = null
 var _unlock_team := -1
-
-# Skor
-var _score_rows: Array[Dictionary] = []  # {panel, value}
 
 # Hedef + uyarı
 var _objective_chip: PanelContainer
@@ -137,7 +138,6 @@ var _invis_tween: Tween = null
 func _ready() -> void:
 	UITheme.apply(get_tree())
 	preload("res://scenes/audio/MenuMusic.gd").stop(get_tree())   # oyun başladı → menü müziği biter (kullanıcı isteği)
-	TeamManager.score_updated.connect(_on_score_updated)
 	GameManager.game_ended.connect(_on_game_ended)
 	GameManager.card_picked_up.connect(_on_card_picked_up)
 	GameManager.card_dropped.connect(_on_card_dropped)
@@ -153,7 +153,6 @@ func _ready() -> void:
 	add_child(_root)
 
 	_setup_vignette()
-	_setup_scores()
 	_setup_objective()
 	_setup_countdown()
 	_setup_kill_feed()
@@ -172,7 +171,6 @@ func _ready() -> void:
 	_root.add_child(_settings_window)   # pause menüsünün üstünde
 	_setup_end_overlay()
 
-	_refresh_scores()
 	_update_objective()
 
 
@@ -180,8 +178,6 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	if what != NOTIFICATION_TRANSLATION_CHANGED or _objective_lbl == null:
 		return
-	for i in range(_score_rows.size()):
-		(_score_rows[i]["name"] as Label).text = UITheme.team_tag(i)
 	if _local_player and is_instance_valid(_local_player):
 		_team_chip_lbl.text = tr("%s TAKIM") % UITheme.team_tag(_local_player.team_id)
 	_update_objective()
@@ -314,40 +310,6 @@ func _on_flashed(strength: float) -> void:
 	_blind_fade = 1.0 / (0.8 + 1.7 * strength)
 
 
-func _setup_scores() -> void:
-	var panel := PanelContainer.new()
-	panel.position = Vector2(27, 27)
-	panel.custom_minimum_size = Vector2(333, 0)
-	panel.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.78), 20, UITheme.BORDER, 1, 20, 17))
-	_root.add_child(panel)
-
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	panel.add_child(box)
-	box.add_child(UITheme.label("TAKIM SKORU", 17, UITheme.TEXT_DIM, UITheme.font_caps))
-
-	for i in range(4):
-		var color := TeamManager.get_color(i)
-		var row_panel := PanelContainer.new()
-		row_panel.add_theme_stylebox_override("panel", UITheme.style(Color.TRANSPARENT, 10, Color.TRANSPARENT, 0, 10, 3))
-		box.add_child(row_panel)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 13)
-		row_panel.add_child(row)
-		var strip := ColorRect.new()
-		strip.color = color
-		strip.custom_minimum_size = Vector2(5, 27)
-		strip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(strip)
-		var name_lbl := UITheme.label(UITheme.team_tag(i), 20, color, UITheme.font_caps)
-		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(name_lbl)
-		var value := UITheme.label("0", 25, UITheme.TEXT, UITheme.font_bold)
-		row.add_child(value)
-		_score_rows.append({"panel": row_panel, "value": value, "name": name_lbl})
-	_ignore_mouse_recursive(panel)
-
-
 func _setup_objective() -> void:
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -426,6 +388,9 @@ func _setup_player_card() -> void:
 	card.custom_minimum_size = Vector2(567, 0)
 	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 20, UITheme.BORDER, 1, 27, 20))
 	UITheme.add_brackets(card, UITheme.FRAME, 17)
+	# Kart %30 küçük çizilir (PLAYER_CARD_SCALE); ölçek sol ALT köşeden — ekranın altına yapışık kalsın
+	card.scale = Vector2.ONE * PLAYER_CARD_SCALE
+	card.resized.connect(func() -> void: card.pivot_offset = Vector2(0, card.size.y))
 	_root.add_child(card)
 
 	var box := VBoxContainer.new()
@@ -558,7 +523,7 @@ func _update_stamina_meter(bar: ProgressBar, fill: StyleBoxFlat, cap: Label, val
 func _setup_item_slot() -> void:
 	_item_slot = PanelContainer.new()
 	_item_slot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_item_slot.offset_left = 613
+	_item_slot.offset_left = SIDE_COL_X
 	_item_slot.offset_top = -27
 	_item_slot.offset_bottom = -27
 	_item_slot.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -610,7 +575,7 @@ var _xp_feed: VBoxContainer
 func _setup_xp_feed() -> void:
 	_xp_feed = VBoxContainer.new()
 	_xp_feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_xp_feed.offset_left = 613
+	_xp_feed.offset_left = SIDE_COL_X
 	_xp_feed.offset_top = -220
 	_xp_feed.offset_bottom = -220
 	_xp_feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -642,7 +607,7 @@ func _on_xp_gained(amount: int, reason: String) -> void:
 ## Test modu (debug build) tuş hatırlatıcısı — skor panelinin altında
 func _setup_test_hint() -> void:
 	var chip := PanelContainer.new()
-	chip.position = Vector2(27, 310)
+	chip.position = Vector2(27, 27)   # skor paneli kaldırıldı → sol üst köşe
 	chip.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.62), 17, Color(UITheme.ACCENT, 0.5), 1, 17, 10))
 	_root.add_child(chip)
 	var box := VBoxContainer.new()
@@ -713,7 +678,7 @@ func _on_powerup_notice(text: String, color: Color) -> void:
 func _build_status_chips() -> void:
 	_chip_box = VBoxContainer.new()
 	_chip_box.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_chip_box.offset_left = 800
+	_chip_box.offset_left = SIDE_COL_X + 173 + 14   # güç slotu (173 px) + boşluk
 	_chip_box.offset_top = -27
 	_chip_box.offset_bottom = -27
 	_chip_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -924,8 +889,8 @@ func _setup_chat() -> void:
 	_chat.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_chat.offset_left = 27
 	_chat.offset_right = 693
-	_chat.offset_top = -650
-	_chat.offset_bottom = -300  # oyuncu kartı (dayanıklılık çubuklarıyla ~250 px) üstü
+	_chat.offset_top = -580
+	_chat.offset_bottom = -230  # oyuncu kartı (%70 ölçekli, ~180 px) üstü
 	_chat.grow_vertical = Control.GROW_DIRECTION_BEGIN  # içerik büyürse yukarı uzasın, oyuncu kartına binmesin
 	_chat.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_chat)
@@ -934,15 +899,12 @@ func _setup_chat() -> void:
 func _setup_minimap() -> void:
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	box.offset_left = -360   # Minimap.SIZE 333×247 (labirent oranı) + başlık
-	box.offset_top = -307
+	box.offset_left = -360   # Minimap.SIZE 333×247 (labirent oranı), başlıksız
+	box.offset_top = -274
 	box.offset_right = -27
 	box.offset_bottom = -27
 	box.add_theme_constant_override("separation", 7)
 	_root.add_child(box)
-	var cap := UITheme.label("TAKTİK HARİTA", 17, UITheme.TEXT_DIM, UITheme.font_caps)
-	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	box.add_child(cap)
 	var minimap := Control.new()
 	minimap.set_script(load("res://scenes/ui/Minimap.gd"))
 	box.add_child(minimap)
@@ -1194,7 +1156,6 @@ func _on_local_player_spawned(player: Node) -> void:
 	_char_lbl.text = String(player.character_type).to_upper()
 	_char_lbl.add_theme_color_override("font_color", TeamManager.get_color(team_id))
 	_team_chip_lbl.text = tr("%s TAKIM") % UITheme.team_tag(team_id)
-	_refresh_scores()
 	_update_objective()
 
 	# Bıçak modu: mermi/şarjör gizli, yerine "BIÇAK" etiketi
@@ -1287,19 +1248,6 @@ func _on_ammo_changed(current: int, total: int, reloading: bool) -> void:
 #  Skor + skor tablosu
 # ─────────────────────────────────────────────
 
-func _refresh_scores() -> void:
-	var local_team := _get_local_team()
-	for i in range(_score_rows.size()):
-		var r: Dictionary = _score_rows[i]
-		(r["value"] as Label).text = str(TeamManager.scores.get(i, 0))
-		var bg := Color(TeamManager.get_color(i), 0.14) if i == local_team else Color.TRANSPARENT
-		(r["panel"] as PanelContainer).add_theme_stylebox_override("panel", UITheme.style(bg, 10, Color.TRANSPARENT, 0, 10, 3))
-
-
-func _on_score_updated(_team_id: int, _score: int) -> void:
-	_refresh_scores()
-
-
 func _refresh_scoreboard() -> void:
 	for child in _scoreboard_content.get_children():
 		child.queue_free()
@@ -1364,9 +1312,16 @@ func _refresh_scoreboard() -> void:
 			var row_panel := PanelContainer.new()
 			row_panel.add_theme_stylebox_override("panel",
 				UITheme.style(Color(1, 1, 1, 0.05) if is_me else Color.TRANSPARENT, 10, Color.TRANSPARENT, 0, 17, 7))
-			row_panel.add_child(_score_columns_row(player_name, String(data.get("character", "—")),
+			var score_row := _score_columns_row(player_name, String(data.get("character", "—")),
 				str(stats.get("kills", 0)), str(stats.get("deaths", 0)),
-				UITheme.TEXT if is_me else Color(UITheme.TEXT, 0.85), UITheme.font_bold if is_me else null, 22, false))
+				UITheme.TEXT if is_me else Color(UITheme.TEXT, 0.85), UITheme.font_bold if is_me else null, 22, false)
+			if NetworkManager.is_bot(pid):
+				# Bot satırı: adın yanında küçük soluk "BOT" etiketi
+				var bot_tag := UITheme.label("BOT", 15, UITheme.TEXT_DIM, UITheme.font_caps)
+				bot_tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				score_row.add_child(bot_tag)
+				score_row.move_child(bot_tag, 1)
+			row_panel.add_child(score_row)
 			group.add_child(row_panel)
 	_ignore_mouse_recursive(_scoreboard_content)
 
@@ -1568,7 +1523,7 @@ func _on_card_picked_up(carrier_peer_id: int, _carrier_pos: Vector3, carrier_tea
 
 ## Taşıyıcının kendi kilit barı: karakterin başının üstünde onu takip eder (yerdeki dolan yay kaldırıldı — kullanıcı:
 ## "yerde durmasın, karakterin ekranında dolan bir bar olsun"). Takım/rakipler üstteki _unlock_panel'i görür.
-const CARRIER_BAR_HEAD := 2.3       # bar bu yüksekliğin ekran izdüşümünde (m)
+const CARRIER_BAR_HEAD := 2.8     # bar bu yüksekliğin ekran izdüşümünde (m)
 var _carrier_bar: PanelContainer
 var _carrier_bar_fill: ProgressBar
 var _carrier_bar_lbl: Label
@@ -1664,7 +1619,7 @@ func _on_door_unlock_changed(ratio: float, unlock_team_id: int) -> void:
 
 ## Tuzağa yakalanan oyuncunun kurtarılma barı — carrier-bar kalıbının ikinci kopyası, farkı: hedef
 ## _local_player değil, trapped_peer'ın Player node'u (sadece kendisi/takımı görür).
-const TRAP_BAR_HEAD := 2.3
+const TRAP_BAR_HEAD := 2.8
 var _trap_bar: PanelContainer
 var _trap_bar_fill: ProgressBar
 var _trap_bar_lbl: Label

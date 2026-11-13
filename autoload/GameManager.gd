@@ -108,6 +108,14 @@ var _pending_door_pos: Vector3 = Vector3.ZERO
 var _pending_positions: Dictionary = {}  # oyuncu adı → son konum (migration)
 var _migrated_stats: Dictionary = {}     # oyuncu adı → {kills, deaths} (migration)
 
+## ─── Botlar (SADECE host simüle eder) ───
+## Bot id'leri gerçek ENet peer DEĞİL (NetworkManager.BOT_ID_BASE + n) → bot id'sine ASLA rpc_id atılmaz,
+## bot düğümlerinin yetkisi 1 (host). Bot yoksa aşağıdaki dalların hiçbiri çalışmaz (botsuz maç birebir aynı).
+## Scriptler çalışma anında yüklenir (preload değil): bot scriptinde hata olsa bile autoload ayrıştırılır, botsuz maç etkilenmez.
+const BOT_NAV_PATH := "res://scenes/bots/BotNav.gd"
+const BOT_BRAIN_PATH := "res://scenes/bots/BotBrain.gd"
+var _bot_nav: RefCounted = null          # host: harita başına bir kez kurulur (grid yoksa null → BotBrain düz çizgi)
+
 
 func _ready() -> void:
 	player_scene      = preload("res://scenes/player/Player.tscn")
@@ -137,6 +145,7 @@ func _start_game_rpc() -> void:
 	door_unlock = 0.0
 	_unlock_team = -1
 	player_stats.clear()
+	_bot_nav = null
 	# Yükleme perdesi: CharacterSelect _ready'de 5 önizleme modeli kurar (ana iş parçacığı birkaç kare kilitlenir)
 	LOADING.open(get_tree(), "YÜKLENİYOR", "Operatörler hazırlanıyor")
 	await get_tree().process_frame   # perde çizilsin
@@ -151,11 +160,19 @@ func check_all_characters_selected() -> void:
 		return
 	if state != State.CHARACTER_SELECT:
 		return
-	for p: Dictionary in NetworkManager.players.values():
+	var has_bots := false
+	for pid: int in NetworkManager.players:
+		var p: Dictionary = NetworkManager.players[pid]
+		if NetworkManager.is_bot(pid):
+			has_bots = true
+			continue  # botun karakterini host aşağıda atar, seçim beklenmez
 		if p.get("team_id", -1) < 0:
 			continue  # takım seçmemiş (spectator)
 		if (p.get("character", "") as String).is_empty():
 			return
+	if has_bots:
+		# İnsanlar seçti → botlara takımlarındaki boş karakterlerden rastgele (liste yayını _begin_actual_game_rpc'den önce gider)
+		NetworkManager.assign_bot_characters()
 	_begin_actual_game_rpc.rpc()
 
 
@@ -171,7 +188,11 @@ func _begin_actual_game_rpc() -> void:
 	match_live = false
 	_local_loaded = false
 	if NetworkManager.is_host():
-		_expected_loaders = NetworkManager.players.keys()
+		# Botlar "yüklendim" demez → bekleme listesine girmez (yoksa maç LOAD_WAIT_MAX'a kadar başlamazdı)
+		_expected_loaders = []
+		for pid: int in NetworkManager.players.keys():
+			if not NetworkManager.is_bot(pid):
+				_expected_loaders.append(pid)
 		_loaded_peers.clear()
 		_load_wait_left = LOAD_WAIT_MAX
 		_load_status_timer = 0.0
@@ -186,6 +207,8 @@ func _begin_actual_game_rpc() -> void:
 	if state != State.IN_GAME:
 		return  # yüklerken atıldı / menüye dönüldü
 	_spawn_local_player()
+	if NetworkManager.is_host():
+		_spawn_bots()  # harita hazır (map_ready sonrası) → BotNav + bot oyuncular
 	_local_loaded = true
 	# Isınma: perde kalkar, oyuncu dolaşabilir — maç herkes yüklenince _match_go_rpc ile başlar
 	LOADING.close(get_tree(), MAP_SETTLE_FRAMES)
@@ -265,6 +288,8 @@ func _load_timeout() -> void:
 	for pid: int in _expected_loaders:
 		if pid == 1 or not NetworkManager.players.has(pid) or _loaded_peers.has(pid):
 			continue
+		if NetworkManager.is_bot(pid):
+			continue  # gerçek peer değil — rpc_id atılamaz (zaten listeye girmez, güvenlik)
 		var pname: String = NetworkManager.players[pid].get("name", "?")
 		NetworkManager._chat_system("%s yüklemeyi zamanında bitiremedi, oyundan atıldı", [pname])
 		# Client RPC'yi alınca kendi bağlantısını kapatır → host normal peer_disconnected alır. Tamamen donmuş client'ı
@@ -298,6 +323,20 @@ func _match_go_rpc() -> void:
 			me._apply_respawn(pos)
 		else:
 			me._apply_respawn.rpc(pos)
+	# Botların yetkilisi host → onları da host ışınlar (aynı yol: _apply_respawn call_local)
+	if NetworkManager.is_host():
+		for bid: int in active_players:
+			if not NetworkManager.is_bot(bid):
+				continue
+			var bot: Variant = active_players[bid]
+			if bot == null or not is_instance_valid(bot):
+				continue
+			var bteam: int = NetworkManager.players.get(bid, {}).get("team_id", 0)
+			var bpos := TeamManager.get_spawn_position(bteam)
+			if multiplayer.get_peers().is_empty():
+				bot._apply_respawn(bpos)
+			else:
+				bot._apply_respawn.rpc(bpos)
 	# Maç başı karaktere özel tek seferlik güç — HER PEER kendi hesaplar (RPC yok). Migration/respawn'da verilmez.
 	var powerups := get_tree().current_scene.get_node_or_null("PowerupManager")
 	if powerups and powerups.has_method("grant_starting_items"):
@@ -365,7 +404,8 @@ func _notify_player_spawned(peer_id: int, team_id: int, pos: Vector3) -> void:
 		return
 	var player: CharacterBody3D = player_scene.instantiate()
 	player.name = "Player_%d" % peer_id
-	player.set_multiplayer_authority(peer_id)
+	# Bot gerçek peer değil → yetkilisi host (1). Geç katılan / migration client'ı da _request_active_players ile buradan geçer.
+	player.set_multiplayer_authority(1 if NetworkManager.is_bot(peer_id) else peer_id)
 	var character: String = NetworkManager.players.get(peer_id, {}).get("character", "Visioner")
 	get_tree().current_scene.add_child(player)
 	player.global_position = pos
@@ -385,6 +425,70 @@ func _request_active_players() -> void:
 			continue
 		var pteam: int = NetworkManager.players.get(pid, {}).get("team_id", 0)
 		_notify_player_spawned.rpc_id(requester, pid, pteam, p.global_position)
+
+
+# ─────────────────────────────────────────────
+# Botlar (host)
+# ─────────────────────────────────────────────
+
+## Host: harita hazırken (map_ready sonrası, yerel oyuncudan sonra) BotNav'ı kurar ve her bot için oyuncu doğurur.
+## Bot düğümü insan oyuncuyla AYNI sahne/isim ("Player_<id>") → RPC yolları tüm peer'larda eşleşir; yetkilisi 1.
+## Isınmada doğar; BotBrain match_live'ı kendisi okur (ısınmada ateş etmez / kart aramaz). _match_go_rpc spawn'a ışınlar.
+func _spawn_bots() -> void:
+	if not NetworkManager.is_host():
+		return
+	var ids: Array[int] = NetworkManager.get_bot_ids()
+	if ids.is_empty():
+		return
+	_setup_bot_nav()
+	var brain_script: Script = null
+	if ResourceLoader.exists(BOT_BRAIN_PATH):
+		brain_script = load(BOT_BRAIN_PATH) as Script
+	if brain_script == null:
+		push_warning("BotBrain.gd yüklenemedi — botlar hareketsiz doğacak")
+	var scene := get_tree().current_scene
+	for bot_id: int in ids:
+		if active_players.has(bot_id):
+			continue
+		var data: Dictionary = NetworkManager.players.get(bot_id, {})
+		var team_id: int = int(data.get("team_id", -1))
+		if team_id < 0:
+			continue
+		var character: String = data.get("character", "")
+		if character.is_empty():
+			character = "Visioner"  # _notify_player_spawned ile aynı yedek
+		var pos: Vector3 = TeamManager.get_spawn_position(team_id)
+		var player: CharacterBody3D = player_scene.instantiate()
+		player.name = "Player_%d" % bot_id
+		player.set_multiplayer_authority(1)
+		scene.add_child(player)
+		player.global_position = pos
+		player.initialize(bot_id, team_id, character)
+		active_players[bot_id] = player
+		if brain_script:
+			var brain: Node = brain_script.new()
+			player.add_child(brain)
+			brain.setup(player, _bot_nav)
+		# Diğer peer'lar botu uzak oyuncu olarak doğurur (host'ta call_local active_players'ta olduğu için döner)
+		if multiplayer.get_peers().size() > 0:
+			_notify_player_spawned.rpc(bot_id, team_id, pos)
+
+
+## Host: haritanın geçilebilirlik ızgarasından yol bulucu (harita başına bir kez). Grid yoksa/boşsa null.
+func _setup_bot_nav() -> void:
+	_bot_nav = null
+	var scene := get_tree().current_scene
+	if scene == null or not scene.has_method("get_nav_grid"):
+		return
+	var grid: Dictionary = scene.get_nav_grid()
+	if grid.is_empty() or not ResourceLoader.exists(BOT_NAV_PATH):
+		return
+	var nav_script := load(BOT_NAV_PATH) as Script
+	if nav_script == null:
+		return
+	var nav: RefCounted = nav_script.new()
+	nav.build(grid)
+	_bot_nav = nav
 
 
 # ─────────────────────────────────────────────
@@ -694,7 +798,10 @@ func _schedule_respawn(dead_peer_id: int) -> void:
 	var player_data: Dictionary = NetworkManager.players.get(dead_peer_id, {})
 	var team_id: int = player_data.get("team_id", 0)
 	var spawn_pos: Vector3 = TeamManager.get_spawn_position(team_id)
-	player.respawn(spawn_pos)
+	if NetworkManager.is_bot(dead_peer_id) and multiplayer.get_peers().is_empty():
+		player._apply_respawn(spawn_pos)  # host botlarla tek başına: RPC'siz (call_local ile aynı sonuç)
+	else:
+		player.respawn(spawn_pos)
 
 
 # ─────────────────────────────────────────────
@@ -764,6 +871,7 @@ func _return_to_lobby_rpc() -> void:
 	door_instance = null
 	door_unlock = 0.0
 	_unlock_team = -1
+	_bot_nav = null  # bot düğümleri + BotBrain sahneyle birlikte silinir
 	match_time_left = -1.0
 	end_reason = ""
 	match_xp = 0
@@ -1079,6 +1187,8 @@ func get_migration_state() -> Dictionary:
 	# Oyuncu konumları (isimle; ölüler hariç — onlar spawn noktasında doğar)
 	var positions := {}
 	for pid in active_players:
+		if NetworkManager.is_bot(int(pid)):
+			continue  # botlar migration'da silinir — konumları taşınmaz
 		var p: Node = active_players[pid]
 		if p and is_instance_valid(p) and not p.is_dead:
 			var pname: String = NetworkManager.players.get(pid, {}).get("name", "")
@@ -1092,6 +1202,8 @@ func get_migration_state() -> Dictionary:
 func _stats_by_name() -> Dictionary:
 	var out := {}
 	for pid in player_stats:
+		if NetworkManager.is_bot(int(pid)):
+			continue  # botlar migration'da silinir — istatistikleri taşınmaz
 		var pname: String = NetworkManager.players.get(pid, {}).get("name", "")
 		if not pname.is_empty():
 			out[pname] = player_stats[pid].duplicate()
@@ -1140,6 +1252,7 @@ func restore_from_migration(mig: Dictionary) -> void:
 	_local_loaded = true
 	cards.clear()
 	door_instance = null
+	_bot_nav = null  # botlar migration'da silinir (yeniden doğurulmaz); eski bot düğümleri aşağıda temizlenir
 	for p in active_players.values():
 		if is_instance_valid(p):
 			p.queue_free()
@@ -1191,6 +1304,7 @@ func return_to_menu() -> void:
 	cards.clear()
 	door_instance = null
 	door_unlock = 0.0
+	_bot_nav = null  # bot düğümleri + BotBrain sahne değişiminde silinir
 	match_time_left = -1.0
 	end_reason = ""
 	state = State.MENU

@@ -553,11 +553,15 @@ func _refresh() -> void:
 	if _cards.is_empty():
 		return
 
+	# Botlar karakter seçmez (host maç başında otomatik atar) → sayaca girmez
 	var selected_count: int = 0
+	var total: int = 0
 	for pid: int in NetworkManager.players:
+		if NetworkManager.is_bot(pid):
+			continue
+		total += 1
 		if not (NetworkManager.players[pid].get("character", "") as String).is_empty():
 			selected_count += 1
-	var total: int = NetworkManager.players.size()
 
 	_status_lbl.text = tr("%d / %d OYUNCU HAZIR") % [selected_count, total]
 	_progress.value = float(selected_count) / float(maxi(total, 1))
@@ -571,8 +575,8 @@ func _get_team_taken() -> Dictionary:
 	var taken: Dictionary = {}
 	for pid: int in NetworkManager.players:
 		var pdata: Dictionary = NetworkManager.players[pid]
-		if pdata.get("team_id", -1) != local_team:
-			continue
+		if pdata.get("team_id", -1) != local_team or NetworkManager.is_bot(pid):
+			continue   # botlar insanlardan sonra kalan karakteri alır, kimseyi engellemez
 		var ch: String = pdata.get("character", "")
 		if not ch.is_empty():
 			taken[ch] = pdata.get("name", "???")
@@ -612,7 +616,10 @@ func _refresh_roster() -> void:
 		var pname_lbl := _make_label(player_name, 20, COL_TEXT)
 		pname_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı çevrilmesin
 		row.add_child(pname_lbl)
-		if ch.is_empty():
+		if NetworkManager.is_bot(pid):
+			# Bot karakter seçmez — maç başında boş kalan karakter otomatik atanır
+			row.add_child(_make_label("BOT · otomatik", 18, COL_TEXT_DIM, _font_caps))
+		elif ch.is_empty():
 			row.add_child(_make_label("seçiyor…", 18, COL_TEXT_DIM))
 		else:
 			row.add_child(_make_label(ch.to_upper(), 18, ch_color, _font_caps))

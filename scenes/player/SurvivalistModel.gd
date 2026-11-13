@@ -48,6 +48,22 @@ const OUTFITS: Dictionary = {
 }
 const DEFAULT_OUTFIT := "Visioner"
 
+## Özel karakter gövdeleri (Tripo AI model → Mixamo rig → tools/build_custom_character.gd ile UE iskeletine
+## yeniden bağlanmış). Varsa Survivalist parçaları gizlenir, bu mesh AYNI Skeleton3D'ye bağlanır ve kemik
+## rest konumları karakterin gövdesine göre değişir (dönüşler UE ile aynı → animasyonlar/modifier'lar aynen çalışır).
+## Dosya yoksa OUTFITS'teki Survivalist kıyafeti kullanılır.
+const CUSTOM_DIR := "res://asset model/karakterler/"
+const CUSTOM_MODELS: Dictionary = {
+	"Tank": "Tank/tank",
+	"Visioner": "Visioner/visioner",
+	"Runner": "Runner/runner",
+	"Sniper": "Sniper/sniper",
+	"Medic": "Medic/medic",
+}
+static var _custom_cache: Dictionary = {}   # karakter → [PackedScene, StandardMaterial3D]
+var _custom_body: MeshInstance3D = null
+var _original_rests: Dictionary = {}        # kemik indeksi → Transform3D (özel gövdeden geri dönmek için)
+
 ## Malzeme adı → doku dosyaları (%d = skin numarası; skin'siz parçalar sabit)
 const MATERIALS: Dictionary = {
 	"Mat_Military_Head_1":     {"part": "", "albedo": "Body/T_Military_Head1_color.png", "normal": "Body/T_Military_Head1_nmap.png",
@@ -134,6 +150,8 @@ func _apply_default_outfit() -> void:
 ## Karaktere göre parçaları açıp kapatır ve doku varyantlarını uygular
 func apply_outfit(character: String) -> void:
 	_outfit_applied = true
+	if _apply_custom_body(character):
+		return
 	var o: Dictionary = OUTFITS.get(character, OUTFITS[DEFAULT_OUTFIT])
 	var vest: String = o["vest"]
 	var has_vest := vest != "none"
@@ -157,6 +175,79 @@ func apply_outfit(character: String) -> void:
 			var key: String = src.resource_name
 			var part: String = MATERIALS[key]["part"]
 			mi.set_surface_override_material(i, _get_material(key, int(skins.get(part, 1))))
+
+
+## Karakterin özel gövdesi varsa takar (true döner); yoksa önceki özel gövdeyi söküp false döner.
+func _apply_custom_body(character: String) -> bool:
+	var sk := _skeleton()
+	if sk == null:
+		return false
+	var data := _get_custom(character)
+	if _custom_body:
+		_custom_body.queue_free()
+		_custom_body = null
+		for i: int in _original_rests:
+			sk.set_bone_rest(i, _original_rests[i])
+		sk.reset_bone_poses()
+	for c in sk.get_children():
+		if c is MeshInstance3D:
+			(c as MeshInstance3D).visible = data.is_empty() and not ALWAYS_HIDDEN.has(str(c.name))
+	if data.is_empty():
+		return false
+	var body := (data[0] as PackedScene).instantiate() as MeshInstance3D
+	var rests: Dictionary = body.get_meta("bone_rests", {})
+	sk.add_child(body)
+	body.skeleton = NodePath("..")
+	body.material_override = data[1]
+	for bone_name: String in rests:
+		var i := sk.find_bone(bone_name)
+		if i < 0:
+			continue
+		if not _original_rests.has(i):
+			_original_rests[i] = sk.get_bone_rest(i)
+		sk.set_bone_rest(i, rests[bone_name])
+	# Animasyonlar sadece dönüş (+ pelvis konumu) yazar → diğer kemiklerin poz konumu yeni rest'ten gelmeli
+	sk.reset_bone_poses()
+	_custom_body = body
+	return true
+
+
+func _skeleton() -> Skeleton3D:
+	var found := find_children("*", "Skeleton3D", true, false)
+	return found[0] as Skeleton3D if not found.is_empty() else null
+
+
+## [PackedScene, malzeme] — dosya yoksa boş dizi. Tüm oyuncular paylaşır.
+static func _get_custom(character: String) -> Array:
+	if not CUSTOM_MODELS.has(character):
+		return []
+	if _custom_cache.has(character):
+		return _custom_cache[character]
+	var base: String = CUSTOM_DIR + CUSTOM_MODELS[character]
+	var out: Array = []
+	if ResourceLoader.exists(base + "_rig.scn"):
+		var m := StandardMaterial3D.new()
+		m.resource_name = character + ":custom"
+		m.albedo_texture = load(base + "_color.jpg") as Texture2D
+		if ResourceLoader.exists(base + "_normal.png"):
+			m.normal_enabled = true
+			m.normal_texture = load(base + "_normal.png") as Texture2D   # OpenGL normal (Tripo "NormalGL")
+		if ResourceLoader.exists(base + "_orm.jpg"):
+			var orm := load(base + "_orm.jpg") as Texture2D            # R = AO, G = pürüzlülük, B = metal
+			m.ao_enabled = true
+			m.ao_texture = orm
+			m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+			m.ao_light_affect = 0.3
+			m.roughness_texture = orm
+			m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+			m.metallic = 1.0
+			m.metallic_texture = orm
+			m.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
+		out = [load(base + "_rig.scn"), m]
+	else:
+		push_warning("Özel karakter modeli bulunamadı: " + base + "_rig.scn")
+	_custom_cache[character] = out
+	return out
 
 
 func _set_part(part_name: String, on: bool) -> void:

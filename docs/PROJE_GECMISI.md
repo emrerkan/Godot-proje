@@ -232,6 +232,13 @@
     **Erken çıkış yenilgi sayılır, galibiyet değil** (`abandoned`: maç sayılır, kazanılmaz). Sohbet geçmişi YALNIZCA şikâyette tutulur (DB planı; aydınlatma metnine maç istatistikleri + şikâyet kaydı eklenecek).
     Toplamlar maç listesinden ayrı (son 100) → eski maçlar silinince düşmez. Bilinen sınırlar: pencereyi kapatma / host kopması maçı kaydetmeyebilir (return_to_menu çalışmaz);
     host migration'da kayıt isimle eşleşir (peer id değişir).
+50. **Botlar (2026-11-13)** — host Lobby'de boş takım slotuna "+ BOT" ile bot ekler (✕ çıkarır). Kullanıcı kararları: kapsam = temel savaş (yürü, nişan, ateş, şarjör)
+    + kart al/kapıya taşı + ölünce yeniden doğ; **güç/bomba/bıçak KULLANMAZ**; tek sabit zorluk (orta); karakter = takımdaki boş karakterlerden rastgele (insanlar seçtikten sonra);
+    **host migration'da botlar SİLİNİR**. Botlar ağda sahte oyuncu, SADECE host simüle eder (BotBrain → `Player.set_bot_input`), diğer peer'lar normal uzak oyuncu görür.
+    İlke: tüm değişiklikler "bot ise" dalı → botsuz maç birebir eski yol. Bot id = `BOT_ID_BASE` (2e9) + n (negatif değil: `<0` kodda "yok" sentineli);
+    bot id'sine `rpc_id` atılmaz, bot düğümünün yetkisi 1. Orkestra ile 6 paralel workbench (network / gameflow / player / bot-AI / world / UI) + test.
+    Test `tools/test_bots.gd` (A botlu maç + B botsuz regresyon, ikisi PASS). Bilinen sınırlar: SADECE BIÇAK modunda botlar saldıramaz; ENet peer id'si
+    2e9 üstü çıkabilir (~%7) → bot kontrolü HER ZAMAN `is_bot()` (kayıttaki bayrak), ham id karşılaştırması değil; botlar zıplamaz (0.75 m üstü basamak ızgarada kapalı).
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 

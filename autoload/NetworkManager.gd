@@ -40,8 +40,14 @@ const MAPS: Array[Dictionary] = [
 		"emission_scale": 0.18, "lamp_scale": 0.2, "lamp_energy": 0.6},   # kullanıcı: "fenere ihtiyaç yok gibi" → iki kez kısıldı
 	{"id": "desert", "name": "Çöl Kargo Uçağı Enkazı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
 		"glb": "res://asset model/haritalar/Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5.glb"},
+	{"id": "desert_v3", "name": "Çöl Kargo Uçağı Enkazı v3", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
+		"glb": "res://asset model/haritalar/Map3_Col_v3/Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5_v3.gltf",
+		"convex_props": true, "outer_world": true},
 	{"id": "forest", "name": "Gece Orman Radar Üssü", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
 		"glb": "res://asset model/haritalar/Map4_Gece_Orman_Radar_Ussu_4v4v4v4.glb"},
+	{"id": "forest_v3", "name": "Gece Orman Radar Üssü v3", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
+		"glb": "res://asset model/haritalar/Map4_Orman_v3/Map4_Gece_Orman_Radar_Ussu_4v4v4v4_v3.gltf",
+		"convex_props": true, "outer_world": true},
 	{"id": "hospital", "name": "Karantina Hastanesi", "scene": IMPORTED_MAP_SCENE, "max_team": 2,
 		"glb": "res://asset model/haritalar/Map5_Karantina_Hastanesi_2v2v2v2.glb"},
 	{"id": "subway", "name": "Yeraltı Metro İstasyonu", "scene": IMPORTED_MAP_SCENE, "max_team": 3,
@@ -90,6 +96,12 @@ const CHAT_HISTORY_MAX := 60
 const CHAT_MIN_INTERVAL_MS := 350      # host tarafı flood koruması (oyuncu başına)
 var chat_history: Array[Dictionary] = []  # sahne geçişlerinde korunur (lobi → oyun)
 var _chat_last_ms: Dictionary = {}
+
+## Botlar — ağda sahte oyuncular, SADECE host simüle eder. players[bot_id] = {..., "is_bot": true}.
+## Bot id'si gerçek ENet peer DEĞİL → bot id'sine ASLA rpc_id() atılmaz. Negatif değil: -1/<0 kodda "yok" anlamında.
+## DİKKAT: ENet peer id'leri 2^31-1'e kadar çıkabilir → bot kontrolü için HER ZAMAN is_bot() kullan, ham id karşılaştırması değil.
+const BOT_ID_BASE := 2000000000
+const BOT_NAME_FORMAT := "BOT %d"
 
 
 # ─────────────────────────────────────────────
@@ -319,9 +331,15 @@ func _on_server_disconnected() -> void:
 	_saved_character = players.get(my_id, {}).get("character", "")
 	_saved_upgrades = players.get(my_id, {}).get("upgrades", {})
 	_migration_players = players.duplicate(true)
+	# Botlar migration'da SİLİNİR (kullanıcı kararı): anlık görüntüden çıkar → yeni host adayı da olamazlar,
+	# tek-takım kontrolü de sadece insanlara bakar
+	for pid: int in _migration_players.keys():
+		if is_bot(pid):
+			_migration_players.erase(pid)
 	_migration_settings = room_settings.duplicate(true)
 	_migration_addresses = peer_addresses.duplicate()
 	_pending_migration_state = GameManager.get_migration_state()
+	_strip_bots_from_migration_state(_pending_migration_state)
 	# Disconnect anında oyun sürüyorsa ve geriye kesin olarak tek takım kaldıysa (kimse geri
 	# bağlansa da sonuç değişmez), kazananı şimdiden işaretle — restore_from_migration haritayı
 	# yeniden yükleyip loading perdesi açmadan doğrudan zaferi ilan edebilsin.
@@ -339,7 +357,7 @@ func _on_server_disconnected() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
 
-	# Kalan peer'ları bul (eski host peer_id=1 hariç)
+	# Kalan peer'ları bul (eski host peer_id=1 hariç; botlar yukarıda zaten çıkarıldı)
 	var remaining: Array = _migration_players.keys().filter(func(p): return p != 1)
 	remaining.sort()
 
@@ -383,6 +401,28 @@ func _on_server_disconnected() -> void:
 		else:
 			RoomManager.start_listening()
 			_reconnect_loop(saved_room, saved_pw)
+
+
+## Migration anlık görüntüsünden (GameManager.get_migration_state — isimle anahtarlı) bot kayıtlarını çıkarır.
+## Bir insanla aynı adı taşıyan bot adı silinmez (insanın verisi korunsun).
+func _strip_bots_from_migration_state(state: Dictionary) -> void:
+	var human_names: Dictionary = {}
+	var bot_names: Dictionary = {}
+	for pid: int in players:
+		var nm := String(players[pid].get("name", ""))
+		if is_bot(pid):
+			bot_names[nm] = true
+		else:
+			human_names[nm] = true
+	for nm: String in human_names:
+		bot_names.erase(nm)
+	if bot_names.is_empty():
+		return
+	for key: String in ["positions", "stats_by_name"]:
+		if state.has(key) and state[key] is Dictionary:
+			var d: Dictionary = state[key]
+			for nm: String in bot_names:
+				d.erase(nm)
 
 
 func _reconnect_loop(target_room: String, password: String) -> void:
@@ -505,6 +545,9 @@ func _change_team(peer_id: int, team_id: int) -> void:
 		return
 	if not players.has(peer_id) or team_id >= TEAM_COUNT:
 		return
+	# Botun takımını sadece host (doğrudan çağrı) değiştirebilir; client RPC'si bot id'siyle gelirse reddedilir
+	if is_bot(peer_id) and multiplayer.get_remote_sender_id() != 0:
+		return
 	# Takım boyutu sınırı host'ta da uygulanır (client UI'yi atlatmaya karşı)
 	if team_id >= 0 and players[peer_id].get("team_id", -1) != team_id and get_team_count(team_id) >= get_team_size():
 		return
@@ -529,6 +572,8 @@ func set_ready(is_ready: bool) -> void:
 func _set_ready_rpc(peer_id: int, is_ready: bool) -> void:
 	if not multiplayer.is_server():
 		return
+	if is_bot(peer_id):
+		return  # botlar hep hazır
 	if players.has(peer_id):
 		players[peer_id]["is_ready"] = is_ready
 		_broadcast_player_list()
@@ -572,10 +617,16 @@ func _apply_character_selection(peer_id: int, char_name: String, levels: Diction
 		return
 	if not players.has(peer_id):
 		return
+	# Botların karakterini host assign_bot_characters ile atar — bu yoldan bot seçimi kabul edilmez
+	if is_bot(peer_id):
+		return
 	# Aynı takımda bu karakter alınmış mı kontrol et
 	var my_team: int = players[peer_id].get("team_id", -1)
 	for other_id: int in players:
 		if other_id == peer_id:
+			continue
+		# Botlar karakteri EN SONDA alır (assign_bot_characters) → çakışmada insan kazanır, bot yok sayılır
+		if is_bot(other_id):
 			continue
 		var other: Dictionary = players[other_id]
 		if other.get("team_id", -1) == my_team and other.get("character", "") == char_name:
@@ -586,6 +637,111 @@ func _apply_character_selection(peer_id: int, char_name: String, levels: Diction
 	_broadcast_player_list()
 	emit_signal("player_list_updated")
 	GameManager.check_all_characters_selected()
+
+
+# ─────────────────────────────────────────────
+# Botlar — host Lobby'deki boş takım slotlarına ekler. Sadece host simüle eder (BotBrain).
+# ─────────────────────────────────────────────
+
+## Bot mu? Önce players kaydındaki bayrak (gerçek peer id'si BOT_ID_BASE'i aşabilir — kaydı olan insan hiç bot sayılmaz).
+## Kaydı yoksa (ör. listeden yeni silinmiş): id BOT_ID_BASE üstündeyse ve bağlı gerçek bir peer değilse bot.
+func is_bot(peer_id: int) -> bool:
+	if players.has(peer_id):
+		return bool(players[peer_id].get("is_bot", false))
+	if peer_id < BOT_ID_BASE:
+		return false
+	return not _is_connected_peer(peer_id)
+
+
+func _is_connected_peer(peer_id: int) -> bool:
+	if not multiplayer.has_multiplayer_peer():
+		return false
+	return multiplayer.get_peers().has(peer_id)
+
+
+## Host, maç dışı: takıma bot ekler. Takım ya da oda doluysa 0, başarılıysa bot id'si döner.
+func add_bot(team_id: int) -> int:
+	if not is_host() or is_game_running():
+		return 0
+	if team_id < 0 or team_id >= TEAM_COUNT:
+		return 0
+	# Botlar slot kaplar — takım boyutu ve oda kapasitesi insanlarla birlikte sayılır
+	if get_team_count(team_id) >= get_team_size() or players.size() >= get_max_players():
+		return 0
+	# En küçük boş numara (bot silinip eklenince "BOT 1, BOT 2" sırası kısa kalsın)
+	var n := 1
+	while players.has(BOT_ID_BASE + n) or _is_connected_peer(BOT_ID_BASE + n):
+		n += 1
+	var bot_id := BOT_ID_BASE + n
+	players[bot_id] = {
+		"name": BOT_NAME_FORMAT % n, "team_id": team_id, "is_ready": true, "character": "",
+		"is_bot": true, "upgrades": {}, "powers": {},
+	}
+	_broadcast_player_list()
+	emit_signal("player_list_updated")
+	return bot_id
+
+
+## Host, maç dışı: botu odadan çıkarır.
+func remove_bot(peer_id: int) -> void:
+	if not is_host() or is_game_running():
+		return
+	if not players.has(peer_id) or not is_bot(peer_id):
+		return
+	players.erase(peer_id)
+	_broadcast_player_list()
+	emit_signal("player_list_updated")
+
+
+func get_bot_ids() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in players:
+		if is_bot(pid):
+			out.append(pid)
+	out.sort()
+	return out
+
+
+## Host: her bota takımında insanların / diğer botların kullanmadığı rastgele bir karakter atar (önceki atamalar
+## yok sayılır — her çağrıda baştan dağıtılır), listeyi yayınlar. İnsanlar seçimini bitirdikten SONRA çağrılır.
+func assign_bot_characters() -> void:
+	if not is_host():
+		return
+	var bots := get_bot_ids()
+	if bots.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	# Takım başına alınmış karakterler — önce insanlar
+	var taken_by_team: Dictionary = {}  # team_id → Array[String]
+	for pid: int in players:
+		if is_bot(pid):
+			continue
+		var t := int(players[pid].get("team_id", -1))
+		var c := String(players[pid].get("character", ""))
+		if t < 0 or c.is_empty():
+			continue
+		if not taken_by_team.has(t):
+			taken_by_team[t] = []
+		(taken_by_team[t] as Array).append(c)
+	for bid: int in bots:
+		var t := int(players[bid].get("team_id", -1))
+		if not taken_by_team.has(t):
+			taken_by_team[t] = []
+		var taken: Array = taken_by_team[t]
+		var free: Array[String] = []
+		for c: String in PROFILE.CHARACTERS:
+			if not taken.has(c):
+				free.append(c)
+		# Takım boyutu en fazla 5 = karakter sayısı → normalde boş karakter hep vardır; yine de tükenirse tekrar kullan
+		var pool: Array[String] = free if not free.is_empty() else PROFILE.CHARACTERS
+		var pick: String = pool[rng.randi_range(0, pool.size() - 1)]
+		players[bid]["character"] = pick
+		players[bid]["upgrades"] = {}  # botlar yükseltmesiz (taban istatistik)
+		players[bid]["powers"] = {}
+		taken.append(pick)
+	_broadcast_player_list()
+	emit_signal("player_list_updated")
 
 
 # ─────────────────────────────────────────────
@@ -645,6 +801,8 @@ func _chat_system(text: String, args: Array = []) -> void:
 
 
 func _chat_deliver_to(pid: int, msg: Dictionary) -> void:
+	if is_bot(pid):
+		return  # bot gerçek peer değil — rpc_id atılamaz
 	if pid == 1:
 		_chat_receive(msg)
 	else:
@@ -824,29 +982,43 @@ func _sync_password(password: String) -> void:
 	_pending_password = password
 
 
-## Takım boyutu küçülünce fazla oyuncular (en son katılanlar) takımsıza düşer
+## Takım boyutu küçülünce fazla oyuncular (en son katılanlar) takımsıza düşer.
+## Önce botlar gider (sıralamada en sona konur) ve takımsız kalmak yerine odadan SİLİNİR.
 func _enforce_team_size() -> void:
 	var size := get_team_size()
 	var changed := false
 	for tid in TEAM_COUNT:
 		var members: Array = players.keys().filter(func(pid): return players[pid].get("team_id", -1) == tid)
-		members.sort()
+		members.sort_custom(_bots_last)
 		while members.size() > size:
 			var pid: int = members.pop_back()
-			players[pid]["team_id"] = -1
-			players[pid]["is_ready"] = false
+			if is_bot(pid):
+				players.erase(pid)
+			else:
+				players[pid]["team_id"] = -1
+				players[pid]["is_ready"] = false
 			changed = true
 	if changed:
 		_broadcast_player_list()
 		emit_signal("player_list_updated")
 
 
+## _enforce_team_size sıralaması: insanlar id'ye göre önde, botlar sonda (pop_back önce botu atar)
+func _bots_last(a: int, b: int) -> bool:
+	var ba := is_bot(a)
+	var bb := is_bot(b)
+	if ba != bb:
+		return bb
+	return a < b
+
+
 ## Host: maç bitip lobiye dönülünce rövanş için oyuncuları hazırla — hazır/karakter sıfırlanır, takım KORUNUR.
+## Botlar hazır kalır, karakterleri sonraki maçta assign_bot_characters ile yeniden atanır.
 func reset_for_rematch() -> void:
 	if not is_host():
 		return
 	for pid in players:
-		players[pid]["is_ready"] = false
+		players[pid]["is_ready"] = is_bot(pid)
 		if players[pid].has("character"):
 			players[pid]["character"] = ""
 	_broadcast_player_list()

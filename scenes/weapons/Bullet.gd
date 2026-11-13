@@ -1,5 +1,5 @@
 ## Bullet.gd (3D)
-## Sadece atan oyuncunun clienti sunucuya hasar bildirir.
+## Sadece atan oyuncunun clienti sunucuya hasar bildirir (bot mermisini host bildirir).
 
 extends Area3D
 
@@ -132,8 +132,12 @@ func _on_body_entered(body: Node) -> void:
 		if not is_special and body.has_method("is_crouching") and body.is_crouching():
 			return
 
-		# Sadece atan oyuncunun clienti hasar bildirir — çift hasar önlenir
-		if NetworkManager.get_local_id() == shooter_peer_id:
+		# Sadece atan oyuncunun clienti hasar bildirir — çift hasar önlenir.
+		# Bot mermisi: botun "client"ı yok → host bildirir (diğer peer'lar bildirmez, çift hasar yine yok)
+		var reporter := NetworkManager.get_local_id() == shooter_peer_id
+		if not reporter and NetworkManager.is_host() and NetworkManager.is_bot(shooter_peer_id):
+			reporter = true
+		if reporter:
 			var source: int = DAMAGE_SPECIAL if is_special else 0   # 0 = Player.DAMAGE_BULLET
 			if NetworkManager.is_host():
 				body.take_damage(damage, shooter_peer_id, source)

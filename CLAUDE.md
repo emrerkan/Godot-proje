@@ -44,7 +44,8 @@ Test: `_set_save_path_for_tests(yol)`. UI: `scenes/ui/StatsPage.gd` (UpgradePage
 ## Ayarlar — `scenes/settings/GameSettings.gd` (class_name, statik, `preload`) + `scenes/ui/SettingsWindow.gd`
 `user://options.cfg` (oyuncu adı ayrı: user://settings.cfg). `DEFAULTS` / `PRESETS` (Düşük-Orta-Yüksek-Ultra). `apply_once` UITheme.apply'dan
 (ölçeklemeden sonra) → `apply_all`: pencere modu/çözünürlük (**sadece kayıtlı dosya varsa**, debug'da ortalama yok — editörün çok
-pencereli testi bozulmasın), vsync, `Engine.max_fps`, root `scaling_3d_scale` (3D ölçek), FXAA/MSAA, gölge atlası (0 = kapalı),
+pencereli testi bozulmasın; açılışta pencere proje varsayılanından (1152×648) farklı boyuttaysa = `--resolution` verilmiş → ilk uygulamada atlanır, `_window_size_from_cli`;
+motor argümanları `OS.get_cmdline_args()`'a DÜŞMEZ — editör Çalıştırma Örnekleri argümanları), vsync, `Engine.max_fps`, root `scaling_3d_scale` (3D ölçek), FXAA/MSAA, gölge atlası (0 = kapalı),
 `content_scale_factor` (UI 0.8-1.0), ses kanalları Master/Music/SFX/UI (yoksa oluşturur), FpsCounter.
 **Sanal nişangah:** Crosshair görünürken fare CAPTURED, `cursor_pos += relative × mouse_sensitivity`; `aim_screen_position(vp)`
 → Player._get_aim_target + Crosshair çizimi. Gizlenince fare serbest + `warp_mouse(cursor_pos)`. CameraController.add_trauma × `camera_shake`.
@@ -110,6 +111,18 @@ draw sinyaline bağlanır, çocuk node yok), beyaz `TEXT`, sekmeler beyaz alt ç
 `team_tag(id)` takım sembolü (●▲■◆). Menü katmanı `MenuOverlay.gdshader` = süzülen duman (fbm) + vinyet + tarama + gren;
 MenuBackground3D: PERFORMANS ayarlı (`RENDER_SCALE` 0.6 bilinear, MSAA yok, hacimsel sis `FOG_DENSITY`=0, sadece fare feneri gölgeli) —
 menü iGPU'da pahalıydı. NetworkManager `_notification`: odakta olmayan pencere `UNFOCUSED_MAX_FPS` 30. Font değişikliği bekliyor (kullanıcı: sonra).
+
+## Botlar — `scenes/bots/BotBrain.gd` + `BotNav.gd` (class_name YOK, GameManager `load` eder)
+Host Lobby'de boş slota "+ BOT" (`Lobby._build_empty_slot` → `NetworkManager.add_bot(team)`, ✕ → `remove_bot`). Bot = ağda sahte oyuncu, SADECE host simüle eder.
+Bot id = `NetworkManager.BOT_ID_BASE` (2e9) + n — negatif değil (`<0` kodda "yok" sentineli); ENet peer id'si de 2e9'u aşabilir → kontrol HER ZAMAN `is_bot(id)`
+(players kaydındaki `is_bot` bayrağı), ham id karşılaştırması YOK. **Bot id'sine `rpc_id` ATILMAZ** (players döngülerinde atla: `_chat_deliver_to`), bot düğümünün yetkisi 1.
+`players[bot] = {name "BOT n", is_ready true, is_bot true, upgrades/powers {}}`; `assign_bot_characters` insanlar seçince takımda boş karakterden rastgele.
+GameManager: `check_all_characters_selected` botları beklemez; `_expected_loaders` bot içermez; host `_spawn_bots` (map_ready + yerel oyuncudan sonra; `_setup_bot_nav` ←
+harita `get_nav_grid()` {wall,width,height,origin,cell}; Map.gd = Maze_minimap.png, ImportedMap = `_wall` + void + 0.75 m üstü basamak kapalı) → Player "Player_<id>" + BotBrain çocuğu;
+`_match_go_rpc` botları da ışınlar. Player: `is_bot`, `_input_driven` = is_local VEYA (bot VE host) — `is_local` anlamı DEĞİŞMEDİ (kamera/HUD/ses);
+`set_bot_input(move, aim_pos, fire, reload, run)`. Bullet: bot mermisinin hasarını host bildirir. Card.gd: host'ta bot gövdesi → `handle_card_pickup`. ImportedMap düşen botu kurtarır.
+BotBrain durumları WANDER/GO_CARD/CARRY/ESCORT/HUNT/FIGHT; ısınmada ateş etmez; güç/bomba/bıçak/zıplama YOK (SADECE BIÇAK modunda saldıramaz). Migration'da botlar SİLİNİR
+(snapshot'tan çıkar). UI: HUD skor tablosu + CharacterSelect "BOT · otomatik". Test: `tools/test_bots.gd` (`-- A|B|AB`; A botlu maç, B botsuz regresyon).
 
 ---
 
@@ -278,6 +291,8 @@ Bomba `DAMAGE_EXPLOSION` (1) gönderir → çömelme korumaz.
 
 **CharacterMesh 180° çevrili:** model yüzü +Z'ye bakıyor (Godot -Z-ileri kuralının tersi);
 `Player.tscn`'de düzeltme transformu var. CharacterSelect.gd önizlemesi de buna göre ayarlı.
+**Görsel ölçek** `Player.CHARACTER_VISUAL_SCALE` 1.3 (kullanıcı: tepeden küçük kalıyordu) — `initialize` CharacterMesh'i büyütür (`_mesh_base_basis` ölçeği taşır),
+çarpışma/hız AYNI; `Weapon.visual_scale` mermi çıkış yüksekliğini ölçeksiz hizaya indirir (vuruş kutusu 1.8 m). Takım arkadaşı adı `_setup_ally_name_label` (KODDA: font 44, y 2.85 — tscn değeri ezilir), CardIndicator 3.3, HUD `CARRIER/TRAP_BAR_HEAD` 2.8. Menü/karakter seçimi ölçeksiz.
 
 **CharacterMesh = `SurvivalistModel.tscn`** (eski Mixamo mankeni `anims/Breathing Idle.fbx` yerine, tüm karakterler):
 `asset model/Survivalist/SK_Military_Survivalist.fbx` (UE mannequin iskeleti, 1.89 m, metre ölçekli) + `SurvivalistModel.gd`:
@@ -288,7 +303,13 @@ Malzemeler kodla (`MATERIALS` → `_get_material`, `"malzeme:skin"` static cache
 dokular `asset model/Survivalist_Textures/Textures/{Body,Top,Bottom,Equip}` (FBX'in kendi doku yolu KULLANILMIYOR —
 import'ta "Textures/Body/... bulunamadı" hataları zararsız). `.import` ayarları elle: normal map `normal_map_invert_y=true`
 (UE/DirectX), renk 2K, ao/rough/metal 1K. `FPS_Arms/.gdignore`. Doku yoksa `FALLBACK_COLORS`.
-FPS kolları (`ALWAYS_HIDDEN`) hep gizli. Animasyonlar `anims/survivalist_anims.res` (`tools/build_anim_library.gd` üretir):
+FPS kolları (`ALWAYS_HIDDEN`) hep gizli.
+**Özel gövdeler (5 karakterin HEPSİ — 2026-11-13; Survivalist OUTFITS artık sadece yedek):** Runner/Sniper Mixamo'da "2 Chain Fingers" (41 kemik: sadece başparmak+işaret) riglendi → diğer parmaklar el kemiğine bağlı.
+Orijinal Tripo GLB'leri `<K>/kaynak/` (.gdignore — Godot meshopt'u açamıyor, import hatası veriyordu). `CUSTOM_MODELS` → `asset model/karakterler/<K>/<k>_rig.scn` (+ `_color.jpg`/`_orm.jpg` R=AO G=rough B=metal/`_normal.png` OpenGL).
+`apply_outfit` → `_apply_custom_body`: Survivalist mesh'leri gizlenir, `CustomBody` AYNI Skeleton3D'ye eklenir, `bone_rests` meta'sı `set_bone_rest` + `reset_bone_poses`
+(rest DÖNÜŞLERİ UE ile aynı, sadece kemik konumları karaktere göre → animasyon/UpperBodyLayer/SpineTwist/HandRifle değişmeden çalışır). Dosya yoksa OUTFITS'e düşer.
+Üretim: Tripo GLB (EXT_meshopt — Godot açamaz) → çözülüp Godot LOD'uyla ~50k/40k üçgene indirildi → OBJ zip (`mixamo_upload/`, .gdignore) → Mixamo rig FBX →
+`tools/build_custom_character.gd` (kopya projede: `-- res://ue.fbx res://mixamo.fbx res://out.scn`; Mixamo T-pozu kemik başına swing ile bind'e yazılır, el ayası roll'u da hizalanır, ölçek = pelvis yüksekliği). Animasyonlar `anims/survivalist_anims.res` (`tools/build_anim_library.gd` üretir):
 `Idle, Walk, Run, CrouchWalk, Talk, Jump, Death` (`anims/Basic+Demo+Animations/*.FBX` — aynı UE iskelet, doğrudan uyumlu;
 ik_* kemik, scale ve pelvis dışı position track'leri atılır) + yedek `Breathing Idle` (Mixamo bake, `tools/retarget_bake.gd`).
 `_setup_idle()` hepsini varsayılan kütüphaneye ekler, autoplay `Idle`.
@@ -369,7 +390,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   Ayak izi x ±62, z ±46; koridor ~4 m, duvar ~2 m kalın. Zemin 126×94, `Bounds` görünmez sınır (üst girişler dışarı açılmasın).
   `Maze_minimap.png` (1 px = 1 m duvar maskesi) → Minimap `MAP_MIN/MAX` ile birebir.
 - **İçe aktarılan haritalar** (`asset model/haritalar/*.glb`, rehber `HARITALAR_TEKNIK_REHBERI_AI.md` — dosyalarla doğrulandı):
-  `NetworkManager.MAPS` id embassy/quantum/desert/forest/hospital/subway/warehouse/port → hepsi `scenes/world/ImportedMap.tscn`
+  `NetworkManager.MAPS` id embassy/quantum/desert/forest/hospital/subway/warehouse/port (+ dokulu `.gltf` sürümler desert_v3/forest_v3, `Map3_Col_v3/`, `Map4_Orman_v3/`; MAPS `convex_props` = `CONVEX_KEYWORDS` adlı nesnelere trimesh yerine sadeleştirilmiş dolu convex (trimesh kabuğuna giren oyuncu kilitleniyordu), `outer_world` = `_build_outer_world` harita dışına görsel zemin + kaya kuşağı, güney sırası alçak) → hepsi `scenes/world/ImportedMap.tscn`
   (+ `glb` yolu, `max_team` 3/5/5/4/2/3/4/5 — `get_map_max_team`, `set_map` takım boyutunu kırpar, Lobby format seçeneklerini kapatır). `ImportedMap.gd`:
   GLB'yi örnekler (`MapModel`), `HIDDEN_KEYWORDS` gizler (`CardVisual_*` + **takım spawn platformları `Pad_Team*`** — kullanıcı:
   takım bölgeleri işaretli olmasın; çarpışmaları da yok), mesh başına trimesh çarpışma (`NO_COLLISION_KEYWORDS`: yaprak/su/neon/holo/Pad_Team/Decal/Scatter/Grass — yeni harita üretim kuralları `asset model/haritalar/HARITA_PROMPTLARI.md`), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
@@ -458,6 +479,11 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   kapı `carrier_only` (`Door.DOOR_CARRIER_ONLY`): SADECE kart taşıyan görür. MAPS `emission_scale`/`lamp_scale` (Kuantum 0.35/0.4):
   ImportedMap `_scale_emission` malzemeyi kopyalayıp surface override verir (paylaşılan kaynak tekrar kısılmasın).
   Tamamen yerel görsel, ağ/mantık yok; Area3D çarpışması etkilenmez.
+- **`SceneLighting.gd`** (statik, preload; "sinematik karanlık" post-process): Map/ImportedMap `_ready` → `apply_node` (WorldEnvironment'a
+  ÇALIŞMA ANINDA yazar, default_env.tres'e dokunmaz), GameSettings.apply_all → `apply_tree` (oyunda ayar değişince). ACES + exposure, soğuk mavi
+  ortam, hafif mavi derinlik pusu, kontrast/doygunluk (hepsi ~bedava); glow (seviye 2-4) Yüksek+ (`shadows`≥2, ~3.2 ms), SSAO yarım çöz. sadece Ultra
+  (~2.5 ms) — ölçüm 1600×900 iGPU. Player: fener `FLASHLIGHT_COLOR` hafif sıcak + `Flashlight/Halo` turuncu OmniLight (`_setup_halo_light`, r 4.5,
+  dual-paraboloid gölgeli, ~0.3 ms) HERKESE görünür (kullanıcı: ışık = konum ele verir); fenerin çocuğu → ölüm/görünmezlikte otomatik gizli.
 - `CameraController.gd`: Player'ın child'ı DEĞİL, Map.tscn'de bağımsız Camera3D. `GameManager.local_player_spawned`
   sinyaline bağlanır. Exponential lerp (`1-exp(-7*delta)`), OFFSET `(0,14,12)`, PITCH -50°.
 
@@ -512,9 +538,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   Önizlemede `CharacterMesh.apply_outfit(char_name)` çağrılır; ana ışık nötr, karakter rengi sadece arka kenar ışığı.
   Seçim → `NetworkManager.request_select_character()`.
 - **HUD.gd**: UI tamamen kodla (tscn sadece CanvasLayer), UITheme paleti, tüm katmanlar `_root` (mouse IGNORE) altında.
-  Skor (sol üst, kendi takımı vurgulu), hedef çipi + uyarı bandı (üst orta; `_carrier_peer` card_picked_up/dropped ile
-  güncellenir), kill feed (sağ üst), oyuncu kartı (sol alt: karakter, can, mermi; şarjör ilerlemesi `weapon.reload_time` tween'i),
-  Minimap (sağ alt), düşük can/hasar vinyeti, ölüm ekranı (`_local_player.is_dead` poll + `RESPAWN_TIME=3` geri sayım),
+  Sol üst skor paneli KALDIRILDI (kullanıcı; skor TAB tablosunda), hedef çipi + uyarı bandı (üst orta; `_carrier_peer` card_picked_up/dropped ile
+  güncellenir), kill feed (sağ üst), oyuncu kartı (sol alt, `PLAYER_CARD_SCALE` 0.7 sol alt köşeden ölçekli; güç slotu/XP akışı `SIDE_COL_X`; karakter, can, mermi; şarjör ilerlemesi `weapon.reload_time` tween'i),
+  Minimap (sağ alt, "TAKTİK HARİTA" başlığı yok), düşük can/hasar vinyeti, ölüm ekranı (`_local_player.is_dead` poll + `RESPAWN_TIME=3` geri sayım),
   TAB scoreboard, ESC pause, oyun sonu (`_end_overlay`, ZAFER/YENİLGİ). "Ana Menüye Dön" → `GameManager.return_to_menu()`.
   **Ölüm bandı** `DeathRecap.gd` (= `_death_overlay`, BF1 tarzı alt bant: öldüren amblem/ad/karakter/leş-ölüm/kalan can/"SEN – RAKİP" `_duel`,
   silah (`_method_key`: bomba/tuzak aynı hasar türü → yerel `_trapped_seen_ms` ile ayrılır), halka geri sayım; öldürenin gücü GÖSTERİLMEZ — kullanıcı istemedi) ←

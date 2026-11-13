@@ -25,6 +25,9 @@ const SPECIAL_MAX_DISTANCE := 1000.0
 var last_shot_special := false
 ## Eldeki tüfeğin namlu ağzı (HandRifle "Muzzle", Player atar). Yoksa / anormal konumdaysa $Muzzle kullanılır.
 var visual_muzzle: Node3D = null
+## Karakter modeli görsel olarak büyütülmüşse (Player.CHARACTER_VISUAL_SCALE) namlu da yükselir —
+## mermi yüksekliği ölçeksiz hizaya indirilir (vuruş kutusu 1.8 m; yoksa mermiler kafaların üstünden geçerdi)
+var visual_scale := 1.0
 const VISUAL_MUZZLE_MAX_DIST := 1.4   # gövdeden yatay uzaklık sınırı (animasyon geçişi sapması)
 
 @onready var muzzle: Marker3D = $Muzzle
@@ -89,7 +92,7 @@ func _safe_spawn_position(ignore_walls: bool = false) -> Vector3:
 		var tip := visual_muzzle.global_position
 		var off := Vector2(tip.x - player.global_position.x, tip.z - player.global_position.z)
 		if off.length() < VISUAL_MUZZLE_MAX_DIST:
-			muzzle_pos = tip
+			muzzle_pos = Vector3(tip.x, player.global_position.y + (tip.y - player.global_position.y) / visual_scale, tip.z)
 	if pierce_walls or ignore_walls or player == null:
 		return muzzle_pos
 	var body_pos := Vector3(player.global_position.x, muzzle_pos.y, player.global_position.z)

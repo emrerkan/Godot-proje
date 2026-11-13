@@ -25,6 +25,14 @@ const NO_COLLISION_KEYWORDS: Array[String] = [
 	# Gerçekçi harita üretimi (HARITA_PROMPTLARI.md): yer decal'leri, serpiştirilmiş taş/enkaz kırıntısı, ot öbekleri
 	"Decal", "Scatter", "Grass",
 ]
+## MAPS "convex_props": bu adlardaki nesneler trimesh yerine DOLU convex çarpışma alır. Trimesh tek yönlü kabuktur: kayaya/kasaya
+## basamak çıkma veya sıkışmayla giren kapsül içeride kilitleniyordu (v3 Çöl/Orman: 180 rastgele yürüyüşte 6'şar kilit).
+## Duvar, zemin ve gövde gibi içi boş / kavisli parçalar listede yok, trimesh kalır.
+const CONVEX_KEYWORDS: Array[String] = [
+	"Cliff", "Rock", "Boulder", "Stump", "FallenLog", "LogPile", "Trunk", "RadarMast",
+	"Camp_", "Hangar_", "Crate", "Barrel", "Generator", "Jerrycan", "Barrier", "PowerBox", "Console", "Server_Rack", "FuelTank",
+	"Humvee", "SAM_Launcher", "Engine_Nacelle", "Fuselage_Wing", "LandingGear", "Sandbag", "Prop_CardPedestal",
+]
 const HIDDEN_KEYWORDS: Array[String] = ["CardVisual", "Pad_Team"]
 const CANOPY_KEYWORDS: Array[String] = ["Canopy", "Needles", "Frond"]
 const WATER_KEYWORDS: Array[String] = ["Water", "Basin"]
@@ -54,10 +62,17 @@ var _heights := PackedFloat32Array()
 var _grid_w := 0
 var _grid_h := 0
 var _wall := PackedByteArray()
+## Bot gezinmesi için ek kapalı hücreler: zemini olmayan (void) + kısmen boşluğa taşan kenar hücreleri (_build_void_walls)
+var _nav_block := PackedByteArray()
+var _nav_grid: Dictionary = {}   # get_nav_grid önbelleği (tarama bitince bir kez kurulur)
+## Bot ızgarası: 4-komşusundan bu kadar yüksek hücre geçilmez sayılır — bot zıplamaz; Metro çukuru 0.85 / Liman rıhtımı
+## 0.94 m sadece zıplanarak aşılıyor. Merdiven/rampa 1 m hücrede ~0.5-0.7 m yükselir → açık kalır.
+const NAV_STEP_MAX := 0.75
 var _canopies: Array[GeometryInstance3D] = []
 var _canopy_aabb: Array[AABB] = []
 var _lamp_scale := 1.0
 var _water_floor := false
+var _convex_props := false
 const LOADING := preload("res://scenes/ui/LoadingScreen.gd")
 const LOAD_SHARE := 0.55               # yükleme çubuğunda GLB yüklemesinin payı (kalanı yükseklik taraması)
 const SCAN_ROWS_PER_FRAME := 6
@@ -66,6 +81,7 @@ var _card_list: Array[Vector3] = []
 
 
 func _ready() -> void:
+	preload("res://scenes/world/SceneLighting.gd").apply_node(self)
 	var info: Dictionary = NetworkManager.get_map_info()
 	var path: String = info.get("glb", "")
 	var packed: PackedScene = null
@@ -93,8 +109,11 @@ func _ready() -> void:
 	_lamp_scale = float(info.get("lamp_scale", 1.0))
 	_bounds = _compute_bounds(_model)
 	_water_floor = bool(info.get("water_floor", false))
+	_convex_props = bool(info.get("convex_props", false))
 	_build_collisions(_model)
 	_build_bounds_walls()
+	if bool(info.get("outer_world", false)):
+		_build_outer_world(hash(String(info.get("id", "map"))))
 
 	# Yeni çarpışma şekillerinin fizik uzayına girmesi için birkaç fizik karesi
 	for i in 3:
@@ -164,7 +183,10 @@ func _has_keyword(node_name: String, words: Array[String]) -> bool:
 
 func _build_collisions(n: Node) -> void:
 	if n is MeshInstance3D and (n as MeshInstance3D).mesh and not _has_keyword(String(n.name), NO_COLLISION_KEYWORDS):
-		(n as MeshInstance3D).create_trimesh_collision()   # StaticBody3D çocuğu, layer 1 (oyuncu + mermi)
+		if _convex_props and _has_keyword(String(n.name), CONVEX_KEYWORDS):
+			(n as MeshInstance3D).create_convex_collision(true, true)   # dolu, sadeleştirilmiş gövde — içine girilemez
+		else:
+			(n as MeshInstance3D).create_trimesh_collision()   # StaticBody3D çocuğu, layer 1 (oyuncu + mermi)
 	elif _water_floor and n is MeshInstance3D and (n as MeshInstance3D).mesh and _has_keyword(String(n.name), WATER_KEYWORDS):
 		# Güvenlik zemini (MAPS "water_floor"): kenar duvarının kısmi hücrelerden (gemi gövdesi/rampa yanı) sızan oyuncu
 		# sonsuza düşmesin, suya basar ve zıplayarak rıhtıma çıkar. Sadece oyuncu katmanı — tarama/mermi görmez.
@@ -188,6 +210,104 @@ func _compute_bounds(n: Node) -> AABB:
 		out = b if first else out.merge(b)
 		first = false
 	return out
+
+
+## ── Harita dışı görsel kuşak (MAPS "outer_world") ──
+## Kamera oyuncunun 12 m gerisinde: kenara gelince arazinin bittiği boşluk görünüyor, harita havada duruyordu. Dışarıya arazinin
+## malzemesiyle zemin + haritanın kendi kaya modellerinden kuşak eklenir. Tamamen görsel: çarpışma yok, _bounds'tan SONRA kurulur
+## (oyun alanı/minimap/tarama etkilenmez). Güney sırası alçak: kamera o taraftan bakıyor, yüksek kaya oyuncuyu kapatırdı.
+const OUTER_GROUND_SIZE := 110.0
+const OUTER_GROUND_Y := -0.08
+const OUTER_ROCK_SPACING := 6.5
+const OUTER_ROCK_OFFSET := 2.0
+const OUTER_SOUTH_HEIGHT := 0.26
+
+
+func _build_outer_world(seed_v: int) -> void:
+	var terrain: MeshInstance3D = null
+	var cliff: MeshInstance3D = null
+	for mi: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null:
+			continue
+		if terrain == null and "Terrain" in String(mi.name):
+			terrain = mi
+		if cliff == null and "Cliff" in String(mi.name):
+			cliff = mi
+	var root := Node3D.new()
+	root.name = "OuterWorld"
+	add_child(root)
+	if terrain:
+		_add_outer_ground(root, terrain)
+	if cliff:
+		_add_outer_rocks(root, cliff, seed_v)
+
+
+func _add_outer_ground(root: Node3D, terrain: MeshInstance3D) -> void:
+	var mat := terrain.get_active_material(0)
+	# Doku ölçeği arazinin kendi UV yoğunluğundan (dış zemin aynı tekrar boyunda görünsün)
+	var arrays := terrain.mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+	var uv_per_m := 0.3
+	if verts.size() > 1 and uvs.size() == verts.size():
+		var a := 0
+		var b := 0
+		for i in verts.size():
+			if verts[i].x < verts[a].x:
+				a = i
+			if verts[i].x > verts[b].x:
+				b = i
+		if verts[b].x - verts[a].x > 1.0 and absf(uvs[b].x - uvs[a].x) > 0.01:
+			uv_per_m = absf(uvs[b].x - uvs[a].x) / (verts[b].x - verts[a].x)
+	var x0 := _bounds.position.x
+	var x1 := _bounds.end.x
+	var z0 := _bounds.position.z
+	var z1 := _bounds.end.z
+	var o := OUTER_GROUND_SIZE
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for r: Rect2 in [Rect2(x0 - o, z0 - o, x1 - x0 + o * 2.0, o), Rect2(x0 - o, z1, x1 - x0 + o * 2.0, o),
+			Rect2(x0 - o, z0, o, z1 - z0), Rect2(x1, z0, o, z1 - z0)]:
+		for c: Vector2 in [r.position, r.position + Vector2(r.size.x, 0), r.end,
+				r.position, r.end, r.position + Vector2(0, r.size.y)]:
+			st.set_normal(Vector3.UP)
+			st.set_uv(c * uv_per_m)
+			st.add_vertex(Vector3(c.x, OUTER_GROUND_Y, c.y))
+	st.generate_tangents()
+	var ground := MeshInstance3D.new()
+	ground.name = "OuterGround"
+	ground.mesh = st.commit()
+	ground.material_override = mat
+	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(ground)
+
+
+func _add_outer_rocks(root: Node3D, cliff: MeshInstance3D, seed_v: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_v + 31
+	var box := cliff.get_aabb()
+	var center := Vector3(box.get_center().x, 0.0, box.get_center().z)
+	# Model hangi eksende uzunsa kenara paralel yatsın
+	var long_yaw := PI * 0.5 if box.size.z > box.size.x else 0.0
+	var sides: Array = [
+		[Vector3(_bounds.position.x, 0, _bounds.position.z - OUTER_ROCK_OFFSET), Vector3.RIGHT, _bounds.size.x, 0.0, 1.0],
+		[Vector3(_bounds.position.x, 0, _bounds.end.z + OUTER_ROCK_OFFSET), Vector3.RIGHT, _bounds.size.x, 0.0, OUTER_SOUTH_HEIGHT],
+		[Vector3(_bounds.position.x - OUTER_ROCK_OFFSET, 0, _bounds.position.z), Vector3.BACK, _bounds.size.z, PI * 0.5, 1.0],
+		[Vector3(_bounds.end.x + OUTER_ROCK_OFFSET, 0, _bounds.position.z), Vector3.BACK, _bounds.size.z, PI * 0.5, 1.0],
+	]
+	for s: Array in sides:
+		var count := int(ceil(float(s[2]) / OUTER_ROCK_SPACING)) + 1
+		for i in count:
+			var scale_v := rng.randf_range(0.95, 1.4)
+			var h: float = float(s[4]) * rng.randf_range(0.85, 1.25)
+			var yaw: float = float(s[3]) + long_yaw + rng.randf_range(-0.22, 0.22) + (PI if rng.randf() < 0.5 else 0.0)
+			var basis := Basis(Vector3.UP, yaw).scaled(Vector3(scale_v, h, scale_v))
+			var p: Vector3 = (s[0] as Vector3) + (s[1] as Vector3) * (float(i) * OUTER_ROCK_SPACING)
+			var rock := MeshInstance3D.new()
+			rock.mesh = cliff.mesh
+			rock.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(rock)
+			rock.global_transform = Transform3D(basis, p - basis * center + Vector3(0, OUTER_GROUND_Y, 0))
 
 
 ## Harita kenarına görünmez duvarlar (oyuncu dışarı yürümesin / düşmesin)
@@ -307,6 +427,8 @@ func _build_void_walls(space: PhysicsDirectSpaceState3D) -> void:
 	var y0 := _bounds.position.y - 2.0
 	var top := _bounds.end.y + 2.0
 	var edge: Array[Vector2i] = []
+	_nav_block.resize(_grid_w * _grid_h)
+	_nav_block.fill(0)
 	for z in _grid_h:
 		for x in _grid_w:
 			if is_nan(_heights[z * _grid_w + x]):
@@ -332,6 +454,7 @@ func _build_void_walls(space: PhysicsDirectSpaceState3D) -> void:
 			var q := PhysicsRayQueryParameters3D.create(Vector3(sx, top, sz), Vector3(sx, y0, sz), 1)
 			if not space.intersect_ray(q).is_empty():
 				continue
+			_nav_block[e.y * _grid_w + e.x] = 1   # kısmen suya taşan hücre: bot buradan yürümesin
 			var cs0 := CollisionShape3D.new()
 			var b0 := BoxShape3D.new()
 			b0.size = Vector3(half, 10.0, half)
@@ -347,6 +470,7 @@ func _build_void_walls(space: PhysicsDirectSpaceState3D) -> void:
 			var start := x
 			while x < _grid_w and is_nan(_heights[z * _grid_w + x]):
 				_heights[z * _grid_w + x] = VOID_WALL_HEIGHT
+				_nav_block[z * _grid_w + x] = 1
 				x += 1
 			if body == null:
 				body = StaticBody3D.new()
@@ -361,6 +485,46 @@ func _build_void_walls(space: PhysicsDirectSpaceState3D) -> void:
 			var c0 := _cell_center(start, z)
 			cs.position = Vector3(c0.x + (x - start - 1) * GRID_STEP * 0.5, y0 + 5.0, c0.z)
 			body.add_child(cs)
+
+
+## Bot gezinme ızgarası (BotNav sözleşmesi): {wall, width, height, origin, cell}; idx = z*width + x, 1 = geçilmez.
+## Yükseklik taraması bitmeden {} döner. Geçilmez = minimap duvarı + void/kısmi void hücre + zıplama isteyen basamağın
+## üst hücresi (NAV_STEP_MAX). Hücre (0,0) min köşesi = _bounds min X/Z (_cell_center ile aynı hiza).
+func get_nav_grid() -> Dictionary:
+	if not is_map_ready or _grid_w <= 0 or _grid_h <= 0 or _wall.size() != _grid_w * _grid_h:
+		return {}
+	if not _nav_grid.is_empty():
+		return _nav_grid
+	var n := _grid_w * _grid_h
+	var wall := PackedByteArray()
+	wall.resize(n)
+	var has_block := _nav_block.size() == n
+	for z in _grid_h:
+		for x in _grid_w:
+			var i := z * _grid_w + x
+			var blocked := _wall[i] == 1 or (has_block and _nav_block[i] == 1)
+			if not blocked:
+				var hh := _heights[i]
+				for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var nx := x + d.x
+					var nz := z + d.y
+					if nx < 0 or nz < 0 or nx >= _grid_w or nz >= _grid_h:
+						continue
+					var j := nz * _grid_w + nx
+					if has_block and _nav_block[j] == 1:
+						continue   # void komşunun yapay yüksekliği basamak sayılmaz
+					if hh - _heights[j] > NAV_STEP_MAX:
+						blocked = true
+						break
+			wall[i] = 1 if blocked else 0
+	_nav_grid = {
+		"wall": wall,
+		"width": _grid_w,
+		"height": _grid_h,
+		"origin": Vector2(_bounds.position.x, _bounds.position.z),
+		"cell": GRID_STEP,
+	}
+	return _nav_grid
 
 
 func _cell_center(x: int, z: int) -> Vector3:
@@ -520,6 +684,8 @@ var _faded: Dictionary = {}       # şu an saydam/geri dönen nesneler
 func _physics_process(_delta: float) -> void:
 	if not is_map_ready:
 		return
+	if NetworkManager.is_host():
+		_rescue_fallen_bots()
 	var me: Variant = GameManager.active_players.get(NetworkManager.get_local_id())
 	var cam := get_viewport().get_camera_3d()
 	_occluders.clear()
@@ -554,6 +720,21 @@ func _physics_process(_delta: float) -> void:
 		for i in _canopies.size():
 			if _canopy_aabb[i].intersects_segment(cpos, target):
 				_occluders[_canopies[i]] = true
+
+
+## Düşme kurtarmasının bot karşılığı: botları SADECE host sürer (konum host otoriteli, _broadcast_state ile yayılır) →
+## haritanın altına düşen canlı bot, yerel oyuncudaki gibi kendi takım spawn'ına ışınlanır. Botsuz maçta döngü boş geçer.
+func _rescue_fallen_bots() -> void:
+	var limit := _bounds.position.y - FALL_RESCUE_DEPTH
+	for p in GameManager.active_players.values():
+		if not is_instance_valid(p) or p.get("is_bot") != true or p.get("is_dead") == true:
+			continue
+		var body := p as CharacterBody3D
+		if body == null or body.global_position.y >= limit:
+			continue
+		body.velocity = Vector3.ZERO
+		body.global_position = TeamManager.get_spawn_position(int(body.get("team_id")))
+		body.reset_physics_interpolation()
 
 
 func _process(delta: float) -> void:

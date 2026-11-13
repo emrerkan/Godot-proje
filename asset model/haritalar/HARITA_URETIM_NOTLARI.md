@@ -133,7 +133,10 @@ gözetildi. Kart kapının dibinde doğarsa maç kısa sürebilir — gerekirse 
    - Hastane: `glb` yolu + `max_team: 3`
    - Metro: `glb` yolu + `max_team: 4`
    - Liman: `water_floor: true` olmalı; `water_emission` satırda duruyor (su artık emission'sız üretildiği için gereksiz olabilir).
-3. Editörde içe aktarmayı bekle (`.import` oluşur).
+3. **Dokuları VRAM sıkıştırmasıyla import et.** Varsayılanla (`compress/mode=0`) v3 haritalar 1.8 GB VRAM kullandı, sıkıştırınca ~0.8 GB.
+   İlk import'tan ÖNCE her dokunun yanına `.import` yaz: `compress/mode=2`, `detect_3d/compress_to=0`; renk dokusu `compress/high_quality=true` + `compress/normal_map=2` (BC7),
+   normal map `compress/normal_map=1` (BC5), ORM `compress/normal_map=2` (BC1). Rol, `.gltf`'teki malzeme yuvasından okunur.
+   Dokulu haritayı GLB olarak ekleme: Godot dokuları klasöre çıkarır (dosyalar ikiye katlanır) ve GLB 100 MB'ı aşıp GitHub'a gitmez.
 4. Kontrol listesi (oyunda):
    - Spawn'lar zemine oturuyor mu, 4 takım doğru köşede mi (test tuşu 7 kart + kapıyı gösterir).
    - Mini harita duvarları doğru mu, harita basık mı.

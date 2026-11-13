@@ -741,18 +741,84 @@ func _build_player_slot(peer_id: int, data: Dictionary, team_color: Color, is_me
 		host.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(host)
 
-	row.add_child(_ready_pill(ready_flag))
+	var bot: bool = NetworkManager.is_bot(peer_id)
+	if bot:
+		# Bot etiketi (soluk, kehribar değil) — botlar hep hazır
+		var tag := UITheme.label("BOT", 15, UITheme.TEXT_DIM, UITheme.font_caps)
+		tag.theme_type_variation = "DimLabel"
+		tag.add_theme_font_size_override("font_size", 15)
+		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(tag)
+
+	row.add_child(_ready_pill(ready_flag or bot))
+
+	if bot and _can_edit_bots():
+		var remove := _small_ghost_button("✕")
+		remove.tooltip_text = "Botu çıkar"
+		remove.pressed.connect(_on_remove_bot.bind(peer_id))
+		row.add_child(remove)
 	return slot
 
 
-func _build_empty_slot() -> Control:
+## team_id >= 0 → boş slotta "+ BOT" düğmesi (host); -1 → düz boş slot
+func _build_empty_slot(team_id: int = -1) -> Control:
 	var slot := PanelContainer.new()
 	slot.custom_minimum_size = Vector2(0, 50)
 	slot.add_theme_stylebox_override("panel", UITheme.style(Color.TRANSPARENT, 13, Color(1, 1, 1, 0.06), 1, 20, 5))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 13)
+	slot.add_child(row)
 	var lbl := UITheme.label("+   Boş slot", 20, Color(UITheme.TEXT_DIM, 0.55))
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	slot.add_child(lbl)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(lbl)
+	if team_id >= 0:
+		var add := _small_ghost_button("+ BOT")
+		add.tooltip_text = "Bu takıma bot ekle"
+		add.pressed.connect(_on_add_bot.bind(team_id))
+		row.add_child(add)
 	return slot
+
+
+## Slot içine sığan küçük GhostButton (dikey boşluk dar, 50 px slot yüksekliği korunur)
+func _small_ghost_button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.theme_type_variation = "GhostButton"
+	b.focus_mode = Control.FOCUS_NONE
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.add_theme_font_size_override("font_size", 17)
+	b.add_theme_font_override("font", UITheme.font_caps)
+	b.add_theme_stylebox_override("normal", UITheme.style(Color.TRANSPARENT, UITheme.RADIUS, Color(1, 1, 1, 0.14), 1, 13, 3))
+	b.add_theme_stylebox_override("hover", UITheme.style(Color(1, 1, 1, 0.08), UITheme.RADIUS, UITheme.BORDER, 1, 13, 3))
+	b.add_theme_stylebox_override("pressed", UITheme.style(Color(1, 1, 1, 0.12), UITheme.RADIUS, UITheme.BORDER, 1, 13, 3))
+	return b
+
+
+## Bot ekle/çıkar: sadece host ve maç dışında
+func _can_edit_bots() -> bool:
+	return NetworkManager.is_host() and not NetworkManager.is_game_running()
+
+
+func _on_add_bot(team_id: int) -> void:
+	if not _can_edit_bots():
+		return
+	NetworkManager.add_bot(team_id)   # dolu ise 0 döner, liste yayını _refresh_player_list'i tetikler
+
+
+func _on_remove_bot(peer_id: int) -> void:
+	if not _can_edit_bots():
+		return
+	NetworkManager.remove_bot(peer_id)
+
+
+## _ignore_mouse_recursive sonrası slotlardaki düğmeleri yeniden tıklanabilir yapar
+func _enable_slot_buttons(node: Node) -> void:
+	if node is BaseButton:
+		(node as Control).mouse_filter = Control.MOUSE_FILTER_STOP
+	for child in node.get_children():
+		_enable_slot_buttons(child)
 
 
 func _avatar(player_name: String, color: Color) -> Control:
@@ -897,10 +963,13 @@ func _refresh_player_list() -> void:
 		var color := TeamManager.get_color(i)
 		for pid: int in members:
 			slots.add_child(_build_player_slot(pid, NetworkManager.players[pid], color, pid == local_id))
+		# Bot ekleme düğmesi: sadece host, maç dışında, oda dolu değilken
+		var can_add_bot := _can_edit_bots() and NetworkManager.players.size() < NetworkManager.get_max_players()
 		for _k in range(maxi(NetworkManager.get_team_size() - members.size(), 0)):
-			slots.add_child(_build_empty_slot())
+			slots.add_child(_build_empty_slot(i if can_add_bot else -1))
 		(t["count_lbl"] as Label).text = "%d/%d" % [members.size(), NetworkManager.get_team_size()]
 		_ignore_mouse_recursive(slots)
+		_enable_slot_buttons(slots)   # bot ekle/çıkar düğmeleri tıklanabilir kalsın
 
 	# Takım seçmeyenler
 	for child in _unassigned_row.get_children():
