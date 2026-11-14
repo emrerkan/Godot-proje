@@ -1,6 +1,6 @@
 ## DeathRecap.gd — Ölünce ekranın altında çıkan BF1 tarzı bilgi bandı (HUD kurar, `_death_overlay` olarak kullanır).
-## Bölümler: SENİ ÖLDÜREN (takım amblemi, ad, karakter, leş/ölüm, kalan canı, ikinizin arasındaki skor)
-##   | SİLAH (öldürme yöntemine göre ad + ikon) | YENİDEN DOĞUŞ (halka geri sayım).
+## Bölümler: ÖLDÜREN (takım amblemi, ad, ikinizin arasındaki skor — başlık/leş/ölüm/can YOK, kullanıcı kaldırttı)
+##   | SİLAH (ad + beyaz silah silueti WeaponRender / beyaz ikon) | YENİDEN DOĞUŞ (halka geri sayım).
 ## Sadece görsel — veriyi HUD `_on_kill_happened` içinde `present(info)` ile verir, `start_countdown` ölüm ekranı açılınca.
 ## Sınıf adı YOK — HUD preload eder.
 
@@ -24,16 +24,10 @@ const BAND_HEIGHT := 176.0
 const BAND_BOTTOM := 44.0
 const RING_SIZE := 112.0
 
-var _title: Label
 var _emblem_panel: PanelContainer
 var _emblem_style: StyleBoxFlat
 var _emblem_lbl: Label
-var _caption: Label
 var _name_lbl: Label
-var _stats_row: HBoxContainer
-var _kills_val: Label
-var _deaths_val: Label
-var _hp_val: Label
 var _duel_row: HBoxContainer
 var _duel_val: Label
 var _weapon_name: Label
@@ -69,19 +63,7 @@ func _init() -> void:
 	UITheme.add_brackets(band)
 	add_child(band)
 
-	# Bandın üstünde başlık
-	_title = UITheme.label("ETKİSİZ HALE GETİRİLDİN", 26, UITheme.DANGER, UITheme.font_caps)
-	_title.anchor_left = 0.5
-	_title.anchor_right = 0.5
-	_title.anchor_top = 1.0
-	_title.anchor_bottom = 1.0
-	_title.offset_left = -BAND_WIDTH * 0.5
-	_title.offset_right = BAND_WIDTH * 0.5
-	_title.offset_top = -BAND_BOTTOM - BAND_HEIGHT - 52
-	_title.offset_bottom = -BAND_BOTTOM - BAND_HEIGHT - 14
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(_title)
-
+	# Başlık ("ETKİSİZ HALE GETİRİLDİN") yok — kullanıcı kaldırttı
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 0)
 	band.add_child(row)
@@ -111,23 +93,14 @@ func present(info: Dictionary) -> void:
 	_emblem_lbl.text = UITheme.TEAM_GLYPHS[team] if team >= 0 and team < UITheme.TEAM_GLYPHS.size() else "○"
 	_emblem_lbl.add_theme_color_override("font_color", tcol)
 
+	# Kullanıcı: "SENİ ÖLDÜREN", CAN, LEŞ, ÖLÜM gösterilmez → amblem + ad + ikiniz arasındaki skor
 	if self_kill:
-		_caption.text = tr("KENDİ TUZAĞIN")
 		_name_lbl.text = tr("Kendi tuzağına yakalandın")
 		_name_lbl.add_theme_color_override("font_color", UITheme.TEXT)
-		_stats_row.visible = false
 		_duel_row.visible = false
 	else:
-		var ch: String = info.get("killer_char", "")
-		_caption.text = tr("SENİ ÖLDÜREN") + ("  ·  " + tr(ch).to_upper() if ch != "" else "")
 		_name_lbl.text = info.get("killer_name", "???")
 		_name_lbl.add_theme_color_override("font_color", tcol)
-		_stats_row.visible = true
-		_kills_val.text = str(info.get("kills", 0))
-		_deaths_val.text = str(info.get("deaths", 0))
-		var hp: int = info.get("killer_hp", -1)
-		_hp_val.get_parent().get_parent().visible = hp >= 0
-		_hp_val.text = "+%d" % hp
 		_duel_row.visible = true
 		_duel_val.text = "%d – %d" % [info.get("duel_me", 0), info.get("duel_them", 0)]
 
@@ -142,7 +115,7 @@ func present(info: Dictionary) -> void:
 			icon = WEAPON_RENDER.make_rect("knife", WEAPON_PIC_SIZE)
 		"special":
 			_weapon_name.text = tr("ÖZEL SİLAH")
-			icon = UITheme.label("⊕", 64, info.get("special_color", UITheme.DANGER), UITheme.font_bold)
+			icon = UITheme.label("⊕", 64, UITheme.TEXT, UITheme.font_bold)   # görseller beyaz (kullanıcı)
 		"bomb":
 			_weapon_name.text = tr("BOMBA")
 			icon = ICONS.make("bomb", 72.0, UITheme.TEXT)
@@ -200,31 +173,11 @@ func _build_killer_section() -> Control:
 	v.add_theme_constant_override("separation", 4)
 	v.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(v)
-	_caption = UITheme.label("SENİ ÖLDÜREN", 15, UITheme.TEXT_DIM, UITheme.font_caps)
-	_caption.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # present() tr() ile yazar
-	v.add_child(_caption)
 	_name_lbl = UITheme.label("", 34, UITheme.TEXT, UITheme.font_bold)
 	_name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı
 	_name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_name_lbl.custom_minimum_size.x = 360
 	v.add_child(_name_lbl)
-
-	_stats_row = HBoxContainer.new()
-	_stats_row.add_theme_constant_override("separation", 22)
-	v.add_child(_stats_row)
-	_kills_val = _stat_pair(_stats_row, "LEŞ")
-	_deaths_val = _stat_pair(_stats_row, "ÖLÜM")
-	# Öldürenin kalan canı (BF1 "+100" çipi)
-	var hp_chip := PanelContainer.new()
-	hp_chip.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.1), 3, UITheme.BORDER, 1, 12, 2))
-	var hp_h := HBoxContainer.new()
-	hp_h.add_theme_constant_override("separation", 8)
-	hp_chip.add_child(hp_h)
-	hp_h.add_child(UITheme.label("CAN", 14, UITheme.TEXT_DIM, UITheme.font_caps))
-	_hp_val = UITheme.label("+100", 20, UITheme.TEXT, UITheme.font_mono)
-	_hp_val.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	hp_h.add_child(_hp_val)
-	_stats_row.add_child(hp_chip)
 
 	_duel_row = HBoxContainer.new()
 	_duel_row.add_theme_constant_override("separation", 12)
@@ -285,19 +238,6 @@ func _draw_ring() -> void:
 	var ratio := clampf(_time / _total, 0.0, 1.0)
 	if ratio > 0.0:
 		_ring.draw_arc(c, r, -PI * 0.5, -PI * 0.5 + TAU * ratio, 64, UITheme.TEXT, 4.0, true)
-
-
-func _stat_pair(parent: Control, caption: String) -> Label:
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 8)
-	parent.add_child(h)
-	var c := UITheme.label(caption, 14, UITheme.TEXT_DIM, UITheme.font_caps)
-	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	h.add_child(c)
-	var val := UITheme.label("0", 22, UITheme.TEXT, UITheme.font_mono)
-	val.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	h.add_child(val)
-	return val
 
 
 func _margin(h: int, v: int) -> MarginContainer:

@@ -73,12 +73,8 @@ func _ready() -> void:
 	_btn(list, "Öldün · kendi tuzağın", func() -> void: hud.debug_death({"self_kill": true, "killer_team": 0, "method_key": "trap"}))
 
 	_section(list, "ÖLDÜRME BİLDİRİMİ (orta alt)")
-	for ch: String in CHARS:
-		_btn(list, tr("Öldürdün · %s silahı") % tr(ch), func() -> void: hud.debug_kill("DÜŞMAN ÖLDÜRÜLDÜ", 100, ch))
-	_btn(list, "Öldürdün · kart taşıyıcı", func() -> void: hud.debug_kill("KART TAŞIYICI ÖLDÜRÜLDÜ", 150, "Tank"))
-	_btn(list, "Öldürdün · bıçak", func() -> void: hud.debug_kill("BIÇAKLA ÖLDÜRME", 140, "knife"))
-	_btn(list, "Öldürdün · özel silah", func() -> void: hud.debug_kill("ÖZEL SİLAHLA ÖLDÜRME", 100, ""))
-	_btn(list, "Öldürdün · bomba / tuzak", func() -> void: hud.debug_kill("DÜŞMAN ÖLDÜRÜLDÜ", 100, ""))
+	_btn(list, "Öldürdün", func() -> void: hud.debug_kill("BOT 5"))
+	_btn(list, "Öldürdün · uzun ad", func() -> void: hud.debug_kill("KeskinNisanciAhmet_42"))
 
 	_section(list, "UYARI BANDI · MAÇ / KART")
 	_banner(list, "MAÇ BAŞLADI", UITheme.SUCCESS)

@@ -1,6 +1,7 @@
-## KillNotice.gd — Öldürünce ekranın orta altında beliren BF1 tarzı bildirim (HUD kurar).
-##   [kafatası]  ARKADAN BIÇAKLAMA   +180
-##               oyuncu adı (takım renginde)
+## KillNotice.gd — Öldürünce ekranın orta altında beliren bildirim (HUD kurar).
+##        [kafatası]
+##       oyuncu adı          (beyaz, kalın değil)
+## Kullanıcı: başlık ("DÜŞMAN ÖLDÜRÜLDÜ"), XP ("+100") ve silah ikonu YOK — sadece ölüm ikonu + kurban adı.
 ## Yeni öldürme gelirse eskisi anında yenisiyle değişir (birikmez). Sadece görsel.
 ## Sınıf adı YOK — HUD preload eder.
 
@@ -11,16 +12,11 @@ const FADE_TIME := 0.5
 const POP_SCALE := 1.25
 const BOTTOM_OFFSET := 300.0
 const KILL_RED := Color(0.92, 0.2, 0.18)
+const SKULL_SIZE := 56.0
 
 var _panel: PanelContainer
-var _title: Label
-var _xp: Label
 var _victim: Label
 var _skull: Control
-var _weapon_slot: CenterContainer
-
-const WEAPON_RENDER := preload("res://scenes/ui/WeaponRender.gd")
-const WEAPON_PIC_SIZE := Vector2(180, 60)
 var _tween: Tween = null
 
 
@@ -41,52 +37,26 @@ func _init() -> void:
 	_panel.modulate.a = 0.0
 	add_child(_panel)
 
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 16)
-	_panel.add_child(h)
-	_skull = Control.new()
-	_skull.custom_minimum_size = Vector2(44, 44)
-	_skull.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_skull.draw.connect(_draw_skull)
-	h.add_child(_skull)
-
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 0)
-	h.add_child(v)
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 22)
-	v.add_child(top)
-	_title = UITheme.label("", 28, KILL_RED, UITheme.font_caps)
-	_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # show_kill tr() ile yazar
-	top.add_child(_title)
-	_xp = UITheme.label("", 28, UITheme.TEXT, UITheme.font_mono)
-	_xp.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	top.add_child(_xp)
-	_victim = UITheme.label("", 19, UITheme.TEXT_DIM, UITheme.font_bold)
+	v.add_theme_constant_override("separation", 6)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	_panel.add_child(v)
+	_skull = Control.new()
+	_skull.custom_minimum_size = Vector2(SKULL_SIZE, SKULL_SIZE)
+	_skull.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_skull.draw.connect(_draw_skull)
+	v.add_child(_skull)
+	_victim = UITheme.label("", 22, UITheme.TEXT, UITheme.font_regular)
+	_victim.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_victim.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı
 	v.add_child(_victim)
 
-	# Öldürülen silahın resmi (metnin sağında; bomba/tuzak/özel silahta boş)
-	_weapon_slot = CenterContainer.new()
-	_weapon_slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	h.add_child(_weapon_slot)
-
-	for n: Control in [_panel, h, _skull, v, top, _title, _xp, _victim, _weapon_slot]:
+	for n: Control in [_panel, v, _skull, _victim]:
 		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-## title: çevrilecek Türkçe anahtar (ör. "ARKADAN BIÇAKLAMA"), xp: toplam kazanılan XP,
-## weapon_key: WeaponRender anahtarı (karakter adı / "knife"), "" = resim yok
-func show_kill(title: String, xp: int, victim_name: String, victim_color: Color, weapon_key := "") -> void:
-	for c in _weapon_slot.get_children():
-		c.queue_free()
-	_weapon_slot.visible = weapon_key != ""
-	if weapon_key != "":
-		_weapon_slot.add_child(WEAPON_RENDER.make_rect(weapon_key, WEAPON_PIC_SIZE))
-	_title.text = tr(title)
-	_xp.text = "+%d" % xp
+func show_kill(victim_name: String) -> void:
 	_victim.text = victim_name
-	_victim.add_theme_color_override("font_color", victim_color)
 	if _tween and _tween.is_valid():
 		_tween.kill()
 	# Boyut değişti → ortalamak için pivot bir kare sonra (container yerleşimi bitince)
@@ -104,7 +74,7 @@ func show_kill(title: String, xp: int, victim_name: String, victim_color: Color,
 	_tween.chain().tween_property(_panel, "modulate:a", 0.0, FADE_TIME)
 
 
-## Kenarları saydam koyu şerit (BF1'deki gibi metnin arkasında hafif karartı)
+## Kenarları saydam koyu şerit (metnin arkasında hafif karartı)
 func _fade_style() -> StyleBoxTexture:
 	var g := Gradient.new()
 	g.offsets = PackedFloat32Array([0.0, 0.18, 0.82, 1.0])

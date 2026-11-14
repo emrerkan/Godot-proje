@@ -1,4 +1,4 @@
-## WeaponRender.gd — Silah modellerinin (HandRifle.WEAPON_MODELS + bıçak) yandan "resmini" oyun içinde bir kez çizer.
+## WeaponRender.gd — Silah modellerinin (HandRifle.WEAPON_MODELS + bıçak) yandan BEYAZ SİLUETİNİ (CS:GO öldürme ikonu gibi) oyun içinde bir kez çizer.
 ## Ölüm bandı (DeathRecap) ve öldürme bildirimi (KillNotice) kullanır. Statik, sınıf adı YOK — kullananlar preload eder.
 ##   prewarm(tree)            → tüm silahları arka planda sırayla çizer (HUD kurulunca; ölüm anında takılma olmasın)
 ##   make_rect(key, size)     → TextureRect döner; resim hazır değilse hazır olunca kendini doldurur
@@ -84,26 +84,15 @@ static func _render(tree: SceneTree, key: String) -> Texture2D:
 	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	tree.root.add_child(vp)
 
-	var env := Environment.new()
-	env.background_mode = Environment.BG_CLEAR_COLOR
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.75, 0.78, 0.85)
-	env.ambient_light_energy = 0.55
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	var we := WorldEnvironment.new()
-	we.environment = env
-	vp.add_child(we)
-
 	vp.add_child(model)   # tüfek/bıçak uzayı: -Z namlu/ağız, +Y üst
 
-	# Işıklar: önden-üstten anahtar, karşıdan dolgu, arkadan kenar (koyu metal koyu bantta kaybolmasın)
-	for l: Array in [[Vector3(-35, 70, 0), 1.6, Color(1, 0.97, 0.92)], [Vector3(-10, -110, 0), 0.5, Color(0.8, 0.85, 1)],
-			[Vector3(25, 180, 0), 0.9, Color(1, 1, 1)]]:
-		var dl := DirectionalLight3D.new()
-		dl.rotation_degrees = l[0]
-		dl.light_energy = l[1]
-		dl.light_color = l[2]
-		vp.add_child(dl)
+	# CS:GO tarzı düz BEYAZ siluet (kullanıcı isteği): ışıksız beyaz malzeme, ışık/ortam gerekmez
+	var white := StandardMaterial3D.new()
+	white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	white.albedo_color = Color.WHITE
+	white.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		mi.material_override = white
 
 	# Çerçeveleme: köşe noktalarından sıkı sınır (modeller kendi içinde eğik → dönmüş mesh AABB'si şişip
 	# keskin nişancı/bıçağı küçük gösteriyordu). Büyük mesh'te örnekleyerek.

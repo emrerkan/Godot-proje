@@ -603,8 +603,10 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   `_present_death`. **Öldürme bildirimi** `KillNotice.gd` (orta alt, kafatası + yöntem başlığı + toplam XP + kurban adı) ← `_present_kill`;
   bu öldürme XP nedenleri (`KILL_XP_REASONS`) sol XP akışında tekrar yazılmaz.
   **Silah resimleri** `scenes/ui/WeaponRender.gd` (statik, preload): `HandRifle.build_weapon_mesh/build_knife_model` modelini saydam SubViewport'ta ortografik yandan
-  (namlu sağa, köşe noktalarından sıkı çerçeve) bir kez çizip ImageTexture önbelleğe alır; HUD `_setup_death_overlay` → `prewarm`, `make_rect(key, size)` (key = karakter / "knife").
-  DeathRecap: mermi → öldürenin silahı, bıçak → bıçak (bomba/tuzak/özel çizgi ikon kalır); KillNotice `show_kill(..., weapon_key)` metnin sağında (mermide kendi silahın). Headless'ta çizim yok.
+  (namlu sağa, köşe noktalarından sıkı çerçeve) **düz BEYAZ siluet** (CS:GO tarzı, ışıksız beyaz malzeme — kullanıcı) olarak bir kez çizip önbelleğe alır; HUD `_setup_death_overlay` → `prewarm`, `make_rect(key, size)` (key = karakter / "knife").
+  DeathRecap: mermi → öldürenin silahı, bıçak → bıçak (bomba/tuzak/özel beyaz çizgi ikon). **Kullanıcı kuralları:** ölüm bandında "ETKİSİZ HALE GETİRİLDİN" başlığı,
+  "SENİ ÖLDÜREN", CAN, LEŞ, ÖLÜM YOK (amblem + ad + SEN – RAKİP + silah + geri sayım kalır). KillNotice = SADECE kafatası + altında kurban adı (beyaz, kalın değil) —
+  başlık/"+XP"/silah ikonu YOK (`show_kill(victim_name)`); öldürme XP'si bu yüzden hiçbir yerde yazmıyor (XP akışı `KILL_XP_REASONS`'ı atlıyor). Headless'ta çizim yok.
   Oyun mantığına dokunmaz — sadece sinyal dinler.
 
 ---

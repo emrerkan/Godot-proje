@@ -1015,27 +1015,9 @@ func _present_death(killer_peer_id: int, method: int, kd: Dictionary) -> void:
 	_death_overlay.present(info)
 
 
-## Öldürme bildirimi (yerel oyuncu öldürdü) — XP GameManager._announce_kill_rpc ile aynı hesap
-func _present_kill(victim_peer_id: int, method: int, vname: String, vcol: Color) -> void:
-	var carrier: bool = GameManager.get_cards_held(victim_peer_id) > 0  # kart düşürme sinyali bundan SONRA gelir
-	var xp: int = GameManager.XP_KILL + (GameManager.XP_CARRIER_KILL_BONUS if carrier else 0)
-	var title := "KART TAŞIYICI ÖLDÜRÜLDÜ" if carrier else "DÜŞMAN ÖLDÜRÜLDÜ"
-	var weapon_key := ""   # silah resmi (WeaponRender): mermide kendi karakterinin silahı, bıçakta bıçak
-	match _method_key(method, false):
-		"backstab":
-			xp += GameManager.XP_BACKSTAB_BONUS
-			title = "BIÇAKLA ÖLDÜRME"   # kullanıcı: "arkadan" yazmasın, sadece bıçak (XP bonusu aynı)
-			weapon_key = "knife"
-		"knife":
-			xp += GameManager.XP_KNIFE_BONUS
-			title = "BIÇAKLA ÖLDÜRME"
-			weapon_key = "knife"
-		"special":
-			title = "ÖZEL SİLAHLA ÖLDÜRME"
-		"bullet":
-			weapon_key = str(NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("character", ""))
-		# bomba/tuzak aynı hasar türü ve kurbanın tuzak durumu ölümde sıfırlanıyor → genel başlık kalır
-	_kill_notice.show_kill(title, xp, vname, vcol, weapon_key)
+## Öldürme bildirimi (yerel oyuncu öldürdü) — kullanıcı: sadece kafatası + kurban adı (başlık/XP/silah yok)
+func _present_kill(_victim_peer_id: int, _method: int, vname: String, _vcol: Color) -> void:
+	_kill_notice.show_kill(vname)
 
 
 func _setup_scoreboard() -> void:
@@ -1673,8 +1655,7 @@ func debug_objective(text: String, col: Color, cards_mode := false, taken := 0, 
 ## U test paneli: ölüm bandını oyuncu ölmeden gösterir (geri sayım kadar açık kalır)
 var _debug_death_t := 0.0
 func debug_death(info: Dictionary) -> void:
-	var base := {"killer_name": "BOT 3", "killer_team": 1, "kills": 4, "deaths": 2, "killer_hp": 62,
-		"duel_me": 1, "duel_them": 2, "special_color": _power_info(T_SPECIAL).get("color", COL_SPECIAL)}
+	var base := {"killer_name": "BOT 3", "killer_team": 1, "duel_me": 1, "duel_them": 2}
 	base.merge(info, true)
 	_death_overlay.present(base)
 	_death_overlay.visible = true
@@ -1683,8 +1664,8 @@ func debug_death(info: Dictionary) -> void:
 
 
 ## U test paneli: öldürme bildirimi
-func debug_kill(title: String, xp: int, weapon_key: String) -> void:
-	_kill_notice.show_kill(title, xp, "BOT 5", TeamManager.get_color(2), weapon_key)
+func debug_kill(victim_name: String) -> void:
+	_kill_notice.show_kill(victim_name)
 
 
 func debug_unlock(text: String, col: Color) -> void:
