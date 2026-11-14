@@ -3,7 +3,8 @@ extends SceneTree
 ## Çalıştır: Godot.exe --headless --path . --script res://tools/test_bots.gd [-- A|B|AB]
 ##   A  = botlu maç: host takım 0 + 1 bot, takım 1'e 2 bot → maç başlar, ~25 sn izlenir (botlar doğdu mu, hareket ediyor mu)
 ##   B  = botsuz regresyon: lobide bot ekle/kaldır/temizlik + botsuz maç başlar, hiç bot düğümü/nav yok
-##   AB = (varsayılan) önce A, menüye dönüş, sonra B
+##   K  = SADECE BIÇAK modu: iki bot (takım 1 ve 2) yan yana doğurulur → en az bir bıçak vuruşu (Player._stab_timer > 0) görülmeli
+##   AB = (varsayılan) önce A, menüye dönüş, sonra B (K ayrıca: -- K veya -- ABK)
 ## Sonuç satırları: "BOT_TEST A: PASS/FAIL ..." / "BOT_TEST B: ...". Motor hataları (SCRIPT ERROR dahil) Logger ile sayılır.
 ## Autoload adları bu betiğin parse anında yok → get_root().get_node(...) ile alınır.
 
@@ -11,6 +12,7 @@ const MATCH_WAIT_MS := 90000      # maç başlaması (yükleme + 10 sn geri say�
 const A_RUN_MS := 25000           # A: maç başladıktan sonra izleme süresi
 const B_RUN_MS := 6000            # B: botsuz maç izleme süresi
 const MOVE_MIN := 3.0             # A: en az bir bot bu kadar metre yer değiştirmeli
+const K_RUN_MS := 25000           # K: bıçak modu izleme süresi
 
 
 ## Motor hata günlüğü (SCRIPT ERROR / push_error / C++ hata). Uyarılar sayılmaz.
@@ -56,6 +58,8 @@ var fails: Array[String] = []
 var notes: Array[String] = []
 var start_pos: Dictionary = {}    # bot_id → Vector3 (maç başı)
 var max_move: Dictionary = {}     # bot_id → float
+var stab_seen := false            # K: bir bot bıçak animasyon zamanlayıcısı > 0 oldu
+var knife_flags_ok := true        # K: botlar is_knife_mode() görüyor mu
 var results: Array[String] = []
 
 
@@ -64,7 +68,7 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var which := String(args[0]).to_upper() if args.size() > 0 else "AB"
 	for c in which:
-		if c == "A" or c == "B":
+		if c == "A" or c == "B" or c == "K":
 			queue.append(c)
 	_setup.call_deferred()
 
@@ -100,6 +104,8 @@ func _next_scenario() -> void:
 	notes.clear()
 	start_pos.clear()
 	max_move.clear()
+	stab_seen = false
+	knife_flags_ok = true
 	err_start = log.count()
 	_set_phase("lobby")
 
@@ -130,7 +136,13 @@ func _process(_delta: float) -> bool:
 				_set_phase("run")
 		"run":
 			_track()
-			var run_ms := A_RUN_MS if scenario == "A" else B_RUN_MS
+			var run_ms := B_RUN_MS
+			if scenario == "A":
+				run_ms = A_RUN_MS
+			elif scenario == "K":
+				run_ms = K_RUN_MS
+				if stab_seen and elapsed > 3000:
+					run_ms = 0   # K: bıçak vuruşu görüldü → erken bitir
 			if elapsed > run_ms:
 				_evaluate()
 	return false
@@ -141,7 +153,14 @@ func _do_lobby() -> void:
 	_check(NM.is_host(), "create_server sonrası host değil")
 	NM.request_change_team(0)
 	_check(int(NM.players[1].get("team_id", -1)) == 0, "host takım 0'a geçemedi")
-	if scenario == "A":
+	NM.set_weapon_mode("knife" if scenario == "K" else "normal")
+	if scenario == "K":
+		# Host (takım 0) sabit durur; iki bot farklı takımlarda
+		var k1: int = NM.add_bot(1)
+		var k2: int = NM.add_bot(2)
+		_check(k1 > 0 and k2 > 0, "K: add_bot 0 döndü (%d,%d)" % [k1, k2])
+		_check(NM.get_weapon_mode() == "knife", "K: weapon_mode knife olmadı: %s" % NM.get_weapon_mode())
+	elif scenario == "A":
 		var b1: int = NM.add_bot(0)
 		var b2: int = NM.add_bot(1)
 		var b3: int = NM.add_bot(1)
@@ -176,7 +195,7 @@ func _do_lobby() -> void:
 func _on_live() -> void:
 	var ap: Dictionary = GM.active_players
 	_check(ap.has(1) and is_instance_valid(ap[1]), "host oyuncusu active_players'ta yok")
-	if scenario == "A":
+	if scenario == "A" or scenario == "K":
 		var team_chars: Dictionary = {}
 		for pid: int in NM.players:
 			var t := int(NM.players[pid].get("team_id", -1))
@@ -205,6 +224,19 @@ func _on_live() -> void:
 				_check(has_brain, "bot %d BotBrain çocuğu yok" % bid)
 		notes.append("nav=%s" % ("var" if GM.get("_bot_nav") != null else "yok"))
 		notes.append("chars=%s" % [team_chars])
+		if scenario == "K":
+			# İki botu 2.5 m arayla yan yana koy (farklı takımlar) → bıçakla karşılaşsınlar
+			var ids: Array = NM.get_bot_ids()
+			if ids.size() >= 2 and ap.has(ids[0]) and ap.has(ids[1]):
+				var a: Node3D = ap[ids[0]]
+				var b: Node3D = ap[ids[1]]
+				b.global_position = a.global_position + Vector3(2.5, 0.0, 0.0)
+				start_pos[ids[1]] = b.global_position
+				for bid: int in ids:
+					var knife: bool = bool(ap[bid].is_knife_mode())
+					if not knife:
+						knife_flags_ok = false
+			_check(knife_flags_ok, "K: botlarda is_knife_mode() false")
 	else:
 		for pid: int in ap:
 			_check(not NM.is_bot(pid), "botsuz maçta bot düğümü: %d" % pid)
@@ -220,6 +252,8 @@ func _track() -> void:
 			var p: Node3D = ap[bid]
 			var d: float = (p.global_position - (start_pos[bid] as Vector3)).length()
 			max_move[bid] = maxf(float(max_move[bid]), d)
+			if scenario == "K" and float(p.get("_stab_timer")) > 0.0:
+				stab_seen = true
 
 
 func _evaluate() -> void:
@@ -230,6 +264,8 @@ func _evaluate() -> void:
 		notes.append("max_yer_degistirme=%s" % [max_move])
 		_check(best > MOVE_MIN, "hiçbir bot %.1f m'den fazla hareket etmedi (en fazla %.2f)" % [MOVE_MIN, best])
 		notes.append("state=%d" % int(GM.state))
+	elif scenario == "K":
+		_check(stab_seen, "K: sadece bıçak modunda hiçbir bot %d sn içinde bıçak vurmadı" % (K_RUN_MS / 1000))
 	_end_scenario()
 
 

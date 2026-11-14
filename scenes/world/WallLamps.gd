@@ -122,9 +122,31 @@ func _pick_kind(rng: RandomNumberGenerator) -> int:
 	return Kind.DYING
 
 
+## Performans: titreşim 30 Hz'de güncellenir (gözle fark edilmez, ışık/shader parametresi yazımı yarıya iner) ve kameradan
+## ACTIVE_DIST'ten uzak lambalar tamamen atlanır + ışıkları gizlenir (ekran ~40 m kapsar; uzak ışık kümeleme maliyeti boşuna).
+const UPDATE_INTERVAL := 1.0 / 30.0
+const ACTIVE_DIST := 80.0   # kameradan; FOV 40 kamerası oyuncudan ~39 m uzak (eskiden ~18 → 60 idi)
+var _acc := 0.0
+
+
 func _process(delta: float) -> void:
+	_acc += delta
+	if _acc < UPDATE_INTERVAL:
+		return
+	delta = _acc
+	_acc = 0.0
 	var t := Time.get_ticks_msec() / 1000.0
+	var cam := get_viewport().get_camera_3d()
+	var cam_pos := cam.global_position if cam else Vector3.ZERO
+	var max_d2 := ACTIVE_DIST * ACTIVE_DIST
 	for L: Dictionary in _lamps:
+		var lt := L["light"] as OmniLight3D
+		if cam != null:
+			var far := lt.global_position.distance_squared_to(cam_pos) > max_d2
+			if lt.visible == far:
+				lt.visible = not far
+			if far:
+				continue
 		var rng: RandomNumberGenerator = L["rng"]
 		var level: float
 		match L["kind"]:

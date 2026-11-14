@@ -31,6 +31,9 @@ var _volume: FogVolume
 var _mat: FogMaterial
 var _env: Environment
 var _spin := 0.0
+## true: yükleme sırasında shader/froxel ön ısıtması için minik, geçici bulut (ImportedMap._prewarm_render) — kendi kendine
+## solmaz, çağıran siler. İlk gerçek sis bombasında hacimsel sis shader derlemesi oyunu dondurmasın.
+var prewarm := false
 
 
 func setup(radius: float, duration: float) -> void:
@@ -65,7 +68,8 @@ func _ready() -> void:
 	var full := Vector3(_radius * 2.0, HEIGHT, _radius * 2.0)
 	var tw := create_tween()
 	tw.tween_property(_volume, "size", full, GROW_TIME).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	_fade_later()
+	if not prewarm:
+		_fade_later()
 
 
 func _process(delta: float) -> void:

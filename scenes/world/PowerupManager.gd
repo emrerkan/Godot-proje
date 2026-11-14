@@ -22,6 +22,7 @@ extends Node
 signal inventory_changed(item_type: int)            # yerel oyuncunun slotu (-1 = boş)
 signal reveal_started(kind: String, duration: float, own_team: bool)
 signal notice(text: String, color: Color)
+signal tip(text: String)   # tavsiye (HUD sağ ortada beyaz, söner) — uyarı bandına yazılmaz
 signal flashed(strength: float)                     # yerel oyuncu flaşla kör oldu (0..1)
 signal trap_rescue_changed(trapped_peer: int, ratio: float, rescuer_peer: int)  # HUD kurtarma barı
 
@@ -245,8 +246,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		# Kullanıcı kararı: tuzakta değilken de kullanılabilir → boşa harcanır, slot boşalır (host _use_trap_breaker)
 		if now < _q_lock_until:
 			return   # host slotu boşaltana kadar çift basış bildirimi tekrarlamasın
-		_q_lock_until = now + Q_DEBOUNCE_MS
-		notice.emit(tr("Tuzak çözücü boşa kullanıldı"), Color(INFO[Type.TRAP_BREAKER]["color"]))
+		_q_lock_until = now + Q_DEBOUNCE_MS   # boşa kullanım bildirimi yok (kullanıcı) — slot sessizce boşalır
 	if item == Type.SPECIAL_GUN:
 		# Hazırla/vazgeç toggle: yanıt beklenmeden spam olmasın; atıştan sonra host slotu boşaltana dek ikinci arm yok
 		if now < _q_lock_until or now < _special_spent_until:
@@ -516,12 +516,8 @@ func _set_item_rpc(peer_id: int, type: int, picked_up: bool = false, silent: boo
 			GameManager.gain_xp(GameManager.XP_POWERUP, "Güç toplandı")
 		inventory_changed.emit(type)
 		if type != NONE and not silent:
-			var fmt := "%s %s alındı  ·  [Q] kullan"
-			if type == Type.SPECIAL_GUN:
-				fmt = "%s %s alındı  ·  [Q] hazırla"
-			elif type == Type.TRAP_BREAKER:
-				fmt = "%s %s alındı  ·  tuzakta [Q]"
-			notice.emit(tr(fmt) % [INFO[type]["glyph"], tr(INFO[type]["name"])], Color(INFO[type]["color"]))
+			# Sembol/emoji ve "[Q] kullan" yok (kullanıcı)
+			notice.emit(tr("%s ALINDI") % tr(INFO[type]["name"]), Color(INFO[type]["color"]))
 
 
 ## Maç başında her oyuncuya karakterine göre bir güç (GameManager._begin_actual_game_rpc, TÜM peer'larda).
@@ -784,10 +780,10 @@ func _medic_heal_rpc(medic_peer: int, target_peer: int, amount: int) -> void:
 	var target_name: String = NetworkManager.players.get(target_peer, {}).get("name", "?")
 	var col: Color = INFO[Type.HEAL]["color"]
 	if me == medic_peer:
-		notice.emit(tr("✚ %s iyileştirildi (+%d)") % [target_name, amount], col)
+		notice.emit(tr("%s iyileştirildi (+%d)") % [target_name, amount], col)
 		GameManager.gain_xp(GameManager.XP_HEAL_ALLY, "Takım arkadaşı iyileştirildi")
 	elif me == target_peer:
-		notice.emit(tr("✚ MEDIC %s seni iyileştirdi") % medic_name, col)
+		notice.emit(tr("MEDIC %s seni iyileştirdi") % medic_name, col)
 
 
 func _throw_bomb(peer: int, team: int, player: Node3D, aim: Vector3, flash: bool, smoke: bool = false) -> void:
@@ -944,11 +940,11 @@ func _reveal_rpc(team: int, kind: String, duration: float, user_peer: int) -> vo
 	if team == local_team:
 		reveal_until[kind] = Time.get_ticks_msec() / 1000.0 + duration
 		reveal_started.emit(kind, duration, true)
-		var txt := "◈ UYDU (%s): tüm oyuncular haritada" if kind == "all_players" else "◉ TAKIM UYDUSU (%s): düşmanlar haritada"
+		var txt := "UYDU (%s): tüm oyuncular haritada" if kind == "all_players" else "TAKIM UYDUSU (%s): düşmanlar haritada"
 		notice.emit(tr(txt) % user_name, Color(INFO[Type.INTEL_SAT if kind == "all_players" else Type.ENEMY_SAT]["color"]))
 	elif kind == "enemies" or kind == "all_players":
 		reveal_started.emit(kind, duration, false)
-		notice.emit(tr("⚠ %s TAKIM UYDUSU KONUMUNUZU TESPİT ETTİ!") % TeamManager.get_team_name(team).to_upper(), UITheme.DANGER)
+		notice.emit(tr("%s TAKIM UYDUSU KONUMUNUZU TESPİT ETTİ!") % TeamManager.get_team_name(team).to_upper(), UITheme.DANGER)
 
 
 # ─────────────────────────────────────────────
@@ -970,7 +966,7 @@ func _place_trap(peer: int, team: int, player: Node3D) -> void:
 	var id := _next_id
 	_next_id += 1
 	_trap_spawn_rpc.rpc(id, target, team, peer)
-	notice.emit(tr("▽ Tuzak yere bırakıldı"), Color(INFO[Type.TRAP]["color"]))
+	notice.emit(tr("Tuzak yere bırakıldı"), Color(INFO[Type.TRAP]["color"]))
 
 
 @rpc("authority", "call_local", "reliable")
@@ -1012,14 +1008,13 @@ func _trap_trigger_rpc(id: int, trapped_peer: int) -> void:
 	var col: Color = INFO[Type.TRAP]["color"]
 	if me == trapped_peer:
 		# Slotta Tuzak Çözücü varsa Q ipucu (inventory tüm peer'larda aynı — _set_item_rpc herkese)
-		if get_item(me) == Type.TRAP_BREAKER:
-			notice.emit(tr("⚠ TUZAĞA YAKALANDIN! [Q] Tuzak çözücü"), UITheme.DANGER)
-		else:
-			notice.emit(tr("⚠ TUZAĞA YAKALANDIN! Takım arkadaşın gelsin"), UITheme.DANGER)
+		notice.emit(tr("TUZAĞA YAKALANDIN!"), UITheme.DANGER)
+		tip.emit("Tuzak çözücüyü kullan" if get_item(me) == Type.TRAP_BREAKER else "Takım arkadaşın seni kurtarabilir")
 	elif _team_of(trapped_peer) == _local_team():
-		notice.emit(tr("⚠ %s TUZAĞA YAKALANDI! Kurtar") % trapped_name, UITheme.DANGER)
+		notice.emit(tr("%s TUZAĞA YAKALANDI!") % trapped_name, UITheme.DANGER)
+		tip.emit("Takım arkadaşını kurtar")
 	elif _team_of(me) == trap.team_id:
-		notice.emit(tr("🪤 Tuzağınız %s'ı yakaladı!") % trapped_name, col)
+		notice.emit(tr("Tuzağınız %s oyuncusunu yakaladı!") % trapped_name, col)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -1050,11 +1045,11 @@ func _trap_freed_rpc(id: int, rescuer_peer: int) -> void:
 		# Tuzak Çözücü ile kendini çözdü: XP yok, limon bildirim
 		var breaker_col: Color = INFO[Type.TRAP_BREAKER]["color"]
 		if me == trapped_peer:
-			notice.emit(tr("✓ TUZAKTAN KURTULDUN"), breaker_col)
+			notice.emit(tr("TUZAKTAN KURTULDUN"), breaker_col)
 		elif _team_of(trapped_peer) == _local_team():
-			notice.emit(tr("✓ %s tuzaktan kurtuldu") % trapped_name, breaker_col)
+			notice.emit(tr("%s tuzaktan kurtuldu") % trapped_name, breaker_col)
 	elif me == rescuer_peer:
 		GameManager.gain_xp(GameManager.XP_TRAP_RESCUE, "Takım arkadaşı kurtarıldı")
-		notice.emit(tr("✓ %s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))
+		notice.emit(tr("%s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))
 	elif _team_of(trapped_peer) == _local_team():
-		notice.emit(tr("✓ %s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))
+		notice.emit(tr("%s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))

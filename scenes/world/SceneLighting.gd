@@ -15,7 +15,7 @@ const AMBIENT_ENERGY := 1.0
 const EXPOSURE := 1.6                              # ACES orta tonları koyulaştırır → telafi
 const WHITE := 6.0
 const FOG_COLOR := Color(0.035, 0.05, 0.1)
-const FOG_DENSITY := 0.004                         # kamera ~18 m → ~%7 mavi pus
+const FOG_DENSITY := 0.0019                        # kamera ~39 m (FOV 40) → oyuncuda yine ~%7 mavi pus (eskiden 18 m / 0.004)
 
 
 static func apply_tree(tree: SceneTree) -> void:

@@ -7,10 +7,17 @@ extends Node
 const LOADING := preload("res://scenes/ui/LoadingScreen.gd")
 const MENU_PATH := "res://scenes/ui/MainMenu.tscn"
 const MENU_SETTLE_FRAMES := 8
+const BENCHMARK := preload("res://scenes/benchmark/Benchmark.gd")
 
 
 func _ready() -> void:
 	UITheme.apply(get_tree())
+	# Sistem testi: `--sysbench` → menü yerine otomatik botlu ölçüm maçı (scenes/benchmark/Benchmark.gd)
+	if BENCHMARK.requested():
+		var bench: Node = BENCHMARK.new()
+		bench.name = "Benchmark"
+		get_tree().root.add_child.call_deferred(bench)
+		return
 	LOADING.open(get_tree(), "YÜKLENİYOR", "Sistem başlatılıyor")
 	_load_menu()
 

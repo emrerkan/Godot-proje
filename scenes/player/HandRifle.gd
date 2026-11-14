@@ -116,6 +116,95 @@ func _place_knife(sk: Skeleton3D) -> void:
 	knife.transform = Transform3D(Basis.looking_at(blade.normalized(), f), hand + fingers * 0.6)
 
 
+## ── Gerçek silah modelleri (kullanıcının Tripo modelleri, 2026-11-14) ──
+## Tripo GLB'leri EXT_meshopt_compression + KHR_mesh_quantization ile geliyordu (Godot açamıyor) → scratchpad Python çözücüyle
+## düz GLB'ye çevrildi: asset model/silahlar/*.glb (orijinaller silahlar/kaynak/, .gdignore). M4A1 FBX doğrudan içe aktarılıyor.
+## Modeller 1 m'ye normalize ve kendi içlerinde eğik/dönük → her biri için MODEL uzayında ölçülen:
+##   fwd   = namlu yönü (dipçikten namluya; köşe verisinden ölçüldü), grip = sağ elin tuttuğu kabza noktası,
+##   tip   = namlu ağzı (mermi buradan), tb = uç–dip boyu (model birimi), length = oyundaki gerçek boy (m, iskelet uzayı).
+## Dönüşüm: tüfek uzayı = ölçek × looking_at(fwd)⁻¹ × (p − grip) → -Z namlu, +Y üst, orijin kabza (prosedürel tüfekle aynı sözleşme).
+## Dokular içe aktarmada 1024'e sınırlı (4K geliyordu). Tripo GLB'lerde ORM: G=pürüzlülük, B=metal (glTF ile aynı) → importer bağlar.
+const WEAPON_MODELS := {
+	"Medic": {"path": "res://asset model/silahlar/medic_silah.glb", "fwd": Vector3(0, 0.007, 1),
+		"grip": Vector3(0, -0.046, -0.225), "tip": Vector3(0.001, 0.097, 0.491), "tb": 0.986, "length": 0.92},   # Medic gövdesinin kolu uzun
+	"Runner": {"path": "res://asset model/silahlar/mp5.glb", "fwd": Vector3(0, 0.342, 0.940),
+		"grip": Vector3(0, -0.126, -0.172), "tip": Vector3(0.002, 0.191, 0.493), "tb": 1.022, "length": 0.80},   # gerçeği ~0.7; tüfek animasyonunda sol el boşta kalıyordu
+	"Sniper": {"path": "res://asset model/silahlar/sniper_tufek.glb", "fwd": Vector3(-0.331, 0.666, 0.965),
+		"grip": Vector3(0.061, -0.184, -0.218), "tip": Vector3(-0.179, 0.380, 0.483), "tb": 1.218, "length": 1.15},
+	"Tank": {"path": "res://asset model/silahlar/tank_tufek.glb", "fwd": Vector3(0, 0, 1),
+		"grip": Vector3(0, 0.0, -0.179), "tip": Vector3(-0.001, 0.073, 0.494), "tb": 0.989, "length": 1.02},
+	"Visioner": {"path": "res://asset model/karakterler/Visioner/m4a1.fbx", "fwd": Vector3(0, 0.005, 1),
+		"grip": Vector3(0, -0.028, -0.149), "tip": Vector3(0, 0.077, 0.493), "tb": 0.987, "length": 0.86,
+		# FBX importer pürüzlülük/metal dokularını bağlamadı
+		"rough_tex": "res://asset model/karakterler/Visioner/m4a1_2.png", "metal_tex": "res://asset model/karakterler/Visioner/m4a1_3.png"},
+}
+## Bıçak: grip = sap ortası, tip = ağız ucu; bıçak uzayı -Z = ağız (prosedürel bıçakla aynı sözleşme, _place_knife yerleştirir)
+const KNIFE_MODEL := {"path": "res://asset model/silahlar/bicak.glb", "fwd": Vector3(0, 0.812, 0.984),
+	"grip": Vector3(0, -0.251, -0.350), "tip": Vector3(0, 0.444, 0.492), "tb": 1.276, "length": 0.30}
+static var _model_cache := {}   # yol → PackedScene (20 oyuncu aynı sahneyi paylaşır)
+
+
+## Model + "Muzzle" marker; dosya yoksa null (çağıran prosedürele düşer)
+static func _build_from_model(spec: Dictionary, node_name: String) -> Node3D:
+	var path: String = spec["path"]
+	if not _model_cache.has(path):
+		_model_cache[path] = load(path) if ResourceLoader.exists(path) else null
+	var packed := _model_cache[path] as PackedScene
+	if packed == null:
+		return null
+	var root := Node3D.new()
+	root.name = node_name
+	var model: Node3D = packed.instantiate()
+	var s: float = float(spec["length"]) / float(spec["tb"])
+	var b := Basis.looking_at((spec["fwd"] as Vector3).normalized(), Vector3.UP).inverse().scaled(Vector3.ONE * s)
+	model.transform = Transform3D(b, -(b * (spec["grip"] as Vector3)))
+	root.add_child(model)
+	if spec.has("rough_tex"):
+		_bind_extra_textures(model, spec)
+	var tip := Marker3D.new()
+	tip.name = "Muzzle"
+	tip.position = b * ((spec["tip"] as Vector3) - (spec["grip"] as Vector3))
+	root.add_child(tip)
+	return root
+
+
+static var _extra_mat_cache := {}
+static func _bind_extra_textures(model: Node, spec: Dictionary) -> void:
+	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var src := mi.mesh.surface_get_material(i) as StandardMaterial3D
+			if src == null:
+				continue
+			if not _extra_mat_cache.has(src):
+				var m := src.duplicate() as StandardMaterial3D
+				m.roughness_texture = load(spec["rough_tex"])
+				m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+				m.roughness = 1.0
+				m.metallic_texture = load(spec["metal_tex"])
+				m.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+				m.metallic = 1.0
+				_extra_mat_cache[src] = m
+			mi.set_surface_override_material(i, _extra_mat_cache[src])
+
+
+## Karakterin silahı (Player + MenuBackground3D). Tablo/dosya yoksa prosedürel tüfek.
+static func build_weapon_mesh(character: String) -> Node3D:
+	if WEAPON_MODELS.has(character):
+		var w := _build_from_model(WEAPON_MODELS[character], "HandRifle")
+		if w != null:
+			return w
+	return build_rifle_mesh()
+
+
+## Bıçak modeli (gizli başlar); dosya yoksa prosedürel
+static func build_knife_model() -> Node3D:
+	var k := _build_from_model(KNIFE_MODEL, "HandKnife")
+	if k == null:
+		return build_knife_mesh()
+	k.visible = false
+	return k
+
+
 ## Prosedürel bıçak: -Z = ağız, orijin = sap ortası
 static func build_knife_mesh() -> Node3D:
 	var knife := Node3D.new()

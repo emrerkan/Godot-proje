@@ -78,6 +78,10 @@ const LOAD_SHARE := 0.55               # yükleme çubuğunda GLB yüklemesinin 
 const SCAN_ROWS_PER_FRAME := 6
 var _spawn_list: Array[Vector3] = []
 var _card_list: Array[Vector3] = []
+## MAPS "hide_meshes": haritaya özel gizlenen (ve çarpışmasız) mesh adları (Kuantum: zeminin altındaki havuz köşeleri dışarı taşıyordu)
+var _extra_hidden: Array[String] = []
+## Oyun alanı sınırı: yarı düzlemler Vector3(nx, nz, d) → n·p ≤ d. Duvarlar + kamera sınırı (get_camera_limits) buradan.
+var _play_planes: Array[Vector3] = []
 
 
 func _ready() -> void:
@@ -103,6 +107,7 @@ func _ready() -> void:
 	add_child(_model)
 	move_child(_model, 0)
 
+	_extra_hidden.assign(info.get("hide_meshes", []))
 	_hide_card_visuals(_model)
 	_scale_emission(_model, float(info.get("emission_scale", 1.0)))
 	_scale_emission(_model, float(info.get("water_emission", 1.0)), ["Water", "Basin"])
@@ -110,8 +115,10 @@ func _ready() -> void:
 	_bounds = _compute_bounds(_model)
 	_water_floor = bool(info.get("water_floor", false))
 	_convex_props = bool(info.get("convex_props", false))
+	if _convex_props:
+		_optimize_render(_model)   # v3: yer decal/ot/serpinti gölge atmaz + uzakta çizilmez
 	_build_collisions(_model)
-	_build_bounds_walls()
+	_build_bounds_walls(String(info.get("play_octagon", "")))
 	if bool(info.get("outer_world", false)):
 		_build_outer_world(hash(String(info.get("id", "map"))))
 
@@ -134,7 +141,97 @@ func _ready() -> void:
 		pm.set_points(_pick_powerup_points(seed_base))
 	_place_lamps(space, seed_base)
 	_collect_canopies(_model)
+	await _prewarm_render()
+	if not is_instance_valid(self):
+		return
 	_finish()
+
+
+## ── Çizim optimizasyonu (v3 haritalar, MAPS "convex_props") ──
+## v3'te 165 yer decal'i + ~90 ot + 24-36 serpinti AYRI mesh. Hepsi gölge atıyordu: oyuncu fenerleri (SpotLight) ve Halo
+## (OmniLight, çift paraboloid) gölgeli → her ışık menzilindeki bu yüzlerce düz yamayı gölge haritasına yeniden çiziyordu
+## (yürürken ani kare süresi sıçramaları). Düz yamalar zaten gölge vermez → gölge KAPALI; ayrıca kameradan uzakta çizilmez
+## (kamera oyuncuyu ~18 m'den görür, ekran en fazla ~40 m kapsar). Sert kesim (fade yok): fade dither'ı da ek maliyet.
+const DETAIL_KEYWORDS: Array[String] = ["Decal", "Grass", "Scatter"]
+const NO_SHADOW_KEYWORDS: Array[String] = ["Water", "Neon", "LED", "Beacon", "Holo", "Glass", "GlowRing"]
+const DETAIL_VIS_END := 90.0   # kameradan; FOV 40 kamerası oyuncudan ~39 m (eskiden ~18 → 70 idi)
+const DETAIL_VIS_MARGIN := 6.0
+
+
+func _optimize_render(root: Node) -> void:
+	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null:
+			continue
+		var nm := String(mi.name)
+		if _has_keyword(nm, DETAIL_KEYWORDS):
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.visibility_range_end = DETAIL_VIS_END
+			mi.visibility_range_end_margin = DETAIL_VIS_MARGIN
+			mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		elif _has_keyword(nm, NO_SHADOW_KEYWORDS):
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## ── Shader/pipeline ön ısıtma (yükleme perdesi açıkken) ──
+## İlk kez görülen malzeme + (özellikle) görüş engeli saydamlığı (instance transparency → alfa geçişi, ayrı pipeline) +
+## gölge geçişi + ilk sis bombasının hacimsel sis shader'ları oyun sırasında derlenip ani donma yapıyordu. Burada her
+## benzersiz (malzeme, mesh formatı) için minik opak + saydam bir kopya, geçici gölgeli SpotLight/OmniLight ve minik bir
+## SmokeCloud kameranın önüne konup birkaç kare çizilir, sonra silinir. Hepsi perdenin arkasında, oyuncu doğmadan önce.
+const PREWARM_MAX := 160
+const PREWARM_FRAMES := 6
+const SMOKE := preload("res://scenes/world/SmokeCloud.gd")
+
+
+func _prewarm_render() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or _model == null:
+		return
+	var rig := Node3D.new()
+	rig.name = "PrewarmRig"
+	rig.position = Vector3(0, 0, -3.0)
+	cam.add_child(rig)
+	var seen := {}
+	var count := 0
+	for mi: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
+		if count >= PREWARM_MAX:
+			break
+		if mi.mesh == null or not mi.visible:
+			continue
+		var key := ""
+		for s in mi.mesh.get_surface_count():
+			var mat := mi.get_active_material(s)
+			key += "%d:%d|" % [mat.get_rid().get_id() if mat else 0, mi.mesh.surface_get_format(s)]
+		if seen.has(key):
+			continue
+		seen[key] = true
+		for variant in 2:
+			var c := MeshInstance3D.new()
+			c.mesh = mi.mesh
+			c.scale = Vector3.ONE * 0.02
+			if variant == 1:
+				c.transparency = 0.5
+			rig.add_child(c)
+			count += 1
+	# Gölge geçişleri (oyuncu feneri = SpotLight, Halo = OmniLight) ve hacimsel sis (sis bombası)
+	var spot := SpotLight3D.new()
+	spot.shadow_enabled = true
+	spot.spot_range = 6.0
+	spot.position = Vector3(0, 0, 1.5)
+	rig.add_child(spot)
+	var omni := OmniLight3D.new()
+	omni.shadow_enabled = true
+	omni.omni_range = 6.0
+	omni.position = Vector3(0.4, 0.4, 0.6)
+	rig.add_child(omni)
+	var smoke: Node3D = SMOKE.new()
+	smoke.call("setup", 0.3, 0.0)
+	smoke.set("prewarm", true)
+	rig.add_child(smoke)
+	for i in PREWARM_FRAMES:
+		await get_tree().process_frame
+		if not is_instance_valid(self):
+			return
+	rig.queue_free()
 
 
 func _finish() -> void:
@@ -147,7 +244,7 @@ func _finish() -> void:
 # ─────────────────────────────────────────────
 
 func _hide_card_visuals(n: Node) -> void:
-	if n is Node3D and _has_keyword(String(n.name), HIDDEN_KEYWORDS):
+	if n is Node3D and (_has_keyword(String(n.name), HIDDEN_KEYWORDS) or _has_keyword(String(n.name), _extra_hidden)):
 		(n as Node3D).visible = false
 	for c in n.get_children():
 		_hide_card_visuals(c)
@@ -182,7 +279,8 @@ func _has_keyword(node_name: String, words: Array[String]) -> bool:
 
 
 func _build_collisions(n: Node) -> void:
-	if n is MeshInstance3D and (n as MeshInstance3D).mesh and not _has_keyword(String(n.name), NO_COLLISION_KEYWORDS):
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh and not _has_keyword(String(n.name), NO_COLLISION_KEYWORDS) \
+			and not _has_keyword(String(n.name), _extra_hidden):
 		if _convex_props and _has_keyword(String(n.name), CONVEX_KEYWORDS):
 			(n as MeshInstance3D).create_convex_collision(true, true)   # dolu, sadeleştirilmiş gövde — içine girilemez
 		else:
@@ -310,14 +408,37 @@ func _add_outer_rocks(root: Node3D, cliff: MeshInstance3D, seed_v: int) -> void:
 			rock.global_transform = Transform3D(basis, p - basis * center + Vector3(0, OUTER_GROUND_Y, 0))
 
 
-## Harita kenarına görünmez duvarlar (oyuncu dışarı yürümesin / düşmesin)
-func _build_bounds_walls() -> void:
+## Harita kenarına görünmez duvarlar (oyuncu dışarı yürümesin / düşmesin) + kamera sınırı düzlemleri.
+## Varsayılan: modelin kare kapsayıcısı. MAPS "play_octagon" = zemin mesh'inin adı → oyun alanı o mesh'in kapsayıcısına
+## oturan DÜZGÜN SEKİZGEN (kenarları eksenlere paralel; Kuantum: kare duvar köşelerde sekizgenin dışını açık bırakıyordu).
+func _build_bounds_walls(octagon_mesh: String = "") -> void:
 	var body := StaticBody3D.new()
 	body.name = "Bounds"
 	add_child(body)
+	var h := 12.0
+	_play_planes.clear()
+	var oct: MeshInstance3D = null
+	if not octagon_mesh.is_empty():
+		oct = _model.find_child(octagon_mesh, true, false) as MeshInstance3D
+	if oct != null and oct.mesh != null:
+		var a: AABB = oct.global_transform * oct.get_aabb()
+		var oc := a.get_center()
+		var r := minf(a.size.x, a.size.z) * 0.5          # iç yarıçap (merkezden kenara)
+		var edge := 2.0 * r * tan(deg_to_rad(22.5)) + 1.2   # kenar boyu + köşelerde bindirme
+		for k in 8:
+			var ang := k * PI / 4.0
+			var n := Vector2(cos(ang), sin(ang))
+			_play_planes.append(Vector3(n.x, n.y, r + n.x * oc.x + n.y * oc.z))
+			var cs := CollisionShape3D.new()
+			var box := BoxShape3D.new()
+			box.size = Vector3(1, h, edge)
+			cs.shape = box
+			cs.position = Vector3(oc.x + n.x * (r + 0.5), 0, oc.z + n.y * (r + 0.5))
+			cs.rotation.y = -ang   # kutunun X ekseni n yönüne döner (ince kenar dışa bakar)
+			body.add_child(cs)
+		return
 	var c := _bounds.get_center()
 	var s := _bounds.size
-	var h := 12.0
 	for side: Array in [[Vector3(_bounds.position.x - 0.5, 0, c.z), Vector3(1, h, s.z + 2)],
 			[Vector3(_bounds.end.x + 0.5, 0, c.z), Vector3(1, h, s.z + 2)],
 			[Vector3(c.x, 0, _bounds.position.z - 0.5), Vector3(s.x + 2, h, 1)],
@@ -328,6 +449,15 @@ func _build_bounds_walls() -> void:
 		cs.shape = box
 		cs.position = side[0]
 		body.add_child(cs)
+	_play_planes.append(Vector3(1, 0, _bounds.end.x))
+	_play_planes.append(Vector3(-1, 0, -_bounds.position.x))
+	_play_planes.append(Vector3(0, 1, _bounds.end.z))
+	_play_planes.append(Vector3(0, -1, -_bounds.position.z))
+
+
+## CameraController: kamera görüş alanı bu yarı düzlemlerin dışına taşmasın (n·p ≤ d, Vector3(nx, nz, d))
+func get_camera_limits() -> Array[Vector3]:
+	return _play_planes
 
 
 # ─────────────────────────────────────────────
@@ -681,9 +811,22 @@ var _occluders: Dictionary = {}   # GeometryInstance3D → true (bu kare kapatan
 var _faded: Dictionary = {}       # şu an saydam/geri dönen nesneler
 
 
-func _physics_process(_delta: float) -> void:
+## Tarama 30 Hz'e kısıldı (her fizik karesinde 3 yükseklik × 4 ışın + tüm ağaç AABB'leri + dizi kopyaları çöp üretiyordu);
+## geçiş yumuşatması _process'te her karede sürer. Aynı anda saydam nesne sayısı sınırlı: Godot belgesi "20'den fazla
+## saydam nesne performansı düşürür" der — ormanda ışın boyunca 10-30 ağaç tepesi birden saydamlaşabiliyordu.
+const OCCLUDE_SCAN_INTERVAL := 1.0 / 30.0
+const MAX_CANOPY_FADE := 6
+var _scan_t := 0.0
+var _canopy_cand: Dictionary = {}   # tepe indeksi → oyuncuya uzaklık² (bu taramada ışının kestikleri)
+
+
+func _physics_process(delta: float) -> void:
 	if not is_map_ready:
 		return
+	_scan_t -= delta
+	if _scan_t > 0.0:
+		return
+	_scan_t = OCCLUDE_SCAN_INTERVAL
 	if NetworkManager.is_host():
 		_rescue_fallen_bots()
 	var me: Variant = GameManager.active_players.get(NetworkManager.get_local_id())
@@ -704,6 +847,7 @@ func _physics_process(_delta: float) -> void:
 		if is_instance_valid(p):
 			players_rids.append((p as CollisionObject3D).get_rid())
 	var base: Vector3 = (me as Node3D).global_position
+	_canopy_cand.clear()
 	for h in OCCLUDE_HEIGHTS:
 		var target := base + Vector3(0, h, 0)
 		var exclude := players_rids.duplicate()
@@ -718,8 +862,15 @@ func _physics_process(_delta: float) -> void:
 			if gi and not _has_keyword(String(gi.name), NO_FADE_KEYWORDS):
 				_occluders[gi] = true
 		for i in _canopies.size():
-			if _canopy_aabb[i].intersects_segment(cpos, target):
-				_occluders[_canopies[i]] = true
+			if not _canopy_cand.has(i) and _canopy_aabb[i].intersects_segment(cpos, target):
+				_canopy_cand[i] = _canopy_aabb[i].get_center().distance_squared_to(base)
+	# Ağaç tepeleri: oyuncuya EN YAKIN MAX_CANOPY_FADE tanesi (asıl saklayanlar onlar)
+	var picked: Array = _canopy_cand.keys()
+	if picked.size() > MAX_CANOPY_FADE:
+		picked.sort_custom(func(a: int, b: int) -> bool: return float(_canopy_cand[a]) < float(_canopy_cand[b]))
+		picked.resize(MAX_CANOPY_FADE)
+	for i: int in picked:
+		_occluders[_canopies[i]] = true
 
 
 ## Düşme kurtarmasının bot karşılığı: botları SADECE host sürer (konum host otoriteli, _broadcast_state ile yayılır) →

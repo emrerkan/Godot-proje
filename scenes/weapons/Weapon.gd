@@ -57,6 +57,27 @@ func _ready() -> void:
 # Ateş Etme
 # ─────────────────────────────────────────────
 
+## ── Dikey nişan (kullanıcı: "aynı düzlemde olmadığım için vuramıyorum") ──
+## Mermiler eskiden TAMAMEN yatay uçuyordu → aşağıdaki rakibin üstünden geçiyor, yukarıdakinde yere çarpıyordu.
+## Player her atıştan önce aim_point'i yazar (nişangahın altındaki rakibin/zeminin göğüs hizası; duvar/boşluk = INF).
+## Yükseklik farkı PITCH_DEADZONE'dan küçükse yatay kalır (düz zeminde mermi hedefin ardında yere gömülmesin).
+const PITCH_DEADZONE := 0.45
+const MAX_PITCH_DEG := 40.0
+var aim_point := Vector3.INF
+
+
+## Yatay yön + namludan aim_point'e eğim → 3B mermi yönü
+func _pitched(horizontal: Vector3, spawn: Vector3, aim: Vector3) -> Vector3:
+	if aim == Vector3.INF:
+		return horizontal
+	var dy := aim.y - spawn.y
+	var h := Vector2(aim.x - spawn.x, aim.z - spawn.z).length()
+	if absf(dy) < PITCH_DEADZONE or h < 1.0:
+		return horizontal
+	var p := clampf(atan2(dy, h), -deg_to_rad(MAX_PITCH_DEG), deg_to_rad(MAX_PITCH_DEG))
+	return Vector3(horizontal.x * cos(p), sin(p), horizontal.z * cos(p)).normalized()
+
+
 func try_shoot(shooter_peer_id: int, shooter_team_id: int) -> void:
 	if is_reloading or current_ammo <= 0 or not fire_timer.is_stopped():
 		return
@@ -74,9 +95,10 @@ func try_shoot(shooter_peer_id: int, shooter_team_id: int) -> void:
 	# Saçılma: Y ekseninde rastgele rotasyon
 	var spread_rad := deg_to_rad(randf_range(-spread_degrees, spread_degrees))
 	var spread_rot := Basis(Vector3.UP, spread_rad)
-	var direction := (spread_rot * forward).normalized()
+	var spawn := _safe_spawn_position()
+	var direction := _pitched((spread_rot * forward).normalized(), spawn, aim_point)
 
-	_spawn_bullet.rpc(_safe_spawn_position(), direction, shooter_peer_id, shooter_team_id, max_distance)
+	_spawn_bullet.rpc(spawn, direction, shooter_peer_id, shooter_team_id, max_distance)
 
 	if current_ammo <= 0:
 		reload()
@@ -135,7 +157,7 @@ func fire_special(shooter_peer_id: int, shooter_team_id: int, aim: Vector3 = Vec
 			forward = to_aim
 	forward.y = 0
 	forward = forward.normalized()
-	_spawn_special_bullet.rpc(spawn, forward, shooter_peer_id, shooter_team_id)
+	_spawn_special_bullet.rpc(spawn, _pitched(forward, spawn, aim_point), shooter_peer_id, shooter_team_id)
 
 
 @rpc("any_peer", "call_local", "reliable")

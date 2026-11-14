@@ -122,7 +122,7 @@ func _spawn_soldier(i: int) -> void:
 	sk.add_child(upper)
 	var twist: Node = SPINE_TWIST.new()
 	sk.add_child(twist)
-	var rifle: Node3D = HAND_RIFLE.build_rifle_mesh()
+	var rifle: Node3D = HAND_RIFLE.build_weapon_mesh(CHARACTERS[i % CHARACTERS.size()])
 	sk.add_child(rifle)
 	var hand: Node = HAND_RIFLE.new()
 	hand.rifle = rifle

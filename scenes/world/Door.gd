@@ -21,6 +21,7 @@ var _beam_mat: ShaderMaterial
 var _label: Label3D
 var _light: OmniLight3D
 var _active := 0.0
+var _active_written := false
 
 
 func _init() -> void:
@@ -87,7 +88,12 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	# Aktiflik yumuşak geçsin (shader nabzı + renk)
 	var want := 1.0 if GameManager.door_unlock > 0.0 else 0.0
+	if is_equal_approx(_active, want) and _active_written:
+		return   # geçiş bitti → shader parametrelerini her karede yeniden yazma
 	_active = lerpf(_active, want, 1.0 - exp(-8.0 * delta))
+	if absf(_active - want) < 0.002:
+		_active = want
+	_active_written = true
 	_zone_mat.set_shader_parameter("active", _active)
 	_beam_mat.set_shader_parameter("active", _active)
 

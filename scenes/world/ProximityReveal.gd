@@ -23,6 +23,7 @@ var _labels: Array[Label3D] = []
 var _label_alpha: Array[float] = []
 var _meshes: Array[MeshInstance3D] = []
 var _factor := 0.0
+var _applied := false
 
 
 func _ready() -> void:
@@ -51,11 +52,17 @@ func _process(delta: float) -> void:
 		var d := player.global_position.distance_to(_target.global_position)
 		target = clampf((reveal_far - d) / maxf(reveal_far - reveal_near, 0.01), 0.0, 1.0)
 		target = target * target * (3.0 - 2.0 * target)  # smoothstep
-	_factor = lerpf(_factor, target, 1.0 - exp(-fade_speed * delta))
+	var next := lerpf(_factor, target, 1.0 - exp(-fade_speed * delta))
+	if absf(next - target) < 0.002:
+		next = target   # yakınsadı → aşağıda tekrar yazma
+	if is_equal_approx(next, _factor) and _applied:
+		return   # durağan (gizli ya da tam görünür): ışık/etiket/mesh özelliklerini her karede yeniden yazma
+	_factor = next
 	_apply(_factor)
 
 
 func _apply(f: float) -> void:
+	_applied = true
 	for i in range(_lights.size()):
 		_lights[i].light_energy = _light_energy[i] * f
 		_lights[i].visible = f > 0.01

@@ -239,6 +239,14 @@
     bot id'sine `rpc_id` atılmaz, bot düğümünün yetkisi 1. Orkestra ile 6 paralel workbench (network / gameflow / player / bot-AI / world / UI) + test.
     Test `tools/test_bots.gd` (A botlu maç + B botsuz regresyon, ikisi PASS). Bilinen sınırlar: SADECE BIÇAK modunda botlar saldıramaz; ENet peer id'si
     2e9 üstü çıkabilir (~%7) → bot kontrolü HER ZAMAN `is_bot()` (kayıttaki bayrak), ham id karşılaştırması değil; botlar zıplamaz (0.75 m üstü basamak ızgarada kapalı).
+51. **Bot ayarı + TAB tablosu + v3 performans (2026-11-13)** — kullanıcı bulguları: botlar çok güçlü; kartı/kapıyı yerlerini biliyormuş gibi çok çabuk buluyor; bıçak modunda saldıramıyor; çömelme/zıplama yok;
+    5v5v5v5'te TAB tüm oyuncuları göstermiyor (kutu ekran ortasında, üst/alt %30, sol/sağ %20 boşluklu olmalı); v3 haritalarda ani droplar. Orkestra ile 3 paralel workbench (bot / HUD / perf).
+    **Bot:** tepki 0.7 sn, yavaş nişan + büyük hata (ilk görüşte ×1.9), kart 7 m'den görülür; ~4 dk sonra yaklaşık bölge ipucu, ~6,5 dk sonra kesin konum (kapı dahil, artık kartla bile bilinmez);
+    bıçak: kök neden `is_local` kapısı + host `_request_stab`'ın gönderen=`peer_id` kontrolü (bot id'si 2e9+n → hep ret) — bot için gönderen 1; çömelme/zıplama seyrek, takla yok. Test `-- KAB` PASS;
+    çömelme/zıplama/süre eşikleri otomatik doğrulanmadı, değerler elle oynanıp ayarlanacak (BotBrain başındaki sabitler).
+    **TAB:** anchor'lı sabit kutu, 2×2 takım ızgarası, kompakt satırlar, taşarsa kaydırma (20 oyunculu pencereli testte sığdı).
+    **Performans:** asıl hitch ilk karedeki shader/pipeline derlemesiydi → `ImportedMap._prewarm_render`; ayrıca v3 decal/ot/serpinti gölgesi kapatıldı + mesafe kırpma, görüş engeli taraması/WallLamps 30 Hz.
+    Doku import'u zaten VRAM sıkıştırmalıydı (değişmedi). AÇIK: oyuncu başına gölgeli fener + Halo (20 oyuncuda en olası kalan drop), çift yüzlü malzemeler / decal birleştirme (asset işi), 20 bot host yükü ölçümü.
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 

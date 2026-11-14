@@ -36,6 +36,20 @@ const HALO_ENERGY := 1.4
 const HALO_RANGE := 4.5
 const HALO_HEIGHT := 1.6
 const SELF_RIM_SHADER: Shader = preload("res://scenes/player/SelfVisibility.gdshader")
+## Uzak oyuncu ışık LOD'u (20 oyunculu maçta gölge atlası taşıyordu → ani FPS düşüşü). Işık HERKESE görünür kalır;
+## sadece GÖLGE kırpılır. Yerel oyuncunun feneri + halesi hep gölgeli. Uzaklarda: motor tarafı mesafe sönümü
+## (statik ayar) + `LIGHT_LOD_INTERVAL` aralıkla kameraya en yakın `REMOTE_SHADOW_SPOTS` uzak fener gölgeli.
+const LIGHT_LOD_INTERVAL: float = 0.22          # ~4.5 Hz, tüm uzak oyuncular tek sıralamada (statik)
+const REMOTE_SHADOW_SPOTS: int = 3              # gölgeli uzak fener sayısı
+const LIGHT_LOD_HYSTERESIS: float = 3.0         # gölgesi açık fener sıralamada bu kadar m avantajlı (titreme olmasın)
+# Mesafeler KAMERADAN ölçülür — kamera FOV 40'a geçince oyuncudan ~39 m uzakta (eskiden ~18) → hepsi +20 m (CameraController.FOV_DEG)
+const REMOTE_SPOT_SHADOW_MAX_DIST: float = 60.0 # bundan uzak fener sıralamaya girse de gölgesiz
+const REMOTE_SPOT_FADE_BEGIN: float = 75.0      # fener ışığı kameradan bu mesafeden sonra söner (menzil 26 m → ekrana taşmaz)
+const REMOTE_SPOT_FADE_LENGTH: float = 10.0
+const REMOTE_HALO_FADE_BEGIN: float = 58.0      # hale ~65 m'de tamamen kaybolur (motor ışığı çizmez)
+const REMOTE_HALO_FADE_LENGTH: float = 7.0
+static var _lod_remotes: Array = []             # uzak (yerel olmayan) Player düğümleri
+static var _lod_next_ms: int = 0
 
 const CHARACTER_STATS: Dictionary = {
 	"Tank":     {"health": 150.0, "speed": 5.5},
@@ -279,7 +293,8 @@ var _shoot_blocked := false            # özel atıştan sonra tuş bırakılana
 # ── Bot (NetworkManager.is_bot) — ağda sahte oyuncu, SADECE host simüle eder ──
 # is_local'in anlamı DEĞİŞMEZ (kamera/HUD/ses dinleyicisi/self-rim/dayanıklılık HUD'ı/Crosshair hep yerel İNSAN oyuncu).
 # _input_driven: girdi + fizik + konum yayını bu peer'da mı yürüyor (yerel insan VEYA host'taki bot).
-# Bot girdisi BotBrain → set_bot_input (her kare); bıçak/takla/zıplama/çömelme/güç YOK. Botsuz maçta bu alanlar hiç okunmaz.
+# Bot girdisi BotBrain → set_bot_input (her kare): hareket/nişan/ateş/şarjör/koşu + çömelme/zıplama/bıçak (takla/güç YOK).
+# Çömelme/zıplama/bıçak insanla AYNI kurallardan geçer (dayanıklılık, bekleme); ağ yayını da aynı yol. Botsuz maçta bu alanlar hiç okunmaz.
 const BOT_SEMI_REPRESS := 0.12         # tek atışlık silah: tetik basılı kalırsa silah hazır olunca bu kadar sonra yeniden "tıklar"
 var is_bot := false
 var _input_driven := false
@@ -291,6 +306,9 @@ var _bot_fire := false                 # tetik basılı
 var _bot_fire_prev := false            # önceki karede basılı mıydı (tek atışlıkta kenar algılama)
 var _bot_reload_req := false           # tek kare şarjör isteği (tüketilene kadar tutulur)
 var _bot_run := false
+var _bot_crouch := false               # Ctrl basılı sayılır (çömelme dayanıklılığı sınırı aynen geçerli)
+var _bot_jump := false                 # Space basılı sayılır (JUMP_STAMINA + JUMP_COOLDOWN geçerli)
+var _bot_stab_req := false             # bıçak isteği (tek seferlik, her stab girişinde tüketilir)
 var _bot_repress_t := 0.0
 
 
@@ -341,12 +359,12 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 			sk.add_child(_upper)
 			_spine_twist = SPINE_TWIST_SCRIPT.new()
 			sk.add_child(_spine_twist)
-			var rifle: Node3D = HAND_RIFLE_SCRIPT.build_rifle_mesh()
+			var rifle: Node3D = HAND_RIFLE_SCRIPT.build_weapon_mesh(p_character)   # karakterin gerçek silah modeli
 			sk.add_child(rifle)
 			_hand_rifle = HAND_RIFLE_SCRIPT.new()
 			_hand_rifle.rifle = rifle
 			_hand_rifle.aim_node = self  # root -Z = nişan
-			var knife: Node3D = HAND_RIFLE_SCRIPT.build_knife_mesh()
+			var knife: Node3D = HAND_RIFLE_SCRIPT.build_knife_model()
 			sk.add_child(knife)
 			_hand_rifle.knife = knife
 			_hand_rifle.knife_only = is_knife_mode()
@@ -396,25 +414,74 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 
 func _setup_halo_light() -> void:
 	flashlight.light_color = FLASHLIGHT_COLOR
-	if flashlight.has_node("Halo"):
-		return
-	var halo := OmniLight3D.new()
-	halo.name = "Halo"
-	# Flashlight root'a göre (0, 1.3, -0.5) → halo gövdenin tam üstünde dursun
-	halo.position = Vector3(0.0, HALO_HEIGHT - flashlight.position.y, -flashlight.position.z)
-	halo.light_color = HALO_COLOR
-	halo.light_energy = HALO_ENERGY
-	halo.light_specular = 0.3
-	halo.omni_range = HALO_RANGE
-	halo.omni_attenuation = 1.3
+	var halo := flashlight.get_node_or_null("Halo") as OmniLight3D
+	if halo == null:
+		halo = OmniLight3D.new()
+		halo.name = "Halo"
+		# Flashlight root'a göre (0, 1.3, -0.5) → halo gövdenin tam üstünde dursun
+		halo.position = Vector3(0.0, HALO_HEIGHT - flashlight.position.y, -flashlight.position.z)
+		halo.light_color = HALO_COLOR
+		halo.light_energy = HALO_ENERGY
+		halo.light_specular = 0.3
+		halo.omni_range = HALO_RANGE
+		halo.omni_attenuation = 1.3
+		halo.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+		flashlight.add_child(halo)
 	# Gölge SADECE yerel oyuncunun halesinde (kullanıcı kararı 2026-11-13): uzak oyuncu (insan/bot) başına
 	# gölgeli omni çöl haritasında 79 → 14 FPS'e düşürüyordu. Bedeli: uzak hale ince duvar arkasına hafif sızabilir.
 	halo.shadow_enabled = is_local
-	halo.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
-	halo.distance_fade_enabled = true   # uzaktaki oyuncuların halesi kamerada zaten görünmez — maliyet sınırlı
-	halo.distance_fade_begin = 40.0
-	halo.distance_fade_length = 8.0
-	flashlight.add_child(halo)
+	# Yerel: kamera hep ~18 m'de → mesafe sönümü gereksiz. Uzak: motor ~45 m'de haleyi hiç çizmez.
+	halo.distance_fade_enabled = not is_local
+	halo.distance_fade_begin = REMOTE_HALO_FADE_BEGIN
+	halo.distance_fade_length = REMOTE_HALO_FADE_LENGTH
+	# Fener: yerel hep gölgeli; uzak fener başlangıçta gölgesiz, `_update_light_lod` en yakın N'ini açar.
+	flashlight.shadow_enabled = is_local
+	flashlight.distance_fade_enabled = not is_local
+	flashlight.distance_fade_begin = REMOTE_SPOT_FADE_BEGIN
+	flashlight.distance_fade_length = REMOTE_SPOT_FADE_LENGTH
+	flashlight.distance_fade_shadow = REMOTE_SPOT_SHADOW_MAX_DIST   # gölge açık olsa da bu mesafede motor söndürür
+	_lod_remotes.erase(self)
+	if not is_local and DisplayServer.get_name() != "headless":
+		_lod_remotes.append(self)
+
+
+func _exit_tree() -> void:
+	_lod_remotes.erase(self)
+
+
+## Statik, tüm uzak oyuncular için TEK sıralama (~4.5 Hz; hangi Player'ın _process'i önce yakalarsa o yapar).
+## Kameraya en yakın REMOTE_SHADOW_SPOTS uzak fener gölgeli, kalanı gölgesiz. Işık görünürlüğüne dokunmaz
+## (ölüm/görünmezlik gizlemesi `flashlight.visible` ile ayrı yürür). Headless'ta liste boş → hiçbir şey yapmaz.
+static func _update_light_lod(vp: Viewport) -> void:
+	var now := Time.get_ticks_msec()
+	if now < _lod_next_ms:
+		return
+	_lod_next_ms = now + int(LIGHT_LOD_INTERVAL * 1000.0)
+	var cam := vp.get_camera_3d() if vp != null else null
+	if cam == null:
+		return
+	var cam_pos := cam.global_position
+	var ranked: Array = []
+	for i in range(_lod_remotes.size() - 1, -1, -1):
+		var p = _lod_remotes[i]
+		if not is_instance_valid(p):
+			_lod_remotes.remove_at(i)
+			continue
+		var fl: SpotLight3D = p.flashlight
+		if fl == null or not fl.is_visible_in_tree():
+			if fl != null:
+				fl.shadow_enabled = false
+			continue
+		var d: float = fl.global_position.distance_to(cam_pos)
+		if fl.shadow_enabled:
+			d -= LIGHT_LOD_HYSTERESIS
+		ranked.append([d, fl])
+	ranked.sort_custom(func(a, b): return a[0] < b[0])
+	for i in ranked.size():
+		var want: bool = i < REMOTE_SHADOW_SPOTS and ranked[i][0] < REMOTE_SPOT_SHADOW_MAX_DIST
+		var light: SpotLight3D = ranked[i][1]
+		if light.shadow_enabled != want:
+			light.shadow_enabled = want
 
 
 func _add_render_layer(node: Node, layer_bit: int) -> void:
@@ -747,6 +814,8 @@ func flash_fx(color: Color, strength: float) -> void:
 
 
 func _process(delta: float) -> void:
+	if not _lod_remotes.is_empty():
+		_update_light_lod(get_viewport())
 	if _special_laser != null:
 		_aim_special_laser()   # animasyon namluyu oynattıkça lazer nişangaha kilitli kalsın
 	if is_invisible:
@@ -773,8 +842,8 @@ func _physics_process(delta: float) -> void:
 	_update_flip_timer(delta)
 	_stab_timer = maxf(_stab_timer - delta, 0.0)
 	if _input_driven:
-		if is_local:
-			_handle_stab_input(delta)  # tuzaktayken de (_handle_local_input erken döner) — bot bıçak kullanmaz
+		if is_local or _bot_driven:
+			_handle_stab_input(delta)  # tuzaktayken de (_handle_local_input erken döner); bot: istek set_bot_input'tan
 		_handle_local_input(delta)    # bot: girdi set_bot_input'tan
 	else:
 		_interpolate_remote(delta)
@@ -1003,6 +1072,7 @@ func _get_special_fx() -> GDScript:
 
 ## Sol tık basışı: tek özel mermi → yerelde hemen "hazır değil" → PowerupManager slotu boşaltsın
 func _fire_special() -> void:
+	current_weapon.aim_point = _get_shot_aim_point()
 	current_weapon.fire_special(peer_id, team_id, _get_aim_target())   # mermi lazerle aynı çizgide: nişangaha
 	set_special_armed(false)
 	var scene := get_tree().current_scene
@@ -1040,8 +1110,8 @@ func _handle_local_input(delta: float) -> void:
 	dir = dir.normalized()
 
 	# Hareket modu: varsayılan yürüyüş; Ctrl = çömelme, Shift = koşu (ikisi de süreli + yenilenir)
-	# Bot zıplamaz / takla atmaz (Space hep bırakılmış sayılır)
-	var space_down := not typing and not _bot_driven and Input.is_physical_key_pressed(KEY_SPACE)
+	# Bot: Space = BotBrain'in zıplama isteği (takla YOK — aşağıda bot için kapalı)
+	var space_down := _bot_jump if _bot_driven else (not typing and Input.is_physical_key_pressed(KEY_SPACE))
 	var space_pressed := space_down and not _space_was_down
 	_space_was_down = space_down
 	_flip_cooldown = maxf(_flip_cooldown - delta, 0.0)
@@ -1063,7 +1133,7 @@ func _handle_local_input(delta: float) -> void:
 			velocity.x += lunge.x
 			velocity.z += lunge.z
 		# Takla: çömelirken (Ctrl) hareket halinde Space'e bas
-		if space_pressed and move_mode == MoveMode.CROUCH and dir != Vector3.ZERO and is_on_floor() and _stab_timer <= 0.0 \
+		if space_pressed and not _bot_driven and move_mode == MoveMode.CROUCH and dir != Vector3.ZERO and is_on_floor() and _stab_timer <= 0.0 \
 				and _flip_cooldown <= 0.0 and not crouch_locked and crouch_stamina >= FLIP_STAMINA:
 			_start_local_flip(dir)
 
@@ -1120,6 +1190,7 @@ func _handle_local_input(delta: float) -> void:
 			_fire_special()
 			_shoot_blocked = true   # tuş basılı kalırsa tam otomatik tüfek hemen ateşlemesin
 	elif shoot_pressed and not _shoot_blocked and current_weapon and not typing and _flip == Flip.NONE and _stab_timer <= 0.0:
+		current_weapon.aim_point = _get_shot_aim_point()
 		current_weapon.try_shoot(peer_id, team_id)
 
 	var reload_pressed: bool
@@ -1148,9 +1219,15 @@ func _handle_local_input(delta: float) -> void:
 
 ## move_dir: dünya XZ (sıfır ya da normalize), aim_pos: dünya nişan noktası, fire: tetik BASILI,
 ## reload: tek kare istek (bir sonraki fizik karesinde tüketilir), run: koşu (dayanıklılık kurallarına tabi)
-func set_bot_input(move_dir: Vector3, aim_pos: Vector3, fire: bool, reload: bool, run: bool) -> void:
+## crouch: Ctrl basılı (süreli — tükenince kilitlenir), jump: Space basılı, stab: bıçak isteği (tek seferlik; bekleme Player'da)
+func set_bot_input(move_dir: Vector3, aim_pos: Vector3, fire: bool, reload: bool, run: bool,
+		crouch: bool = false, jump: bool = false, stab: bool = false) -> void:
 	if not _bot_driven:
 		return
+	_bot_crouch = crouch
+	_bot_jump = jump
+	if stab:
+		_bot_stab_req = true
 	var flat := Vector3(move_dir.x, 0.0, move_dir.z)
 	_bot_move = flat.normalized() if flat.length_squared() > 0.0001 else Vector3.ZERO
 	_bot_aim = aim_pos
@@ -1187,6 +1264,9 @@ func _reset_bot_input() -> void:
 	_bot_fire_prev = false
 	_bot_reload_req = false
 	_bot_run = false
+	_bot_crouch = false
+	_bot_jump = false
+	_bot_stab_req = false
 	_bot_repress_t = 0.0
 
 
@@ -1241,13 +1321,19 @@ func _try_step_up(horizontal_velocity: Vector3) -> void:
 ## Bıçaklama girişi (sadece local): basış anında animasyonu herkese yayınlar, STAB_HIT_TIME sonra hedefi arar
 func _handle_stab_input(delta: float) -> void:
 	_stab_cooldown = maxf(_stab_cooldown - delta, 0.0)
-	var typing := ChatBox.is_typing
-	var down := not typing and (Input.is_physical_key_pressed(STAB_KEY) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
-	var pressed := down and not _stab_was_down
-	_stab_was_down = down
+	var pressed := false
 	var knife_mode := is_knife_mode()
-	if knife_mode and not typing and Input.is_action_pressed("shoot"):
-		pressed = true   # bıçak modu: sol tık (basılı tutunca bekleme bitince tekrar)
+	if _bot_driven:
+		# Bot: BotBrain'in isteği (her girişte tüketilir; bekleme aşağıda insanla aynı)
+		pressed = _bot_stab_req
+		_bot_stab_req = false
+	else:
+		var typing := ChatBox.is_typing
+		var down := not typing and (Input.is_physical_key_pressed(STAB_KEY) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+		pressed = down and not _stab_was_down
+		_stab_was_down = down
+		if knife_mode and not typing and Input.is_action_pressed("shoot"):
+			pressed = true   # bıçak modu: sol tık (basılı tutunca bekleme bitince tekrar)
 	if pressed and _stab_cooldown <= 0.0 and _flip == Flip.NONE:
 		_stab_cooldown = KNIFE_STAB_COOLDOWN if knife_mode else STAB_COOLDOWN
 		_stab_pending = STAB_HIT_TIME
@@ -1303,7 +1389,8 @@ func _request_stab(target_peer: int) -> void:
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:
 		sender = 1
-	if sender != peer_id or is_dead:
+	# Bot: gönderen sahibi değil HOST olmalı (bot id'sinden RPC gelmez; yerel doğrudan çağrı → sender 1)
+	if (sender != 1 if is_bot else sender != peer_id) or is_dead:
 		return
 	var target: Variant = GameManager.active_players.get(target_peer)
 	if target == null or not is_instance_valid(target) or target.is_dead or target.team_id == team_id:
@@ -1377,8 +1464,12 @@ func _flip_speed() -> float:
 ## Tükenen dayanıklılık kilitlenir, *_UNLOCK seviyesine dolana kadar o mod kullanılamaz. Bırakınca
 ## STAMINA_REGEN_DELAY sonra dolar. Çömelmesi biten oyuncu otomatik kalkar.
 func _update_move_mode(dir: Vector3, typing: bool, delta: float) -> void:
-	# Bot çömelmez; koşuyu BotBrain ister (aynı dayanıklılık/kilit kuralları)
-	var want_crouch := not typing and not _bot_driven and Input.is_physical_key_pressed(KEY_CTRL) and not _airborne
+	# Bot: çömelme/koşuyu BotBrain ister (aynı dayanıklılık/kilit kuralları — sonsuz çömelme yok)
+	var want_crouch: bool
+	if _bot_driven:
+		want_crouch = _bot_crouch and not _airborne
+	else:
+		want_crouch = not typing and Input.is_physical_key_pressed(KEY_CTRL) and not _airborne
 	var want_sprint: bool
 	if _bot_driven:
 		want_sprint = _bot_run and dir != Vector3.ZERO
@@ -1450,6 +1541,30 @@ func _get_aim_target() -> Vector3:
 	# Nişan düzlemi oyuncunun bel hizası (engebeli haritalarda — kum tepesi, arazi — sabit 0.9 sapıyordu)
 	var t := (global_position.y + 0.9 - from.y) / dir.y
 	return from + dir * t
+
+
+## Merminin dikey hedefi (Weapon._pitched): nişangahın altındaki RAKİBİN ya da ZEMİNİN göğüs hizası — farklı katta/yükseklikteki
+## rakip vurulabilsin. Duvar yüzeyi / hiçbir şey → INF (yatay atış, eski davranış). Sadece atış anında (her kare değil).
+const SHOT_AIM_CHEST := 1.15   # vuruş kutusu 1.8 m; ölçeksiz namlu ~1.2 m → düzde fark ölü bölgede kalır
+func _get_shot_aim_point() -> Vector3:
+	if _bot_driven:
+		return _bot_aim + Vector3(0, SHOT_AIM_CHEST, 0) if _bot_has_aim else Vector3.INF   # BotBrain hedefin ayak noktasını verir
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return Vector3.INF
+	var mouse: Vector2 = GAME_SETTINGS.aim_screen_position(get_viewport())
+	var from := cam.project_ray_origin(mouse)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(mouse) * 250.0, 1)
+	q.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return Vector3.INF
+	var col: Object = hit["collider"]
+	if col is CharacterBody3D:
+		return (col as Node3D).global_position + Vector3(0, SHOT_AIM_CHEST, 0)
+	if (hit["normal"] as Vector3).y > 0.6:   # zemin / rampa / platform üstü
+		return (hit["position"] as Vector3) + Vector3(0, SHOT_AIM_CHEST, 0)
+	return Vector3.INF
 
 
 func _interpolate_remote(delta: float) -> void:

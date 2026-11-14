@@ -47,8 +47,7 @@ func initialize(
 	team_id: int,
 	p_max_distance: float = 60.0
 ) -> void:
-	direction = dir.normalized()
-	direction.y = 0.0  # Yatay düzlemde kal
+	direction = dir.normalized()   # dikey bileşen Weapon._pitched'den (farklı yükseklikteki hedef); düzde 0
 	speed = spd
 	damage = dmg
 	shooter_peer_id = peer_id

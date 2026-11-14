@@ -52,6 +52,16 @@ motor argümanları `OS.get_cmdline_args()`'a DÜŞMEZ — editör Çalıştırm
 MenuBackground3D `menu_background` false → asker yok. SettingsWindow: TASLAK + UYGULA/KAPAT/VARSAYILAN, sekmeler GRAFİK/KONTROLLER/SES/OYUN;
 MainMenu sol alt "⚙ AYARLAR" (kapanınca arka plan ayarı değiştiyse yeniden kurar), HUD ESC menüsü "AYARLAR".
 
+## Sistem testi (benchmark) — `scenes/benchmark/Benchmark.gd` (preload, class_name YOK)
+`TacticalDark.exe --sysbench` (Godot'nun kendi `--benchmark` bayrağıyla çakışmasın diye bu ad; arkadaşlar için `tools/sistem_testi.bat` exe'nin yanına).
+`Main._ready` → `requested()` ise menü yerine root'a eklenir (`_ran` → menüye dönüşte tekrar başlamaz). Host kurar (LAN yayını `stop_hosting`), haritanın en büyük formatını botla doldurur,
+süreli mod 30 dk → maç başlayınca kamera `CameraController.spectate(bot)` ile 9 sn'de bir başka bota geçer, izlenen bot 5 sn'de bir sis/bomba/flaş (`PowerupManager._throw_bomb`).
+Her profil (Düşük/Orta/Yüksek/Ultra): `GameSettings.set_all` BELLEKTE (kaydedilmez) + vsync kapalı/FPS sınırsız → 4 sn ısınma → ölçüm. Ölçüm: kare süreleri (ort, %1 düşük, p99, takılma >50 ms),
+GPU/çizim CPU (`viewport_measure_render_time`), betik süreleri `Probe` ile (Benchmark öncelik -1e6, sonda +1e6 → aradaki fark; fizik adımı ms + adım/kare), draw call, VRAM/RAM.
+Seçenekler `--sysbench-map= / -presets=low,high / -seconds= / -bots=N / -nobrain` (BotBrain'leri durdurur: yapay zekâ maliyetini ayırır) `/ -quit`.
+Çıktı `user://benchmark.csv` (EKLENİR, makineler birleştirilebilir) + `benchmark_<tarih>.txt`; bitince ayarlar dosyadan geri yüklenir, menüde sonuç paneli.
+İlk ölçüm (2026-11-14, i5-1240P + Iris Xe, editör/debug, desert_v3): 20 oyuncu Düşük 16.6 FPS — fizik adımı 14 ms (botsuz 0.65, BotBrain kapalı 5.1) → darboğaz HOST bot simülasyonu, grafik değil.
+
 ## Ses — `scenes/audio/Sfx.gd` (statik, `preload`) + `SfxListener.gd`
 **Gerçek kayıtlar** `res://audio/sfx/` (HEPSİ CC0 — kaynak/lisans `audio/sfx/CREDITS.md`: Free Firearm Sound Library silahlar,
 OGA nefes/patlama/bang, Kenney adım/arayüz/metal). `FILES` = ad → varyant listesi (`stream` her çalışta rastgele biri). Kullanıcı ilk
@@ -120,9 +130,14 @@ Bot id = `NetworkManager.BOT_ID_BASE` (2e9) + n — negatif değil (`<0` kodda "
 GameManager: `check_all_characters_selected` botları beklemez; `_expected_loaders` bot içermez; host `_spawn_bots` (map_ready + yerel oyuncudan sonra; `_setup_bot_nav` ←
 harita `get_nav_grid()` {wall,width,height,origin,cell}; Map.gd = Maze_minimap.png, ImportedMap = `_wall` + void + 0.75 m üstü basamak kapalı) → Player "Player_<id>" + BotBrain çocuğu;
 `_match_go_rpc` botları da ışınlar. Player: `is_bot`, `_input_driven` = is_local VEYA (bot VE host) — `is_local` anlamı DEĞİŞMEDİ (kamera/HUD/ses);
-`set_bot_input(move, aim_pos, fire, reload, run)`. Bullet: bot mermisinin hasarını host bildirir. Card.gd: host'ta bot gövdesi → `handle_card_pickup`. ImportedMap düşen botu kurtarır.
-BotBrain durumları WANDER/GO_CARD/CARRY/ESCORT/HUNT/FIGHT; ısınmada ateş etmez; güç/bomba/bıçak/zıplama YOK (SADECE BIÇAK modunda saldıramaz). Migration'da botlar SİLİNİR
-(snapshot'tan çıkar). UI: HUD skor tablosu + CharacterSelect "BOT · otomatik". Test: `tools/test_bots.gd` (`-- A|B|AB`; A botlu maç, B botsuz regresyon).
+`set_bot_input(move, aim_pos, fire, reload, run, crouch := false, jump := false, stab := false)`. Bullet: bot mermisinin hasarını host bildirir. Card.gd: host'ta bot gövdesi → `handle_card_pickup`. ImportedMap düşen botu kurtarır.
+BotBrain durumları WANDER/GO_CARD/CARRY/ESCORT/HUNT/FIGHT; ısınmada ateş etmez; güç/bomba/takla YOK. **Zorluk** (sabitler BotBrain başında): tepki `REACTION_TIME` 0.7 sn, görüş 18 m/130°,
+nişan dönüşü yavaş + mesafeyle büyüyen nişan hatası (ilk görüşte ×1.9, 1.4 sn'de normale), ateş serileri kısa. **Kademeli bilgi (kullanıcı: "yerlerini biliyormuş gibi")**: kartı sadece `CARD_SEE_RANGE` 7 m + duvar ışını ile fark eder,
+kapıyı `DOOR_SEE_RANGE` 12 m ışınla; maç saati ölü botlarda da akar; `HINT_TIME` ~4 dk sonra botların %65'i kart/kapı YAKLAŞIK bölgesine (9-16 m) gider, `CARD_REVEAL_TIME` ~6,5 dk sonra hepsi kesin konumu bilir;
+bilgisi yoksa taşıyıcı dolaşarak kapı arar (`_carry_goal`); kapı bilgisi takımda paylaşılmaz. **Bıçak:** `Player._handle_stab_input` bot için de çalışır (`set_bot_input` stab isteği tek seferlik); host `_request_stab` bot için gönderen = 1
+(bot id'si `peer_id` ile eşleşmezdi → vuruşlar reddediliyordu). SADECE BIÇAK modunda bot rakibe koşar (4.5 m+ ise arkasına dolanır, `KNIFE_STAB_DIST` 1.65 m'de bıçaklar); normal modda 1.65 m içinde seyrek bıçak.
+**Çömelme/zıplama** seyrek (bekleme 4-9 sn, çömelmişken ateş yok, Player dayanıklılık/bekleme kuralları aynen geçerli; takılınca `_unstick` zıplar). Migration'da botlar SİLİNİR
+(snapshot'tan çıkar). UI: HUD skor tablosu + CharacterSelect "BOT · otomatik". Test: `tools/test_bots.gd` (`-- A|B|K|AB|KAB`; A botlu maç, B botsuz regresyon, K bıçak modunda bot vuruşu).
 
 ---
 
@@ -322,7 +337,15 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 - `UpperBodyLayer.gd` (SkeletonModifier3D): AnimationPlayer bacakları oynatır; spine_01 ve altına (omurga kısmi ağırlık)
   `set_base(AimIdle)` + aksiyon (`play_once` / `hold`) — `Animation.rotation_track_interpolate` ile doğrudan örnekler.
   Ölüyken `set_enabled_smooth(false)` (tam gövde `Dying`, `DYING_SPEED=1.6`).
-- `HandRifle.gd`: prosedürel tüfek (`Player._build_rifle`, Weapon sahnesinde görsel yok) her kare sağ el → sol ele hizalanır;
+- **Silah modelleri (2026-11-14, kullanıcının Tripo modelleri):** `HandRifle.build_weapon_mesh(karakter)` / `build_knife_model()` (Player.initialize + MenuBackground3D) —
+  `WEAPON_MODELS` tablosu: Medic `silahlar/medic_silah.glb` (M4 tipi), Runner `mp5.glb`, Sniper `sniper_tufek.glb` (AWP tipi), Tank `tank_tufek.glb` (PKM, bipodlu),
+  Visioner `karakterler/Visioner/m4a1.fbx` (FBX pürüzlülük/metal dokularını bağlamıyor → `rough_tex/metal_tex` kodda), bıçak `silahlar/bicak.glb` (`KNIFE_MODEL`).
+  Modeller 1 m'ye normalize + kendi içinde eğik/dönük (MP5 ~20°, sniper ~33° + ~19° yan, bıçak ~40°) → girdi başına MODEL uzayında `fwd` (namlu yönü, köşe verisinden
+  ölçüldü), `grip` (kabza = orijin), `tip` (→ "Muzzle" marker = mermi çıkışı), `tb` (uç–dip boyu), `length` (oyundaki boy m) → tüfek uzayı = ölçek × looking_at(fwd)⁻¹ × (p − grip);
+  dosya yoksa prosedürel kutu tüfeğe/bıçağa düşer. Tripo GLB'leri `EXT_meshopt_compression`+`KHR_mesh_quantization` (Godot açamaz) → `tools/decode_meshopt.py`
+  (saf Python: köşe v0, üçgen v0/v1, EXPONENTIAL/OCTAHEDRAL filtre; `tools/validate_glb.py` doğrular) → `asset model/silahlar/`; orijinaller `silahlar/kaynak/` (.gdignore).
+  Dokular 4K geliyor → `.import` `size_limit=1024`. Üçgenler 5k-121k, içe aktarma LOD'ları otomatik (39 m kamerada birkaç bin). MP5 0.80 / Medic 0.92 m: tüfek animasyonunda sol el önde boşta kalıyordu.
+- `HandRifle.gd`: tüfek (yukarıdaki model veya prosedürel; Weapon sahnesinde görsel yok) her kare sağ el → sol ele hizalanır;
   sol el ayrılınca son tutuşu sağ ele göre korur. Sadece görsel (mermi Weapon/Muzzle'dan).
   **Nişan düzeltmesi:** `aim_node`=Player root; her kare namlunun nişandan yatay sapmasını `aim_error` olarak ölçer →
   `Player._update_leg_facing` `_aim_corr`'u integre eder (`AIM_CORR_GAIN`, ±`MAX_AIM_CORR`), SpineTwist'e eklenir.
@@ -362,7 +385,11 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 
 - `Weapon.try_shoot(shooter_peer, shooter_team)`: ammo/fire_rate/reload kontrolü → `holder.global_transform.basis.z`
   ters yönü (forward) + saçılma açısı → `_spawn_bullet.rpc()` (call_local).
-- `Bullet.initialize(dir, speed, dmg, shooter_peer, shooter_team, max_dist)`: yatay düzlemde hareket. Görsel `Model` =
+- **Dikey nişan** (kullanıcı: farklı yükseklikteki rakip vurulamıyordu — mermiler tamamen yataydı): Player atıştan önce `weapon.aim_point = _get_shot_aim_point()`
+  (nişangahtan fizik ışını: rakip gövdesi → onun göğsü `SHOT_AIM_CHEST` 1.15, zemin/üst yüzey (normal.y>0.6) → o noktanın 1.15 m üstü, duvar/boşluk → INF;
+  bot: `_bot_aim` + 1.15) → `Weapon._pitched` namludan o noktaya eğim (≤`MAX_PITCH_DEG` 40), yükseklik farkı `PITCH_DEADZONE` 0.45 m altındaysa YATAY
+  (düzde mermi hedefin ardında yere gömülmesin). Yön RPC'de zaten 3B → ağ protokolü değişmedi. Özel silah da aynı.
+- `Bullet.initialize(dir, speed, dmg, shooter_peer, shooter_team, max_dist)`: verilen 3B yönde (düzde yatay) hareket. Görsel `Model` =
   `asset model/mermiler/Mermi_OyunIci_Tracer_Scale.glb` (uç -Z, ×14 ölçek ~0.6 m, turuncu emissive iz; ışık yok) →
   `initialize` `Basis.looking_at(dir)` ile yöne çevirir + `_disable_shadows`. Klasördeki `.blend` `importer="skip"` (Blender yolu yok → import takılıyordu).
 - `Bullet._on_body_entered(body)`:
@@ -401,7 +428,11 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   (rampa/gövde kısmi hücreleri). `water_floor` (Liman): su mesh'i aynı katmanda güvenlik zemini. Haritanın 4 m altına düşen
   yerel oyuncu kendi spawn'ına ışınlanır (`FALL_RESCUE_DEPTH`). MAPS `water_emission` (Liman 0.15) →
   `minimap_texture/min/max` (Minimap `_check_map_source`), güç noktaları (`PowerupManager.set_points`), otomatik duvar lambaları
-  (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). **Görüş engeli:**
+  (Marker3D + `WallLamps.rebuild()`; GLB'lerin WallLamps/PowerupPoints grupları BOŞ). Tohumlu RNG (harita id). **PERFORMANS (2026-11-13, v3 ani droplar):** `_prewarm_render` (`_finish`'ten önce, perde açıkken) her (malzeme, mesh) çiftinin opak+saydam (0.5) kopyasını,
+  geçici gölgeli Spot/Omni ışığı ve minik `SmokeCloud` (`prewarm` bayrağı: kendi solmaz) kamera önüne koyup 6 kare sonra siler → ilk karede 173 ms shader/pipeline derleme hitch'i kalktı (~19 ms);
+  `_optimize_render` (sadece `convex_props` v3): Decal/Grass/Scatter `cast_shadow` kapalı + 70 m `visibility_range_end`, Water/Neon/LED/Beacon/Holo/Glass/GlowRing gölgesiz (her gölgeli fener/Halo yüzlerce yamayı yeniden çiziyordu);
+  görüş engeli taraması 30 Hz + taramada en fazla 6 ağaç tepesi (oyuncuya en yakın); WallLamps titreşimi 30 Hz + kameradan 60 m ötesi atlanır; ProximityReveal/Door durağan halde her kare yazmaz.
+  AÇIK: her oyuncuda gölgeli SpotLight + gölgeli Halo (20 oyuncu = 20+20 gölge) — uzak/takım arkadaşı Halo'yu gölgesiz yapmak sıradaki aday; 20 bot host yükü ölçülmedi. **Görüş engeli:**
   `_physics_process` kameradan yerel oyuncuya (0.35/1.1/1.8 m) ışın → araya giren mesh (trimesh body'nin ebeveyni, zemin/arazi
   hariç) + doğruyu kesen ağaç tepesi AABB'si `transparency` 0.72 — SADECE saklarken (kullanıcı kuralı). Labirent tek mesh → yok. Bitince `map_ready` → GameManager `_wait_map_ready()`
   (oyuncu/kart/kapı doğmadan önce; Labirent'te sinyal yok → beklemez). Kurulum 1.2-3.6 s. `_get_marker_positions` artık Node3D +
@@ -467,7 +498,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   **TEST MODU** (`TEST_MODE = OS.is_debug_build()` — editörden çalıştırınca açık, export'ta kapalı; host da debug olmalı):
   **Test tuşları RAKAM (F tuşu YOK — editör içinde F1/F5/F6/F7/F8 editör kısayolu, F8 oyunu DURDURUR)**: 7 → `test_show_objectives` (yerel: Minimap kart ◆ + kapı ■, ProximityReveal kart/kapıyı mesafesiz gösterir).
   1 Bomba / 2 Sağlık / 3 Uydu / 6 Flaş / 8 Sis / 9 Tuzak → `_request_test_give` (slotu değiştirir), 5 → `_request_test_spawn`
-  (önüne rastgele güç, 15 s ömür), 0 → `_request_test_trap` (önüne takımsız `team -1` tuzak — kendi tuzağın seni yakalamadığı için tek başına yakalanma testi). HUD skor panelinin altında tuş hatırlatıcısı (`_setup_test_hint`). Sinyaller: `inventory_changed`, `reveal_started`, `notice` (HUD banner).
+  (önüne rastgele güç, 15 s ömür), 0 → `_request_test_trap` (önüne takımsız `team -1` tuzak — kendi tuzağın seni yakalamadığı için tek başına yakalanma testi). HUD skor panelinin altında tuş hatırlatıcısı (`_setup_test_hint`). **U** (debug) → `scenes/ui/AlertTestPanel.gd` sağda düğme listesi: her uyarı bandı/hedef çipi/kapı kilidi görünümünü HUD'un gerçek çizimiyle (`_show_banner`, `debug_objective`, `debug_unlock`) gösterir, oyun durumuna dokunmaz; açıkken fare serbest + `ChatBox.is_typing` ile oyuncu girdisi kilitli; U/ESC kapatır. Sinyaller: `inventory_changed`, `reveal_started`, `notice` (HUD banner).
   Geç katılan client 1.5 s sonra `_request_sync`. HUD envanter slotu oyuncu kartının sağında.
 - **`WallLamps.gd`** (Map.tscn → `WallLamps` Node3D, çocukları `Lamp*` Marker3D — `tools/maze_lamps.py` üretir,
   32 adet, editörde taşınabilir): her marker'da armatür + emissive ampul + OmniLight (gölgesiz, r=6.5) +
@@ -483,9 +514,21 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   ÇALIŞMA ANINDA yazar, default_env.tres'e dokunmaz), GameSettings.apply_all → `apply_tree` (oyunda ayar değişince). ACES + exposure, soğuk mavi
   ortam, hafif mavi derinlik pusu, kontrast/doygunluk (hepsi ~bedava); glow (seviye 2-4) Yüksek+ (`shadows`≥2, ~3.2 ms), SSAO yarım çöz. sadece Ultra
   (~2.5 ms) — ölçüm 1600×900 iGPU. Player: fener `FLASHLIGHT_COLOR` hafif sıcak + `Flashlight/Halo` turuncu OmniLight (`_setup_halo_light`, r 4.5,
-  dual-paraboloid gölgeli, ~0.3 ms) HERKESE görünür (kullanıcı: ışık = konum ele verir); fenerin çocuğu → ölüm/görünmezlikte otomatik gizli.
+  dual-paraboloid) HERKESE görünür (kullanıcı: ışık = konum ele verir); fenerin çocuğu → ölüm/görünmezlikte otomatik gizli.
+  **Işık LOD (20 oyuncu FPS spike'ı):** fener + Halo gölgesi SADECE yerel oyuncuda hep açık; uzaklarda Halo gölgesiz + motor `distance_fade` (~45 m'de söner),
+  fener `distance_fade` 55-65 m + `distance_fade_shadow` 40 m, statik `Player._update_light_lod` (~4.5 Hz, tek sıralama, histerezis) kameraya en yakın `REMOTE_SHADOW_SPOTS` 3 uzak fenere gölge açar; headless'ta kapalı.
 - `CameraController.gd`: Player'ın child'ı DEĞİL, Map.tscn'de bağımsız Camera3D. `GameManager.local_player_spawned`
-  sinyaline bağlanır. Exponential lerp (`1-exp(-7*delta)`), OFFSET `(0,14,12)`, PITCH -50°.
+  sinyaline bağlanır. Exponential lerp (`1-exp(-7*delta)`), PITCH -50°. **FOV `FOV_DEG` 40** (kullanıcı: FOV 75'te kenar duvarları devriliyor, yakın/uzak
+  karakter boyu çok farklıydı) — `OFFSET` = eski `BASE_OFFSET (0,14,12)` × tan(37.5°)/tan(20°) ≈ ×2.11 (kamera–oyuncu ~39 m, ekran ortası kapsamı aynı).
+  Kameradan mesafeyle çalışan eşikler bu yüzden +20 m: SceneLighting `FOG_DENSITY` 0.0019, Player `REMOTE_*` ışık sönmeleri, WallLamps `ACTIVE_DIST` 80,
+  ImportedMap `DETAIL_VIS_END` 90 — FOV değişirse bunları da güncelle.
+  **Harita sınırı (kullanıcı: kamera sınırın arkasını göstermesin):** ebeveyn harita `get_camera_limits()` → yarı düzlemler `Vector3(nx, nz, d)` (n·p ≤ d;
+  ImportedMap `_play_planes` = duvarlarla aynı, Map.gd Labirent ±62/±46). `_clamp_look` bakış noktasını clampf mantığıyla içeri iter: ekranın zemin izi
+  (`_footprint`, önbellekli) düzlemleri geçmez. İz ileride `FAR_VIEW_CAP` 16 m'de kesilir (üst kenar ~50 m öteye bakıyor), yanlar oyuncu satırının genişliği ×
+  `SIDE_VIEW_FRACTION` 0.85 (yamuk üst kısım sayılsa kenardaki oyuncu ekrandan çıkardı).
+- **ImportedMap sınır duvarları:** varsayılan model AABB karesi; MAPS `play_octagon` = zemin mesh adı → o mesh'e oturan düzgün SEKİZGEN duvar (Kuantum
+  `Lab_Main_Titanium_Deck`, iç yarıçap 58.78 — kare duvar köşelerde sekizgenin dışını açık bırakıyordu). MAPS `hide_meshes` → gizli + çarpışmasız
+  (Kuantum `Subterranean_Coolant_Pool`: güverte altındaki 92 m havuzun köşeleri sekizgenin dışına "mavi taban" olarak taşıyordu).
 
 ---
 
@@ -541,7 +584,14 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   Sol üst skor paneli KALDIRILDI (kullanıcı; skor TAB tablosunda), hedef çipi + uyarı bandı (üst orta; `_carrier_peer` card_picked_up/dropped ile
   güncellenir), kill feed (sağ üst), oyuncu kartı (sol alt, `PLAYER_CARD_SCALE` 0.7 sol alt köşeden ölçekli; güç slotu/XP akışı `SIDE_COL_X`; karakter, can, mermi; şarjör ilerlemesi `weapon.reload_time` tween'i),
   Minimap (sağ alt, "TAKTİK HARİTA" başlığı yok), düşük can/hasar vinyeti, ölüm ekranı (`_local_player.is_dead` poll + `RESPAWN_TIME=3` geri sayım),
-  TAB scoreboard, ESC pause, oyun sonu (`_end_overlay`, ZAFER/YENİLGİ). "Ana Menüye Dön" → `GameManager.return_to_menu()`.
+  TAB scoreboard (`_setup_scoreboard`: tam ekran `holder` içinde anchor'la SABİT kutu — soldan/sağdan %22, üst/alttan %30 boşluk; 20 oyuncuda da aynı boyut;
+  takımlar 1×4 yan yana, SABİT lobi sırası (takım id 0-3 — skora göre yer DEĞİŞMEZ), taşarsa dikey ScrollContainer; KALIN YAZI YOK (`_sb_title_font/_sb_caps_font` embolden'sız), başlık ortalı + altında başlıktan ~24 px taşan kısa çizgi `_sb_underline`, RAKİP takımların karakteri "—" (gizli), panel α 0.78; K/Ö etiketleri takım başlık şeridinde, satır font 15).
+  **Uyarı kuralları (kullanıcı):** uyarı metinlerinde EMOJİ/SEMBOL YOK (⚠◆✕▶✚… kaldırıldı), "[Q] kullan" yazılmaz, "Tuzak çözücü boşa kullanıldı" yok.
+  TAVSİYELER ("Kartı bul ve al", "Kapıya koş, çemberde kal", "Ateş edersen görünür olursun"…) bant/çipe YAZILMAZ → `_show_tip(text)`: sağ kenarın ortası (~110 px içeride),
+  beyaz, kalın değil, 0.3 sn belirir/3 sn kalır/0.9 sn söner; kaynaklar: `_update_objective` (tavsiye DEĞİŞİNCE, `_last_obj_tip`), kilit paneli ilk belirişi, KİLİT SIFIRLANDI,
+  görünmezlik/özel silah, PowerupManager `tip(text)` sinyali (tuzak). Kapı kilidi: saniye YOK, yazının yanında dolan çember `RingProgress` (HUD iç sınıfı; `_unlock_bar`, taşıyıcı `_carrier_bar_fill`).
+  Kart ikonu = küçük dikey dikdörtgen (`_set_card_icon`; skor tablosunda taşıyıcı adının önünde, elmas değil).
+  Hedef çipi çoklu kartta: çerçevesiz "KARTLAR" + altında ortalı kart başına mini kart ikonu `_card_slots` (alınmış = beyaz, yerde = soluk gri; "TÜM KARTLAR SİZDE"/"… TOPLADI" de AYNI görünüm — beyaz, çerçevesiz, `_plain_caps_font` kalın değil 19 px), ESC pause, oyun sonu (`_end_overlay`, ZAFER/YENİLGİ). "Ana Menüye Dön" → `GameManager.return_to_menu()`.
   **Ölüm bandı** `DeathRecap.gd` (= `_death_overlay`, BF1 tarzı alt bant: öldüren amblem/ad/karakter/leş-ölüm/kalan can/"SEN – RAKİP" `_duel`,
   silah (`_method_key`: bomba/tuzak aynı hasar türü → yerel `_trapped_seen_ms` ile ayrılır), halka geri sayım; öldürenin gücü GÖSTERİLMEZ — kullanıcı istemedi) ←
   `_present_death`. **Öldürme bildirimi** `KillNotice.gd` (orta alt, kafatası + yöntem başlığı + toplam XP + kurban adı) ← `_present_kill`;

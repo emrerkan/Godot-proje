@@ -22,6 +22,11 @@ func _ready() -> void:
 	_register_spawn_points()
 
 
+## CameraController: kamera görüş alanı Bounds iç yüzlerini (±62 / ±46) geçmesin — Vector3(nx, nz, d): n·p ≤ d
+func get_camera_limits() -> Array[Vector3]:
+	return [Vector3(1, 0, NAV_MAX.x), Vector3(-1, 0, -NAV_MIN.x), Vector3(0, 1, NAV_MAX.y), Vector3(0, -1, -NAV_MIN.y)]
+
+
 ## Duvar mesh'inden çarpışma şekli üretir (oyuncular + mermiler duvara takılır, layer 1)
 func _build_maze_collision() -> void:
 	var mesh_inst := get_node_or_null("Maze/MazeMesh") as MeshInstance3D
