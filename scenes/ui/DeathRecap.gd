@@ -7,6 +7,8 @@
 extends Control
 
 const ICONS := preload("res://scenes/ui/IconSet.gd")
+const WEAPON_RENDER := preload("res://scenes/ui/WeaponRender.gd")
+const WEAPON_PIC_SIZE := Vector2(270, 90)   # silah resmi (3:1, WeaponRender.RENDER_SIZE ile aynı oran)
 
 ## Karakterin silahı (Player.WEAPON_CONFIGS sırası; gerçek model adı vermiyoruz)
 const WEAPON_NAMES := {
@@ -137,7 +139,7 @@ func present(info: Dictionary) -> void:
 	match key:
 		"knife", "backstab":
 			_weapon_name.text = tr("BIÇAK")   # arkadan da aynı — kullanıcı: "arkadan" yazmasın
-			icon = _knife_icon(76.0, UITheme.TEXT)
+			icon = WEAPON_RENDER.make_rect("knife", WEAPON_PIC_SIZE)
 		"special":
 			_weapon_name.text = tr("ÖZEL SİLAH")
 			icon = UITheme.label("⊕", 64, info.get("special_color", UITheme.DANGER), UITheme.font_bold)
@@ -148,8 +150,10 @@ func present(info: Dictionary) -> void:
 			_weapon_name.text = tr("TUZAK")
 			icon = ICONS.make("trap", 72.0, UITheme.TEXT)
 		_:
-			_weapon_name.text = tr(WEAPON_NAMES.get(info.get("killer_char", ""), "TÜFEK"))
-			icon = ICONS.make("weapon", 72.0, UITheme.TEXT)
+			var kc: String = info.get("killer_char", "")
+			_weapon_name.text = tr(WEAPON_NAMES.get(kc, "TÜFEK"))
+			# Öldürenin silah modelinin resmi (WeaponRender); karakter bilinmiyorsa çizgi ikon
+			icon = WEAPON_RENDER.make_rect(kc, WEAPON_PIC_SIZE) if WEAPON_NAMES.has(kc) else ICONS.make("weapon", 72.0, UITheme.TEXT)
 	_weapon_icon_holder.add_child(icon)
 	_ignore_mouse(icon)
 
@@ -244,7 +248,7 @@ func _build_weapon_section() -> Control:
 	_weapon_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	v.add_child(_weapon_name)
 	_weapon_icon_holder = CenterContainer.new()
-	_weapon_icon_holder.custom_minimum_size = Vector2(0, 80)
+	_weapon_icon_holder.custom_minimum_size = Vector2(0, 90)
 	v.add_child(_weapon_icon_holder)
 	return m
 
@@ -311,24 +315,6 @@ func _separator() -> Control:
 	s.custom_minimum_size = Vector2(1, 0)
 	s.size_flags_vertical = Control.SIZE_FILL
 	return s
-
-
-## Kodla çizilen bıçak (IconSet'te yok): eğimli düz uçlu ağız + siper + sap, tek renk
-func _knife_icon(px: float, col: Color) -> Control:
-	var c := Control.new()
-	c.custom_minimum_size = Vector2(px, px)
-	var s := px / 24.0
-	c.draw.connect(func() -> void:
-		# sap sol altta, ağız sağ üste uzanır
-		var blade := PackedVector2Array([Vector2(9.5, 12.5), Vector2(19, 3.5), Vector2(21.5, 2.5), Vector2(20.5, 5), Vector2(11.5, 14.5)])
-		for i in blade.size():
-			blade[i] *= s
-		c.draw_colored_polygon(blade, Color(col, 0.25))
-		blade.append(blade[0])
-		c.draw_polyline(blade, col, maxf(1.5, 2.0 * s), true)
-		c.draw_line(Vector2(7.5, 11.5) * s, Vector2(12.5, 16.5) * s, col, maxf(1.5, 2.0 * s))   # siper
-		c.draw_line(Vector2(3, 21) * s, Vector2(9.5, 14.5) * s, col, 3.5 * s))                  # sap
-	return c
 
 
 func _ignore_mouse(node: Node) -> void:

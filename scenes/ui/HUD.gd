@@ -262,8 +262,9 @@ func _process(delta: float) -> void:
 	if dead and not _death_overlay.visible and not _end_overlay.visible:
 		_death_overlay.visible = true
 		_death_overlay.start_countdown(RESPAWN_TIME)
-	elif not dead and _death_overlay.visible:
+	elif not dead and _death_overlay.visible and _debug_death_t <= 0.0:
 		_death_overlay.visible = false
+	_debug_death_t = maxf(_debug_death_t - delta, 0.0)
 
 	# Oyun sonu — lobiye otomatik dönüş geri sayımı (kozmetik; dönüşü GameManager RPC'si yapar)
 	if _end_overlay.visible:
@@ -972,6 +973,8 @@ func _setup_death_overlay() -> void:
 	_root.add_child(_kill_notice)
 	_death_overlay = preload("res://scenes/ui/DeathRecap.gd").new()
 	_root.add_child(_death_overlay)
+	# Silah resimlerini şimdiden çiz (ölüm/öldürme anında takılma olmasın; önbellekli, ikinci maçta anında)
+	preload("res://scenes/ui/WeaponRender.gd").prewarm(get_tree())
 
 
 ## Öldürme yöntemi → DeathRecap/KillNotice anahtarı. Bomba ve tuzak aynı hasar türünü (1) kullanır:
@@ -1017,17 +1020,22 @@ func _present_kill(victim_peer_id: int, method: int, vname: String, vcol: Color)
 	var carrier: bool = GameManager.get_cards_held(victim_peer_id) > 0  # kart düşürme sinyali bundan SONRA gelir
 	var xp: int = GameManager.XP_KILL + (GameManager.XP_CARRIER_KILL_BONUS if carrier else 0)
 	var title := "KART TAŞIYICI ÖLDÜRÜLDÜ" if carrier else "DÜŞMAN ÖLDÜRÜLDÜ"
+	var weapon_key := ""   # silah resmi (WeaponRender): mermide kendi karakterinin silahı, bıçakta bıçak
 	match _method_key(method, false):
 		"backstab":
 			xp += GameManager.XP_BACKSTAB_BONUS
 			title = "BIÇAKLA ÖLDÜRME"   # kullanıcı: "arkadan" yazmasın, sadece bıçak (XP bonusu aynı)
+			weapon_key = "knife"
 		"knife":
 			xp += GameManager.XP_KNIFE_BONUS
 			title = "BIÇAKLA ÖLDÜRME"
+			weapon_key = "knife"
 		"special":
 			title = "ÖZEL SİLAHLA ÖLDÜRME"
+		"bullet":
+			weapon_key = str(NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("character", ""))
 		# bomba/tuzak aynı hasar türü ve kurbanın tuzak durumu ölümde sıfırlanıyor → genel başlık kalır
-	_kill_notice.show_kill(title, xp, vname, vcol)
+	_kill_notice.show_kill(title, xp, vname, vcol, weapon_key)
 
 
 func _setup_scoreboard() -> void:
@@ -1662,6 +1670,23 @@ func debug_objective(text: String, col: Color, cards_mode := false, taken := 0, 
 
 
 ## Test: kapı kilidi panelini göster, çember kilit süresince 0→1 dolar, sonra kapanır
+## U test paneli: ölüm bandını oyuncu ölmeden gösterir (geri sayım kadar açık kalır)
+var _debug_death_t := 0.0
+func debug_death(info: Dictionary) -> void:
+	var base := {"killer_name": "BOT 3", "killer_team": 1, "kills": 4, "deaths": 2, "killer_hp": 62,
+		"duel_me": 1, "duel_them": 2, "special_color": _power_info(T_SPECIAL).get("color", COL_SPECIAL)}
+	base.merge(info, true)
+	_death_overlay.present(base)
+	_death_overlay.visible = true
+	_death_overlay.start_countdown(RESPAWN_TIME)
+	_debug_death_t = RESPAWN_TIME + 0.5
+
+
+## U test paneli: öldürme bildirimi
+func debug_kill(title: String, xp: int, weapon_key: String) -> void:
+	_kill_notice.show_kill(title, xp, "BOT 5", TeamManager.get_color(2), weapon_key)
+
+
 func debug_unlock(text: String, col: Color) -> void:
 	_unlock_lbl.text = text
 	_unlock_lbl.add_theme_color_override("font_color", col)

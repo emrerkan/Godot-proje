@@ -504,7 +504,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   **TEST MODU** (`TEST_MODE = OS.is_debug_build()` — editörden çalıştırınca açık, export'ta kapalı; host da debug olmalı):
   **Test tuşları RAKAM (F tuşu YOK — editör içinde F1/F5/F6/F7/F8 editör kısayolu, F8 oyunu DURDURUR)**: 7 → `test_show_objectives` (yerel: Minimap kart ◆ + kapı ■, ProximityReveal kart/kapıyı mesafesiz gösterir).
   1 Bomba / 2 Sağlık / 3 Uydu / 6 Flaş / 8 Sis / 9 Tuzak → `_request_test_give` (slotu değiştirir), 5 → `_request_test_spawn`
-  (önüne rastgele güç, 15 s ömür), 0 → `_request_test_trap` (önüne takımsız `team -1` tuzak — kendi tuzağın seni yakalamadığı için tek başına yakalanma testi). HUD skor panelinin altında tuş hatırlatıcısı (`_setup_test_hint`). **U** (debug) → `scenes/ui/AlertTestPanel.gd` sağda düğme listesi: her uyarı bandı/hedef çipi/kapı kilidi görünümünü HUD'un gerçek çizimiyle (`_show_banner`, `debug_objective`, `debug_unlock`) gösterir, oyun durumuna dokunmaz; açıkken fare serbest + `ChatBox.is_typing` ile oyuncu girdisi kilitli; U/ESC kapatır. Sinyaller: `inventory_changed`, `reveal_started`, `notice` (HUD banner).
+  (önüne rastgele güç, 15 s ömür), 0 → `_request_test_trap` (önüne takımsız `team -1` tuzak — kendi tuzağın seni yakalamadığı için tek başına yakalanma testi). HUD skor panelinin altında tuş hatırlatıcısı (`_setup_test_hint`). **U** (debug) → `scenes/ui/AlertTestPanel.gd` sağda düğme listesi: her uyarı bandı/hedef çipi/kapı kilidi görünümünü HUD'un gerçek çizimiyle (`_show_banner`, `debug_objective`, `debug_unlock`) gösterir + ÖLÜM BANDI / ÖLDÜRME BİLDİRİMİ bölümleri (her karakter silahı, bıçak, bomba, tuzak, özel; HUD `debug_death(info)` — `_debug_death_t` geri sayım boyunca bandı açık tutar — / `debug_kill`), oyun durumuna dokunmaz; açıkken fare serbest + `ChatBox.is_typing` ile oyuncu girdisi kilitli; U/ESC kapatır. Sinyaller: `inventory_changed`, `reveal_started`, `notice` (HUD banner).
   Geç katılan client 1.5 s sonra `_request_sync`. HUD envanter slotu oyuncu kartının sağında.
 - **`WallLamps.gd`** (Map.tscn → `WallLamps` Node3D, çocukları `Lamp*` Marker3D — `tools/maze_lamps.py` üretir,
   32 adet, editörde taşınabilir): her marker'da armatür + emissive ampul + OmniLight (gölgesiz, r=6.5) +
@@ -602,6 +602,9 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   silah (`_method_key`: bomba/tuzak aynı hasar türü → yerel `_trapped_seen_ms` ile ayrılır), halka geri sayım; öldürenin gücü GÖSTERİLMEZ — kullanıcı istemedi) ←
   `_present_death`. **Öldürme bildirimi** `KillNotice.gd` (orta alt, kafatası + yöntem başlığı + toplam XP + kurban adı) ← `_present_kill`;
   bu öldürme XP nedenleri (`KILL_XP_REASONS`) sol XP akışında tekrar yazılmaz.
+  **Silah resimleri** `scenes/ui/WeaponRender.gd` (statik, preload): `HandRifle.build_weapon_mesh/build_knife_model` modelini saydam SubViewport'ta ortografik yandan
+  (namlu sağa, köşe noktalarından sıkı çerçeve) bir kez çizip ImageTexture önbelleğe alır; HUD `_setup_death_overlay` → `prewarm`, `make_rect(key, size)` (key = karakter / "knife").
+  DeathRecap: mermi → öldürenin silahı, bıçak → bıçak (bomba/tuzak/özel çizgi ikon kalır); KillNotice `show_kill(..., weapon_key)` metnin sağında (mermide kendi silahın). Headless'ta çizim yok.
   Oyun mantığına dokunmaz — sadece sinyal dinler.
 
 ---

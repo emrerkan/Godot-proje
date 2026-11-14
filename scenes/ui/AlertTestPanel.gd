@@ -6,6 +6,8 @@ extends Control
 
 var hud: Node   # HUD.gd örneği (HUD kurar)
 
+const CHARS := ["Tank", "Visioner", "Runner", "Medic", "Sniper"]
+
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -59,6 +61,24 @@ func _ready() -> void:
 	_section(list, "KAPI KİLİDİ (çember dolar)")
 	_btn(list, "Takımın kapıyı açıyor", func() -> void: _unlock(tr("%s TAKIM KAPIYI AÇIYOR") % "MAVİ", blue, "Taşıyıcıyı koru"))
 	_btn(list, "Rakip kapıyı açıyor", func() -> void: _unlock(tr("%s TAKIM KAPIYI AÇIYOR") % "KIRMIZI", UITheme.DANGER, "Kapıya git, onları durdur"))
+
+	_section(list, "ÖLÜM BANDI (alt, silah resmi)")
+	for ch: String in CHARS:
+		_btn(list, tr("Öldün · %s silahı") % tr(ch), func() -> void: hud.debug_death({"killer_char": ch, "method_key": "bullet"}))
+	_btn(list, "Öldün · bıçak", func() -> void: hud.debug_death({"killer_char": "Runner", "method_key": "knife"}))
+	_btn(list, "Öldün · arkadan bıçak", func() -> void: hud.debug_death({"killer_char": "Tank", "method_key": "backstab"}))
+	_btn(list, "Öldün · özel silah", func() -> void: hud.debug_death({"killer_char": "Sniper", "method_key": "special"}))
+	_btn(list, "Öldün · bomba", func() -> void: hud.debug_death({"killer_char": "Tank", "method_key": "bomb"}))
+	_btn(list, "Öldün · tuzak", func() -> void: hud.debug_death({"killer_char": "Medic", "method_key": "trap"}))
+	_btn(list, "Öldün · kendi tuzağın", func() -> void: hud.debug_death({"self_kill": true, "killer_team": 0, "method_key": "trap"}))
+
+	_section(list, "ÖLDÜRME BİLDİRİMİ (orta alt)")
+	for ch: String in CHARS:
+		_btn(list, tr("Öldürdün · %s silahı") % tr(ch), func() -> void: hud.debug_kill("DÜŞMAN ÖLDÜRÜLDÜ", 100, ch))
+	_btn(list, "Öldürdün · kart taşıyıcı", func() -> void: hud.debug_kill("KART TAŞIYICI ÖLDÜRÜLDÜ", 150, "Tank"))
+	_btn(list, "Öldürdün · bıçak", func() -> void: hud.debug_kill("BIÇAKLA ÖLDÜRME", 140, "knife"))
+	_btn(list, "Öldürdün · özel silah", func() -> void: hud.debug_kill("ÖZEL SİLAHLA ÖLDÜRME", 100, ""))
+	_btn(list, "Öldürdün · bomba / tuzak", func() -> void: hud.debug_kill("DÜŞMAN ÖLDÜRÜLDÜ", 100, ""))
 
 	_section(list, "UYARI BANDI · MAÇ / KART")
 	_banner(list, "MAÇ BAŞLADI", UITheme.SUCCESS)

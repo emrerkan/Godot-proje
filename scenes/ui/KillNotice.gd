@@ -17,6 +17,10 @@ var _title: Label
 var _xp: Label
 var _victim: Label
 var _skull: Control
+var _weapon_slot: CenterContainer
+
+const WEAPON_RENDER := preload("res://scenes/ui/WeaponRender.gd")
+const WEAPON_PIC_SIZE := Vector2(180, 60)
 var _tween: Tween = null
 
 
@@ -62,12 +66,23 @@ func _init() -> void:
 	_victim.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adı
 	v.add_child(_victim)
 
-	for n: Control in [_panel, h, _skull, v, top, _title, _xp, _victim]:
+	# Öldürülen silahın resmi (metnin sağında; bomba/tuzak/özel silahta boş)
+	_weapon_slot = CenterContainer.new()
+	_weapon_slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(_weapon_slot)
+
+	for n: Control in [_panel, h, _skull, v, top, _title, _xp, _victim, _weapon_slot]:
 		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-## title: çevrilecek Türkçe anahtar (ör. "ARKADAN BIÇAKLAMA"), xp: toplam kazanılan XP
-func show_kill(title: String, xp: int, victim_name: String, victim_color: Color) -> void:
+## title: çevrilecek Türkçe anahtar (ör. "ARKADAN BIÇAKLAMA"), xp: toplam kazanılan XP,
+## weapon_key: WeaponRender anahtarı (karakter adı / "knife"), "" = resim yok
+func show_kill(title: String, xp: int, victim_name: String, victim_color: Color, weapon_key := "") -> void:
+	for c in _weapon_slot.get_children():
+		c.queue_free()
+	_weapon_slot.visible = weapon_key != ""
+	if weapon_key != "":
+		_weapon_slot.add_child(WEAPON_RENDER.make_rect(weapon_key, WEAPON_PIC_SIZE))
 	_title.text = tr(title)
 	_xp.text = "+%d" % xp
 	_victim.text = victim_name
