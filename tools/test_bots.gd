@@ -161,6 +161,8 @@ func _do_lobby() -> void:
 		_check(k1 > 0 and k2 > 0, "K: add_bot 0 döndü (%d,%d)" % [k1, k2])
 		_check(NM.get_weapon_mode() == "knife", "K: weapon_mode knife olmadı: %s" % NM.get_weapon_mode())
 	elif scenario == "A":
+		NM.set_bot_difficulty("medium")
+		_check(NM.get_bot_difficulty() == "medium", "A: bot zorluğu medium olmadı: %s" % NM.get_bot_difficulty())
 		var b1: int = NM.add_bot(0)
 		var b2: int = NM.add_bot(1)
 		var b3: int = NM.add_bot(1)
@@ -221,6 +223,10 @@ func _on_live() -> void:
 					var s: Script = ch.get_script()
 					if s != null and s.resource_path.ends_with("BotBrain.gd"):
 						has_brain = true
+						if scenario == "A":
+							var want: float = float(ch.REACTION_TIME) * float(ch.DIFFICULTY["medium"]["reaction"])
+							_check(is_equal_approx(float(ch.get("_d_reaction")), want),
+								"bot %d tepki süresi orta değil (%.2f ≠ %.2f)" % [bid, float(ch.get("_d_reaction")), want])
 				_check(has_brain, "bot %d BotBrain çocuğu yok" % bid)
 		notes.append("nav=%s" % ("var" if GM.get("_bot_nav") != null else "yok"))
 		notes.append("chars=%s" % [team_chars])

@@ -18,6 +18,8 @@ var _minutes_row: Control
 var _cards_option   # NumberStepper (KART SAYISI, kartlı modda, taslak)
 var _cards_row: Control
 var _weapon_option: OptionButton   # SİLAH: normal / sadece bıçak (taslak)
+var _bot_diff_option: OptionButton # BOTLAR: kolay / orta / zor (taslak)
+const BOT_DIFF_NAMES := {"easy": "KOLAY", "medium": "ORTA", "hard": "ZOR"}
 var _powers_draft := true          # özel güç taslağı (bıçak taslağında anahtar kapalı görünse de korunur)
 var _powers_toggle: Button  # ÖZEL GÜÇ aç/kapa anahtarı (ToggleSwitch, taslak)
 var _pw_status: Label
@@ -464,6 +466,13 @@ func _build_settings_panel() -> Control:
 	_weapon_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
 	box.add_child(_setting_row("SİLAH", _weapon_option))
 
+	# Bot zorluğu (NetworkManager.BOT_DIFFICULTIES sırasıyla: easy / medium / hard)
+	_bot_diff_option = OptionButton.new()
+	for d: String in NetworkManager.BOT_DIFFICULTIES:
+		_bot_diff_option.add_item(tr(BOT_DIFF_NAMES[d]))
+	_bot_diff_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
+	box.add_child(_setting_row("BOTLAR", _bot_diff_option))
+
 	# Özel güç: aç/kapa anahtarı; açıklama tooltip'te (panel kısa kalsın)
 	_powers_toggle = TOGGLE_SWITCH.new()
 	_powers_toggle.tooltip_text = "Kapalıyken yerde güç çıkmaz, başlangıç güçleri verilmez"
@@ -564,8 +573,10 @@ func _load_draft() -> void:
 	_powers_draft = _current_powers()
 	_powers_toggle.set_pressed_no_signal(_powers_draft)
 	_weapon_option.select(1 if NetworkManager.get_weapon_mode() == "knife" else 0)
+	_bot_diff_option.select(NetworkManager.BOT_DIFFICULTIES.find(NetworkManager.get_bot_difficulty()))
 	var is_host := NetworkManager.is_host()
 	_weapon_option.disabled = not is_host
+	_bot_diff_option.disabled = not is_host
 	_map_option.disabled = not is_host
 	_size_option.disabled = not is_host
 	_powers_toggle.disabled = not is_host
@@ -623,6 +634,9 @@ func _update_draft_ui() -> void:
 	var new_weapon := "knife" if _weapon_option.selected == 1 else "normal"
 	if new_weapon != NetworkManager.get_weapon_mode():
 		changes.append(tr("silah → sadece bıçak") if new_weapon == "knife" else tr("silah → normal"))
+	var new_diff: String = NetworkManager.BOT_DIFFICULTIES[_bot_diff_option.selected]
+	if new_diff != NetworkManager.get_bot_difficulty():
+		changes.append(tr("botlar → %s") % tr(BOT_DIFF_NAMES[new_diff]))
 	# Özel güç her silah modunda seçilebilir (bıçakta özel silah doğmaz — PowerupManager)
 	_powers_toggle.set_pressed_no_signal(_powers_draft)
 	_powers_toggle.disabled = not NetworkManager.is_host()
@@ -665,6 +679,9 @@ func _on_save_settings() -> void:
 	var new_weapon := "knife" if _weapon_option.selected == 1 else "normal"
 	if new_weapon != NetworkManager.get_weapon_mode():
 		NetworkManager.set_weapon_mode(new_weapon)
+	var new_diff: String = NetworkManager.BOT_DIFFICULTIES[_bot_diff_option.selected]
+	if new_diff != NetworkManager.get_bot_difficulty():
+		NetworkManager.set_bot_difficulty(new_diff)
 	if _powers_draft != _current_powers():
 		NetworkManager.set_powers(_powers_draft)
 	var pw := _pw_input.text.strip_edges()
@@ -696,6 +713,8 @@ func _refresh_settings() -> void:
 		_settings_summary.text += "  ·  " + tr("KARTSIZ · %d DK") % NetworkManager.get_match_minutes()
 	elif NetworkManager.get_card_count() > 1:
 		_settings_summary.text += "  ·  " + tr("%d KART") % NetworkManager.get_card_count()
+	if NetworkManager.get_bot_difficulty() != NetworkManager.BOT_DIFFICULTY_DEFAULT:
+		_settings_summary.text += "  ·  " + tr("BOTLAR %s") % tr(BOT_DIFF_NAMES[NetworkManager.get_bot_difficulty()])
 
 
 ## Odanın kayıtlı güç ayarı (alan yoksa açık say)

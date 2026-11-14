@@ -3,7 +3,8 @@
 ## Her fizik karesinde player.set_bot_input(move_dir, aim_pos, fire, reload, run, crouch, jump, stab) çağırır;
 ## hareket/ateş/şarjör/dayanıklılık/bıçak bekleme Player'ın kendi kodundan geçer (insanla aynı kurallar).
 ## Güç/bomba KULLANMAZ. Çömelme/zıplama seyrek ve rastgele; SADECE BIÇAK modunda rakibe koşup bıçaklar (arkadan yaklaşmayı dener).
-## Zorluk: kolay-orta (uzun tepki, geniş nişan hatası, yavaş dönüş, seyrek seriler).
+## Zorluk: oda kuralı NetworkManager.get_bot_difficulty() (easy/medium/hard, varsayılan hard). Aşağıdaki sabitler
+## ZOR seviyenin değerleri; DIFFICULTY çarpanları setup'ta _d_* değişkenlerine uygulanır (bilgi/kart kuralları her seviyede aynı).
 ## Durumlar: WANDER (dolaş) · GO_CARD (görülen / ipucu verilen karta) · CARRY (takım N kartın hepsini tutuyor, taşıyıcı kapıya)
 ##           · ESCORT (taşıyıcıya eşlik) · HUNT (görülen rakip taşıyıcının / kaybedilen hedefin son konumu) · FIGHT (görülen rakip).
 ## Bilgi adaleti: kart = 7 m + görüş (duvar ışını) — maç UZARSA kademeli: ~4 dk sonra yaklaşık bölge ipucu (bazı botlar),
@@ -107,6 +108,18 @@ const KNIFE_ALIGN_MAX_DEG := 35.0   # bıçak vurmak için hedefe bu açı için
 const MELEE_CHANCE_RATE := 0.8      # normal modda çok yakındaki rakibe saniyede bıçak atma olasılığı
 const MELEE_CD := 2.5
 
+## Zorluk çarpanları (ZOR = yukarıdaki sabitler). reaction: tepki süresi · aim_err: nişan hatası · turn: nişan dönüş hızı ·
+## view/cone/hear: görüş menzili / koni açısı / duyma menzili · pause: seri arası bekleme · semi: tek atış arası ek bekleme ·
+## melee: yakın rakibe bıçak atma sıklığı · warmup: ilk görüşteki ek isabetsizlik çarpanı.
+const DIFFICULTY := {
+	"hard":   {"reaction": 1.0, "aim_err": 1.0, "turn": 1.0, "view": 1.0, "cone": 1.0, "hear": 1.0,
+		"pause": 1.0, "semi": 1.0, "melee": 1.0, "warmup": 1.0},
+	"medium": {"reaction": 1.4, "aim_err": 1.45, "turn": 0.78, "view": 0.83, "cone": 0.85, "hear": 0.83,
+		"pause": 1.45, "semi": 1.35, "melee": 0.65, "warmup": 1.15},
+	"easy":   {"reaction": 1.9, "aim_err": 2.0, "turn": 0.6, "view": 0.67, "cone": 0.7, "hear": 0.67,
+		"pause": 2.0, "semi": 1.8, "melee": 0.4, "warmup": 1.3},
+}
+
 var _body: CharacterBody3D = null
 var _pl = null                       # aynı Player (betik alanlarına dinamik erişim: is_dead, team_id, set_bot_input…)
 var _nav = null                      # BotNav (hazır değilse null → düz çizgi + ışın kaçınma)
@@ -178,10 +191,51 @@ var _jump_cd := 0.0
 var _jump_left := 0.0
 var _stab_cd := 0.0
 
+# Zorluğa göre (setup → _apply_difficulty)
+var _d_reaction := REACTION_TIME
+var _d_jitter := REACTION_JITTER
+var _d_turn := AIM_TURN_SPEED
+var _d_knife_turn := KNIFE_TURN_SPEED
+var _d_err_base := AIM_ERR_BASE
+var _d_err_per_m := AIM_ERR_PER_M
+var _d_err_self := AIM_ERR_SELF_MOVE
+var _d_err_target := AIM_ERR_TARGET_MOVE
+var _d_warmup_mult := AIM_ERR_WARMUP_MULT
+var _d_view := VIEW_RANGE
+var _d_cone_cos := cos(deg_to_rad(VIEW_HALF_ANGLE))
+var _d_hear := HEAR_RANGE
+var _d_pause_min := BURST_PAUSE_MIN
+var _d_pause_max := BURST_PAUSE_MAX
+var _d_semi_min := SEMI_GAP_MIN
+var _d_semi_max := SEMI_GAP_MAX
+var _d_melee := MELEE_CHANCE_RATE
+
+
+func _apply_difficulty(level: String) -> void:
+	var m: Dictionary = DIFFICULTY.get(level, DIFFICULTY["hard"])
+	_d_reaction = REACTION_TIME * float(m.reaction)
+	_d_jitter = REACTION_JITTER * float(m.reaction)
+	_d_turn = AIM_TURN_SPEED * float(m.turn)
+	_d_knife_turn = KNIFE_TURN_SPEED * float(m.turn)
+	_d_err_base = AIM_ERR_BASE * float(m.aim_err)
+	_d_err_per_m = AIM_ERR_PER_M * float(m.aim_err)
+	_d_err_self = AIM_ERR_SELF_MOVE * float(m.aim_err)
+	_d_err_target = AIM_ERR_TARGET_MOVE * float(m.aim_err)
+	_d_warmup_mult = AIM_ERR_WARMUP_MULT * float(m.warmup)
+	_d_view = VIEW_RANGE * float(m.view)
+	_d_cone_cos = cos(deg_to_rad(VIEW_HALF_ANGLE * float(m.cone)))
+	_d_hear = HEAR_RANGE * float(m.hear)
+	_d_pause_min = BURST_PAUSE_MIN * float(m.pause)
+	_d_pause_max = BURST_PAUSE_MAX * float(m.pause)
+	_d_semi_min = SEMI_GAP_MIN * float(m.semi)
+	_d_semi_max = SEMI_GAP_MAX * float(m.semi)
+	_d_melee = MELEE_CHANCE_RATE * float(m.melee)
+
 
 func setup(player: CharacterBody3D, nav) -> void:
 	_body = player
 	_pl = player
+	_apply_difficulty(NetworkManager.get_bot_difficulty())
 	_nav = nav if nav != null and nav.is_ready() else null
 	_rng.randomize()
 	_hint_follow = _rng.randf() < HINT_FOLLOW_CHANCE
@@ -326,7 +380,7 @@ func _perceive(live: bool) -> void:
 	var pos := _body.global_position
 	var eye := pos + Vector3(0.0, EYE_HEIGHT, 0.0)
 	var facing := _flat(-_body.global_transform.basis.z, _aim_dir)
-	var cone_cos := cos(deg_to_rad(VIEW_HALF_ANGLE))
+	var cone_cos := _d_cone_cos
 	var my_team: int = int(_pl.team_id)
 
 	var best = null
@@ -340,11 +394,11 @@ func _perceive(live: bool) -> void:
 			continue
 		var opos: Vector3 = (other as Node3D).global_position
 		var d := pos.distance_to(opos)
-		if d > VIEW_RANGE:
+		if d > _d_view:
 			continue
 		var to := _flat(opos - pos, facing)
 		var in_cone := facing.dot(to) >= cone_cos
-		if not in_cone and d > HEAR_RANGE:
+		if not in_cone and d > _d_hear:
 			continue
 		var hit := _ray(eye, opos + Vector3(0.0, TARGET_HEIGHT, 0.0))
 		var visible := false
@@ -361,7 +415,7 @@ func _perceive(live: bool) -> void:
 				visible = true   # görüyor ama arada takım arkadaşı var → ateş yok
 		if not visible:
 			# Görüş yok ama yakın + çömelmiyor → adım sesi: o yöne dön
-			if d <= HEAR_RANGE and not bool(other.is_crouching()):
+			if d <= _d_hear and not bool(other.is_crouching()):
 				_alert_pos = opos
 				_alert_left = ALERT_MEMORY
 			continue
@@ -381,7 +435,7 @@ func _perceive(live: bool) -> void:
 		var bpos: Vector3 = (best as Node3D).global_position
 		if best != _target or _target_lost_for > 0.6:
 			# Yeni hedef (ya da uzun süre görülmeyen eski hedef): tepki gecikmesi
-			_reaction_left = REACTION_TIME + _rng.randf_range(0.0, REACTION_JITTER)
+			_reaction_left = _d_reaction + _rng.randf_range(0.0, _d_jitter)
 			if _knife:
 				_reaction_left *= KNIFE_REACTION_MULT
 			_engage_t = 0.0
@@ -855,7 +909,7 @@ func _melee_decision(pos: Vector3, delta: float) -> bool:
 	var desired := _flat(tpos - pos, _aim_dir)
 	if absf(_aim_dir.signed_angle_to(desired, Vector3.UP)) > deg_to_rad(KNIFE_ALIGN_MAX_DEG):
 		return false
-	if _rng.randf() < MELEE_CHANCE_RATE * delta:
+	if _rng.randf() < _d_melee * delta:
 		_stab_cd = MELEE_CD
 		return true
 	return false
@@ -870,7 +924,7 @@ func _update_aim(pos: Vector3, move: Vector3, delta: float) -> Vector3:
 		var p := _aim_point(pos)
 		desired = _flat(p - pos, Vector3.ZERO)
 		dist = maxf(_flat_dist(pos, p), 2.0)
-		turn = KNIFE_TURN_SPEED if _knife else AIM_TURN_SPEED
+		turn = _d_knife_turn if _knife else _d_turn
 	elif _alert_left > 0.0:
 		desired = _flat(_alert_pos - pos, Vector3.ZERO)
 	elif _state == BotState.HUNT and _last_seen_left > 0.0:
@@ -896,11 +950,11 @@ func _aim_point(pos: Vector3) -> Vector3:
 	if _err_left <= 0.0:
 		_err_left = AIM_ERR_RESAMPLE
 		# Hata: taban + mesafe; bot hareket ederken ve hedef hareket ederken büyür; ilk anda (hedefi yeni görünce) daha da büyük
-		var extra := _target_vel.length() * AIM_ERR_TARGET_MOVE
+		var extra := _target_vel.length() * _d_err_target
 		if Vector2(_body.velocity.x, _body.velocity.z).length() > 0.5:
-			extra += AIM_ERR_SELF_MOVE
-		var warm := 1.0 + (AIM_ERR_WARMUP_MULT - 1.0) * clampf(1.0 - _engage_t / AIM_ERR_WARMUP, 0.0, 1.0)
-		_err_lat = _rng.randf_range(-1.0, 1.0) * (AIM_ERR_BASE + d * AIM_ERR_PER_M + extra) * warm
+			extra += _d_err_self
+		var warm := 1.0 + (_d_warmup_mult - 1.0) * clampf(1.0 - _engage_t / AIM_ERR_WARMUP, 0.0, 1.0)
+		_err_lat = _rng.randf_range(-1.0, 1.0) * (_d_err_base + d * _d_err_per_m + extra) * warm
 		_err_lead = _rng.randf_range(0.2, 0.6)
 	var w = _pl.current_weapon
 	var bullet_speed := 30.0
@@ -929,7 +983,7 @@ func _fire_decision(pos: Vector3, delta: float) -> bool:
 	if bool(w.is_semi_auto):
 		# Player basış kenarını algılar: tek karelik tetik + aralık
 		if can and _semi_cd <= 0.0:
-			_semi_cd = maxf(float(w.fire_rate), 0.25) + _rng.randf_range(SEMI_GAP_MIN, SEMI_GAP_MAX)
+			_semi_cd = maxf(float(w.fire_rate), 0.25) + _rng.randf_range(_d_semi_min, _d_semi_max)
 			return true
 		return false
 	# Tam otomatik: kısa seriler
@@ -940,7 +994,7 @@ func _fire_decision(pos: Vector3, delta: float) -> bool:
 	if _burst_left > 0.0:
 		_burst_left -= delta
 		if _burst_left <= 0.0:
-			_burst_pause = _rng.randf_range(BURST_PAUSE_MIN, BURST_PAUSE_MAX)
+			_burst_pause = _rng.randf_range(_d_pause_min, _d_pause_max)
 		return true
 	if _burst_pause > 0.0:
 		_burst_pause -= delta

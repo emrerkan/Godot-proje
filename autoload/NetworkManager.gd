@@ -143,6 +143,8 @@ func create_server(player_name: String, p_room_name: String = "", p_password: St
 		room_settings["powers"] = bool(p_settings["powers"])
 	if p_settings.has("weapon_mode") and (String(p_settings["weapon_mode"]) == "normal" or String(p_settings["weapon_mode"]) == "knife"):
 		room_settings["weapon_mode"] = String(p_settings["weapon_mode"])
+	if p_settings.has("bot_difficulty") and BOT_DIFFICULTIES.has(String(p_settings["bot_difficulty"])):
+		room_settings["bot_difficulty"] = String(p_settings["bot_difficulty"])
 	RoomManager.create_room(p_room_name, p_password)
 	emit_signal("server_created")
 	emit_signal("player_list_updated")
@@ -825,7 +827,25 @@ func _chat_receive(msg: Dictionary) -> void:
 
 static func _default_settings() -> Dictionary:
 	return {"map": MAPS[0]["id"], "team_size": TEAM_SIZE_MAX, "has_password": false,
-		"win_mode": "cards", "card_count": 1, "match_minutes": MATCH_MINUTES_DEFAULT, "powers": true, "weapon_mode": "normal"}
+		"win_mode": "cards", "card_count": 1, "match_minutes": MATCH_MINUTES_DEFAULT, "powers": true, "weapon_mode": "normal",
+		"bot_difficulty": BOT_DIFFICULTY_DEFAULT}
+
+
+## Bot zorluğu (oda kuralı — botları sadece host simüle eder; değerler BotBrain.DIFFICULTY)
+const BOT_DIFFICULTIES: Array[String] = ["easy", "medium", "hard"]
+const BOT_DIFFICULTY_DEFAULT := "hard"
+
+
+func get_bot_difficulty() -> String:
+	var d := String(room_settings.get("bot_difficulty", BOT_DIFFICULTY_DEFAULT))
+	return d if BOT_DIFFICULTIES.has(d) else BOT_DIFFICULTY_DEFAULT
+
+
+func set_bot_difficulty(d: String) -> void:
+	if not is_host() or is_game_running() or not BOT_DIFFICULTIES.has(d):
+		return
+	room_settings["bot_difficulty"] = d
+	_push_settings()
 
 
 # Oda kuralları getter'ları — anahtar yoksa varsayılan (eski sürüm host'larla uyum)
@@ -936,7 +956,7 @@ func get_room_status() -> Dictionary:
 		"team_size": get_team_size(), "max_players": get_max_players(),
 		"map_name": get_map_info()["name"], "state": "game" if is_game_running() else "lobby",
 		"powers": powers_enabled(), "weapon_mode": get_weapon_mode(), "win_mode": get_win_mode(),
-		"card_count": get_card_count(), "match_minutes": get_match_minutes(),
+		"card_count": get_card_count(), "match_minutes": get_match_minutes(), "bot_difficulty": get_bot_difficulty(),
 	}
 
 
