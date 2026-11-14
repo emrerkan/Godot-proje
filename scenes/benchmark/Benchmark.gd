@@ -34,24 +34,45 @@ const PRESET_IDS := {"low": "Düşük", "medium": "Orta", "high": "Yüksek", "ul
 
 ## Ölçüm sondası: en SON çalışan düğüm (öncelik +1e6) — Benchmark (öncelik -1e6) en önce çalışır,
 ## aradaki fark = o karedeki/fizik adımındaki TÜM betiklerin süresi (move_and_slide ve fizik sorguları dahil).
+## AI bandı: tüm BotBrain'ler AI_PRIORITY'ye alınır, önüne/arkasına birer sonda → yapay zekânın adım başı süresi AYRI.
+## Bantlar: betik adı → fizik önceliği. Yeni eklenen her düğüm (node_added) betiğine göre banda alınır;
+## bandın önünde/arkasında sonda → o grubun adım başı toplam süresi. Bant dışı kalan = "diğer".
+## (Bot Player'ları: sadece botlar — yerel insan oyuncu varsayılan önceliğinde kalır, kamera takibi bozulmasın.)
+const AI_PRIORITY := 500000
+const BANDS := {"ai": 500000, "player": 400000, "bullet": 300000}
+const BAND_SCRIPTS := {"BotBrain.gd": "ai", "Player.gd": "player", "Bullet.gd": "bullet"}
 class Probe extends Node:
 	var bench: Node
+	var kind := "end"     # "end" | "s:<bant>" | "e:<bant>"
 	func _ready() -> void:
-		process_priority = 1000000
-		process_physics_priority = 1000000
+		var pr := 1000000
+		if kind != "end":
+			pr = int(BANDS[kind.substr(2)]) + (-1 if kind.begins_with("s:") else 1)
+		process_priority = pr
+		process_physics_priority = pr
 		process_mode = Node.PROCESS_MODE_ALWAYS
+		set_process(kind == "end")
 	func _process(_d: float) -> void:
 		bench.call("_probe_process_end")
 	func _physics_process(_d: float) -> void:
-		bench.call("_probe_physics_end")
+		bench.call("_probe_physics", kind)
 
 
 var _map_id := DEFAULT_MAP
 var _seconds := DEFAULT_SECONDS
 var _bots := -1                   # -1 = haritanın en büyük formatını doldur
 var _no_brain := false            # tanı: BotBrain'leri durdur (botlar durur ama Player fiziği sürer) → yapay zekâ maliyeti ayrılır
-var _probe: Node = null
 var _proc_start := 0
+var _band_start: Dictionary = {}  # bant → µs
+var _band_us: Dictionary = {}     # bant → ölçüm boyunca toplam µs
+var _ai_us := 0.0                 # ölçüm boyunca BotBrain toplamı (µs)
+# Donma kaydı: o karedeki fizik adımı sayısı / en uzun adım / AI süresi + son senaryo olayı
+var _frame_ticks := 0
+var _frame_tick_max_us := 0.0
+var _frame_ai_us := 0.0
+var _last_event := ""
+var _last_event_t := 0.0
+var _spikes: Array[Dictionary] = []
 var _phys_start := 0
 var _proc_us := 0.0               # ölçüm boyunca betik process toplamı (µs)
 var _phys_us := 0.0               # ölçüm boyunca betik fizik toplamı (µs)
@@ -109,10 +130,17 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_priority = -1000000
 	process_physics_priority = -1000000
-	_probe = Probe.new()
-	_probe.bench = self
-	_probe.name = "BenchProbe"
-	get_tree().root.add_child.call_deferred(_probe)
+	var kinds: Array[String] = ["end"]
+	for b: String in BANDS:
+		kinds.append("s:" + b)
+		kinds.append("e:" + b)
+	for k in kinds:
+		var pb := Probe.new()
+		pb.bench = self
+		pb.kind = k
+		pb.name = "BenchProbe_" + k.replace(":", "_")
+		get_tree().root.add_child.call_deferred(pb)
+	get_tree().node_added.connect(_on_node_added)
 	_rng.seed = 7777   # her makinede aynı kamera/olay sırası
 	_parse_args()
 	NM = get_node("/root/NetworkManager")
@@ -176,12 +204,59 @@ func _physics_process(_d: float) -> void:
 	_phys_start = Time.get_ticks_usec()
 
 
-func _probe_physics_end() -> void:
-	if _phase == "measure" and _phys_start > 0:
-		var us := float(Time.get_ticks_usec() - _phys_start)
-		_phys_us += us
-		_phys_ticks += 1
-		_phys_tick_max_us = maxf(_phys_tick_max_us, us)
+func _probe_physics(kind: String) -> void:
+	if _phase != "measure":
+		return
+	var now := Time.get_ticks_usec()
+	if kind == "end":
+		if _phys_start > 0:
+			var us := float(now - _phys_start)
+			_phys_us += us
+			_phys_ticks += 1
+			_phys_tick_max_us = maxf(_phys_tick_max_us, us)
+			_frame_ticks += 1
+			_frame_tick_max_us = maxf(_frame_tick_max_us, us)
+		return
+	var band := kind.substr(2)
+	if kind.begins_with("s:"):
+		_band_start[band] = now
+	elif int(_band_start.get(band, 0)) > 0:
+		var a := float(now - int(_band_start[band]))
+		_band_us[band] = float(_band_us.get(band, 0.0)) + a
+		if band == "ai":
+			_ai_us += a
+			_frame_ai_us += a
+
+
+## Yeni düğüm betiğine göre ölçüm bandına (bot Player'ı / BotBrain / Bullet)
+func _on_node_added(n: Node) -> void:
+	var sc: Script = n.get_script()
+	if sc == null:
+		return
+	var band: String = BAND_SCRIPTS.get(sc.resource_path.get_file(), "")
+	if band.is_empty():
+		return
+	if band == "player":
+		_band_player.call_deferred(n)   # is_bot initialize()'da belli olur
+		return
+	n.process_physics_priority = int(BANDS[band])
+
+
+func _band_player(n: Node) -> void:
+	if is_instance_valid(n) and bool(n.get("is_bot")):
+		n.process_physics_priority = int(BANDS["player"])
+
+
+## Maç başında zaten var olan düğümler (node_added'den önce doğmuş olabilir)
+func _band_brains() -> void:
+	for b in _alive_bots():
+		if b.process_physics_priority != int(BANDS["player"]):
+			b.process_physics_priority = int(BANDS["player"])
+		for ch in b.get_children():
+			if ch.process_physics_priority != AI_PRIORITY:
+				var sc: Script = ch.get_script()
+				if sc != null and sc.resource_path.ends_with("BotBrain.gd"):
+					ch.process_physics_priority = AI_PRIORITY
 
 
 func _probe_process_end() -> void:
@@ -213,6 +288,7 @@ func _process(delta: float) -> void:
 				_show("Harita yükleniyor / geri sayım… %d sn" % int(el))
 		"live_settle":
 			_drive_scenario()
+			_band_brains()
 			if _no_brain:
 				for b in _alive_bots():
 					for ch in b.get_children():
@@ -230,6 +306,7 @@ func _process(delta: float) -> void:
 				_set_phase("measure")
 		"measure":
 			_drive_scenario()
+			_band_brains()
 			_sample(delta)
 			var fps := 1000.0 / maxf(_avg(_frames), 0.001) if _frames.size() > 0 else 0.0
 			_show("%s · %d / %d sn · %d FPS" % [_preset_label(), int(el), int(_seconds), int(fps)])
@@ -301,7 +378,9 @@ func _drive_scenario() -> void:
 		_next_switch = t + SPECTATE_SWITCH
 	if t >= _next_event and _spectated != null and is_instance_valid(_spectated):
 		_next_event = t + EVENT_INTERVAL
-		_throw_event(String(EVENT_CYCLE[_event_i % EVENT_CYCLE.size()]))
+		_last_event = String(EVENT_CYCLE[_event_i % EVENT_CYCLE.size()])
+		_last_event_t = t
+		_throw_event(_last_event)
 		_event_i += 1
 
 
@@ -357,10 +436,24 @@ func _reset_measure() -> void:
 	_phys_us = 0.0
 	_phys_ticks = 0
 	_phys_tick_max_us = 0.0
+	_ai_us = 0.0
+	_band_us.clear()
+	_frame_ticks = 0
+	_frame_tick_max_us = 0.0
+	_frame_ai_us = 0.0
 
 
+## delta = BİR ÖNCEKİ karenin süresi; o karenin fizik adımları bu _process'ten önce sayıldı (_frame_*).
 func _sample(delta: float) -> void:
-	_frames.append(delta * 1000.0)
+	var ms := delta * 1000.0
+	_frames.append(ms)
+	if ms > HITCH_MS and _spikes.size() < 200:
+		var ev := "%s (%.1f sn önce)" % [_last_event, _now() - _last_event_t] if not _last_event.is_empty() else "-"
+		_spikes.append({"preset": _preset_label(), "t": _now() - _phase_t, "ms": ms, "ticks": _frame_ticks,
+			"tick_max": _frame_tick_max_us / 1000.0, "ai": _frame_ai_us / 1000.0, "event": ev})
+	_frame_ticks = 0
+	_frame_tick_max_us = 0.0
+	_frame_ai_us = 0.0
 	var vp := get_viewport().get_viewport_rid()
 	_gpu_ms += RenderingServer.viewport_get_measured_render_time_gpu(vp)
 	_rcpu_ms += RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
@@ -423,6 +516,9 @@ func _finish_preset() -> void:
 		"proc_ms": proc,
 		"phys_tick_ms": phys_tick,
 		"phys_tick_max_ms": _phys_tick_max_us / 1000.0,
+		"ai_tick_ms": _ai_us / maxf(_phys_ticks, 1) / 1000.0,
+		"player_tick_ms": float(_band_us.get("player", 0.0)) / maxf(_phys_ticks, 1) / 1000.0,
+		"bullet_tick_ms": float(_band_us.get("bullet", 0.0)) / maxf(_phys_ticks, 1) / 1000.0,
 		"ticks_pf": ticks_pf,
 		"cpu_ms": cpu_frame,
 		"draws": _draws / k,
@@ -433,8 +529,9 @@ func _finish_preset() -> void:
 	}
 	r["verdict"] = _verdict(r)
 	_results.append(r)
-	print("SYSBENCH %s: ort %.1f FPS, %%1 düşük %.1f, kare %.1f ms = gpu %.2f | cpu %.2f (process %.2f + fizik %.2f ms × %.2f adım + çizim %.2f), fizik adımı en kötü %.1f ms, darboğaz %s" % [
-		r.preset, r.fps_avg, r.fps_low1, frame_ms, gpu, cpu_frame, proc, phys_tick, ticks_pf, rcpu, r.phys_tick_max_ms, r.bottleneck])
+	print("SYSBENCH %s: ort %.1f FPS, %%1 düşük %.1f, kare %.1f ms = gpu %.2f | cpu %.2f (process %.2f + fizik %.2f ms [AI %.2f, bot gövde %.2f, mermi %.2f] × %.2f adım + çizim %.2f), fizik adımı en kötü %.1f ms, darboğaz %s" % [
+		r.preset, r.fps_avg, r.fps_low1, frame_ms, gpu, cpu_frame, proc, phys_tick, r.ai_tick_ms, r.player_tick_ms, r.bullet_tick_ms,
+		ticks_pf, rcpu, r.phys_tick_max_ms, r.bottleneck])
 
 
 func _verdict(r: Dictionary) -> String:
@@ -507,13 +604,13 @@ func _write_csv(m: Dictionary, stamp: String, players: int) -> void:
 	if is_new:
 		f.store_csv_line(PackedStringArray(["tarih", "cpu", "cekirdek", "ram_gb", "gpu", "api", "os", "godot", "harita", "oyuncu",
 			"profil", "pencere", "3d_cozunurluk", "fps_ort", "fps_dusuk1", "p99_ms", "max_ms", "takilma", "kare_ms", "gpu_ms",
-			"cpu_ms", "process_ms", "fizik_adim_ms", "fizik_adim_max_ms", "adim_kare", "cizim_cpu_ms", "draw_call", "ucgen",
+			"cpu_ms", "process_ms", "fizik_adim_ms", "ai_adim_ms", "fizik_adim_max_ms", "adim_kare", "cizim_cpu_ms", "draw_call", "ucgen",
 			"vram_mb", "ram_mb", "darbogaz", "sonuc"]))
 	for r: Dictionary in _results:
 		f.store_csv_line(PackedStringArray([stamp, m.cpu, str(m.cores), "%.1f" % m.ram_gb, m.gpu, m.api, m.os, m.godot, _map_id,
 			str(players), r.preset, m.window, r.render, "%.1f" % r.fps_avg, "%.1f" % r.fps_low1, "%.1f" % r.p99_ms,
 			"%.1f" % r.max_ms, str(r.hitches), "%.2f" % r.frame_ms, "%.2f" % r.gpu_ms, "%.2f" % r.cpu_ms, "%.2f" % r.proc_ms,
-			"%.2f" % r.phys_tick_ms, "%.2f" % r.phys_tick_max_ms, "%.2f" % r.ticks_pf, "%.2f" % r.rcpu_ms, "%d" % r.draws,
+			"%.2f" % r.phys_tick_ms, "%.2f" % r.ai_tick_ms, "%.2f" % r.phys_tick_max_ms, "%.2f" % r.ticks_pf, "%.2f" % r.rcpu_ms, "%d" % r.draws,
 			"%d" % r.prims, "%d" % r.vram_mb, "%d" % r.ram_mb, r.bottleneck, r.verdict]))
 	f.close()
 
@@ -525,17 +622,26 @@ func _report_text(m: Dictionary, players: int) -> String:
 	s += "Ekran k.: %s  [%s]\n" % [m.gpu, m.api]
 	s += "Sistem  : %s · Godot %s · pencere %s\n" % [m.os, m.godot, m.window]
 	s += "Senaryo : %s, %d oyuncu (botlar), sis/bomba/flaş, %d sn/profil\n\n" % [_map_id, players, int(_seconds)]
-	s += "%-8s %-10s %6s %7s %7s %6s %7s %7s %8s %6s %6s  %s\n" % ["PROFİL", "3D", "FPS", "%1 DÜŞ", "MAX ms", "TAKIL",
-		"GPU ms", "CPU ms", "FİZİK ms", "VRAM", "DARB.", "SONUÇ"]
+	s += "%-8s %-10s %6s %7s %7s %6s %7s %7s %8s %6s %6s %6s  %s\n" % ["PROFİL", "3D", "FPS", "%1 DÜŞ", "MAX ms", "TAKIL",
+		"GPU ms", "CPU ms", "FİZİK ms", "AI ms", "VRAM", "DARB.", "SONUÇ"]
 	for r: Dictionary in _results:
-		s += "%-8s %-10s %6.1f %7.1f %7.1f %6d %7.2f %7.2f %8.2f %6d %6s  %s\n" % [r.preset, r.render, r.fps_avg, r.fps_low1,
-			r.max_ms, r.hitches, r.gpu_ms, r.cpu_ms, r.phys_tick_ms, int(r.vram_mb), r.bottleneck, r.verdict]
+		s += "%-8s %-10s %6.1f %7.1f %7.1f %6d %7.2f %7.2f %8.2f %6.2f %6d %6s  %s\n" % [r.preset, r.render, r.fps_avg, r.fps_low1,
+			r.max_ms, r.hitches, r.gpu_ms, r.cpu_ms, r.phys_tick_ms, r.ai_tick_ms, int(r.vram_mb), r.bottleneck, r.verdict]
 	if _results.is_empty():
 		s += "(ölçüm yok)\n"
+	if not _spikes.is_empty():
+		var top := _spikes.duplicate()
+		top.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.ms) > float(b.ms))
+		s += "\nEN UZUN KARELER (toplam %d takılma)\n" % _spikes.size()
+		s += "%-8s %6s %7s %6s %10s %7s  %s\n" % ["PROFİL", "SN", "KARE ms", "ADIM", "ADIM max", "AI ms", "SON OLAY"]
+		for i in mini(top.size(), 10):
+			var p: Dictionary = top[i]
+			s += "%-8s %6.1f %7.1f %6d %10.1f %7.1f  %s\n" % [p.preset, p.t, p.ms, p.ticks, p.tick_max, p.ai, p.event]
 	for n in _notes:
 		s += "\nNot: " + n
 	s += "\nCPU ms = kare başına betik + fizik adımları + çizim hazırlığı (botların simülasyonu dahil — host yükü).\n"
-	s += "FİZİK ms = bir fizik adımının (saniyede 60) ortalama süresi; 16.7 ms'yi aşarsa oyun yetişemez.\n"
+	s += "FİZİK ms = bir fizik adımının (saniyede 60) ortalama süresi; 16.7 ms'yi aşarsa oyun yetişemez. AI ms = bunun bot yapay zekâsı kısmı.\n"
+	s += "Takılma satırı: ADIM max düşük + KARE ms yüksek → betik dışı (çizim/shader derleme/yükleme); ADIM max yüksek → oyun mantığı.\n"
 	s += "AKICI: ort ≥60 ve %1 ≥40 · OYNANIR: ort ≥30 ve %1 ≥20\n"
 	return s
 

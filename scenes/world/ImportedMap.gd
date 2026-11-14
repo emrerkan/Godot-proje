@@ -33,6 +33,9 @@ const CONVEX_KEYWORDS: Array[String] = [
 	"Camp_", "Hangar_", "Crate", "Barrel", "Generator", "Jerrycan", "Barrier", "PowerBox", "Console", "Server_Rack", "FuelTank",
 	"Humvee", "SAM_Launcher", "Engine_Nacelle", "Fuselage_Wing", "LandingGear", "Sandbag", "Prop_CardPedestal",
 ]
+## Anahtar kelimeye uysa da convex YAPILMAYACAKLAR: kavisli kabuk/köşe parçası — convex kabuk kavisin altını doldurur.
+## Çöl v3 Quonset hangar duvarları ("Hangar_" eşleşiyordu): 4 köşe parçası içe kıvrılıyor → hangar içinde köşelerde 2.2 m görünmez blok vardı.
+const CONVEX_EXCLUDE: Array[String] = ["Quonset"]
 const HIDDEN_KEYWORDS: Array[String] = ["CardVisual", "Pad_Team"]
 const CANOPY_KEYWORDS: Array[String] = ["Canopy", "Needles", "Frond"]
 const WATER_KEYWORDS: Array[String] = ["Water", "Basin"]
@@ -281,7 +284,7 @@ func _has_keyword(node_name: String, words: Array[String]) -> bool:
 func _build_collisions(n: Node) -> void:
 	if n is MeshInstance3D and (n as MeshInstance3D).mesh and not _has_keyword(String(n.name), NO_COLLISION_KEYWORDS) \
 			and not _has_keyword(String(n.name), _extra_hidden):
-		if _convex_props and _has_keyword(String(n.name), CONVEX_KEYWORDS):
+		if _convex_props and _has_keyword(String(n.name), CONVEX_KEYWORDS) and not _has_keyword(String(n.name), CONVEX_EXCLUDE):
 			(n as MeshInstance3D).create_convex_collision(true, true)   # dolu, sadeleştirilmiş gövde — içine girilemez
 		else:
 			(n as MeshInstance3D).create_trimesh_collision()   # StaticBody3D çocuğu, layer 1 (oyuncu + mermi)

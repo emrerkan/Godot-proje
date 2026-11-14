@@ -58,9 +58,13 @@ MainMenu sol alt "⚙ AYARLAR" (kapanınca arka plan ayarı değiştiyse yeniden
 süreli mod 30 dk → maç başlayınca kamera `CameraController.spectate(bot)` ile 9 sn'de bir başka bota geçer, izlenen bot 5 sn'de bir sis/bomba/flaş (`PowerupManager._throw_bomb`).
 Her profil (Düşük/Orta/Yüksek/Ultra): `GameSettings.set_all` BELLEKTE (kaydedilmez) + vsync kapalı/FPS sınırsız → 4 sn ısınma → ölçüm. Ölçüm: kare süreleri (ort, %1 düşük, p99, takılma >50 ms),
 GPU/çizim CPU (`viewport_measure_render_time`), betik süreleri `Probe` ile (Benchmark öncelik -1e6, sonda +1e6 → aradaki fark; fizik adımı ms + adım/kare), draw call, VRAM/RAM.
+**Bantlar:** `node_added` ile BotBrain / bot Player / Bullet düğümleri ayrı fizik önceliğine alınır (`BANDS`), önlerine/arkalarına sonda → AI / bot gövdesi / mermi ms/adım ayrı.
+Takılma kaydı: >50 ms karede adım sayısı, en uzun adım, AI süresi, son senaryo olayı → raporda "EN UZUN KARELER".
 Seçenekler `--sysbench-map= / -presets=low,high / -seconds= / -bots=N / -nobrain` (BotBrain'leri durdurur: yapay zekâ maliyetini ayırır) `/ -quit`.
 Çıktı `user://benchmark.csv` (EKLENİR, makineler birleştirilebilir) + `benchmark_<tarih>.txt`; bitince ayarlar dosyadan geri yüklenir, menüde sonuç paneli.
-İlk ölçüm (2026-11-14, i5-1240P + Iris Xe, editör/debug, desert_v3): 20 oyuncu Düşük 16.6 FPS — fizik adımı 14 ms (botsuz 0.65, BotBrain kapalı 5.1) → darboğaz HOST bot simülasyonu, grafik değil.
+**Bulgular (2026-11-14, i5-1240P + Iris Xe, debug):** desert_v3 20 oyuncu fizik adımı ~15 ms = AI 0.87 + **bot gövdesi 13.3** (`_try_step_up` test_move 7.6 + `move_and_slide` 5.6) + mermi 0.14.
+Sebep Çöl v3 ÇARPIŞMA GEOMETRİSİ (138k üçgen trimesh: Terrain_Sand 42.7k, 12 gövde duvarı 7-8k) + Godot Physics; Liman/Labirent'te bot gövdesi ~2.4 ms.
+Jolt ile desert_v3 bot gövdesi 2.4 ms, 13 → 58.6 FPS → **2026-11-14 proje Jolt Physics'e geçti** (kullanıcı editörde; `test_bots` ABK geçti). "BotBrain kapalı" testi yanıltıcıydı (duran bot = sorgu yok).
 
 ## Ses — `scenes/audio/Sfx.gd` (statik, `preload`) + `SfxListener.gd`
 **Gerçek kayıtlar** `res://audio/sfx/` (HEPSİ CC0 — kaynak/lisans `audio/sfx/CREDITS.md`: Free Firearm Sound Library silahlar,
@@ -417,7 +421,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   Ayak izi x ±62, z ±46; koridor ~4 m, duvar ~2 m kalın. Zemin 126×94, `Bounds` görünmez sınır (üst girişler dışarı açılmasın).
   `Maze_minimap.png` (1 px = 1 m duvar maskesi) → Minimap `MAP_MIN/MAX` ile birebir.
 - **İçe aktarılan haritalar** (`asset model/haritalar/*.glb`, rehber `HARITALAR_TEKNIK_REHBERI_AI.md` — dosyalarla doğrulandı):
-  `NetworkManager.MAPS` id embassy/quantum/desert/forest/hospital/subway/warehouse/port (+ dokulu `.gltf` sürümler desert_v3/forest_v3, `Map3_Col_v3/`, `Map4_Orman_v3/`; MAPS `convex_props` = `CONVEX_KEYWORDS` adlı nesnelere trimesh yerine sadeleştirilmiş dolu convex (trimesh kabuğuna giren oyuncu kilitleniyordu), `outer_world` = `_build_outer_world` harita dışına görsel zemin + kaya kuşağı, güney sırası alçak) → hepsi `scenes/world/ImportedMap.tscn`
+  `NetworkManager.MAPS` id embassy/quantum/desert/forest/hospital/subway/warehouse/port (+ dokulu `.gltf` sürümler desert_v3/forest_v3, `Map3_Col_v3/`, `Map4_Orman_v3/`; MAPS `convex_props` = `CONVEX_KEYWORDS` adlı nesnelere trimesh yerine sadeleştirilmiş dolu convex (trimesh kabuğuna giren oyuncu kilitleniyordu; kavisli kabuk/köşe parçaları `CONVEX_EXCLUDE` ile trimesh kalır — Çöl v3 Quonset hangar duvarlarının convex'i hangar köşelerinde görünmez blok yapıyordu), `outer_world` = `_build_outer_world` harita dışına görsel zemin + kaya kuşağı, güney sırası alçak) → hepsi `scenes/world/ImportedMap.tscn`
   (+ `glb` yolu, `max_team` 3/5/5/4/2/3/4/5 — `get_map_max_team`, `set_map` takım boyutunu kırpar, Lobby format seçeneklerini kapatır). `ImportedMap.gd`:
   GLB'yi örnekler (`MapModel`), `HIDDEN_KEYWORDS` gizler (`CardVisual_*` + **takım spawn platformları `Pad_Team*`** — kullanıcı:
   takım bölgeleri işaretli olmasın; çarpışmaları da yok), mesh başına trimesh çarpışma (`NO_COLLISION_KEYWORDS`: yaprak/su/neon/holo/Pad_Team/Decal/Scatter/Grass — yeni harita üretim kuralları `asset model/haritalar/HARITA_PROMPTLARI.md`), kenar `Bounds`; 3 fizik karesi sonra spawn/kart/kapıyı zemine ışınla oturtur +
