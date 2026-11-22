@@ -247,6 +247,27 @@
     **TAB:** anchor'lı sabit kutu, 2×2 takım ızgarası, kompakt satırlar, taşarsa kaydırma (20 oyunculu pencereli testte sığdı).
     **Performans:** asıl hitch ilk karedeki shader/pipeline derlemesiydi → `ImportedMap._prewarm_render`; ayrıca v3 decal/ot/serpinti gölgesi kapatıldı + mesafe kırpma, görüş engeli taraması/WallLamps 30 Hz.
     Doku import'u zaten VRAM sıkıştırmalıydı (değişmedi). AÇIK: oyuncu başına gölgeli fener + Halo (20 oyuncuda en olası kalan drop), çift yüzlü malzemeler / decal birleştirme (asset işi), 20 bot host yükü ölçümü.
+52. **Vuruş hissi + kovan + hareket efektleri (2026-11-17)** — kullanıcı testi: "vurdum mu vurmadım mı anlamıyorum", mermiler silahtan çıktığı belli olsun (kovan), bıçak hamlesi/takla/inişe hafif efekt.
+    Kararlar (kullanıcı onayladı): kan belirgin ama abartısız; namlu alevi EKLENDİ (karanlıkta ateş = konum ele verir, fener kuralıyla tutarlı); isabet işareti HOST ONAYLI
+    (`Player._send_hit_confirm` → `_hit_confirm_rpc` sadece vurana; çömelme/ısınma reddi yanlış işaret vermez); hasar SAYISI YOK (mutlak sayı gösterme kuralı); sesler Kenney CC0.
+    Modüller `scenes/fx/` (statik, preload, headless'ta hiçbir şey yapmaz, `prewarm(rig)` → `ImportedMap._prewarm_render`): `BloodFx` (sprey + `splat` yer lekesi; Bullet her peer'da,
+    bıçak/bomba `_sync_health` yolu, `recent()` çift kanı önler; ölümde kan gölü), `ShellCasing` (RigidBody3D havuzu 60, maske 1, 5 sn; HandRifle "Eject" marker; Sniper 0.45 sn gecikmeli;
+    ekran testinde 1.8x abartı 2-3 px kalıyordu → ~3x), `MuzzleFlash` (namlu altına tek düğüm, en fazla 6 ışık), `DustFx` (land/lunge/flip_start/flip_end). CameraController `punch(dir, m)` / `dip(0..1)`
+    (sadece yerel, `camera_shake` ayarıyla çarpılır). Crosshair `show_hit(killed)` (beyaz ✕ / öldürmede büyük kırmızı), HUD `hit_marker`/`kill_confirm` sesi; kurban `flesh_hit` 3D sesi.
+    Orkestra: 4 paralel ajan (kan+işaret / kovan+alev / toz+kamera / ses), Player.gd + prewarm bağlantısı ana oturumda. Test: `test_bots ABK` PASS + pencereli ekran görüntüsü (Depo).
+    Tuzak: `get_meta(k, null)` varsayılan null iken anahtar yoksa Godot HATA basar → `has_meta` kullan. AÇIK: tozun 39 m'den okunurluğu ve seslerin kulakla ayarı kullanıcı testinde.
+    **Kullanıcı testi 2:** "toz görünmüyor" — HATA: DustFx yayıcıyı sahneye ekleyip SONRA `global_position` veriyordu → CPUParticles3D hiç çizilmiyordu (proje fizik
+    interpolasyonu açık; düz yeşil test yayıcısı da aynı şekilde görünmedi). Çözüm: önce konumlanmış Node3D taşıyıcı, sonra yayıcı (BloodFx'in yolu). Ayrıca toz ×2 boy, α 0.7, emisyon 0.35.
+    Kamera vuruşları "tam ayarda bile fark edilmiyor" → ~3x (hamle 1.0 m, takla 0.8 m itme + 0.6 çökme, iniş 0.9 + kısa `add_trauma` 0.18; `DIP_MAX` 2.0, `KICK_MAX` 2.6).
+    Öldürme sesi Kenney Interface `bong_001` (metal "çank" yerine). KillNotice: daha aşağı (`BOTTOM_OFFSET` 175) + arkasında kodla çizilen süzülen duman (fbm shader,
+    açılarak büyür, sönerken dağılır; düz karartı şeridi kaldırıldı) — kullanıcı: sade ikon fark edilmeden geçiyordu.
+    **Kullanıcı testi 3:** "sis efektleri hiç olmamış, duman değil" (toz + KillNotice ikisi de). Kullanıcının araştırma notu: GPUParticles3D, one shot, explosiveness 1, 8-10 parçacık,
+    ParticleProcessMaterial, QuadMesh, alpha, per-pixel lit, billboard, gölge kapalı, restart(). → `DustEmitter.gd` (DustFx SİLİNDİ): oyuncu başına hazır 4 yayıcı, gürültü shader'ı
+    (kenar aşınması, yaşla incelen tutamlar, soft particle, fener ışığına duyarlı + 0.06 emisyon tabanı), parçacıklar ~2-2.8 m birbirine binerek tek bulut; zıplama başına da toz eklendi.
+    **Kullanıcı testi 4 (2026-11-18):** efekt kalabalık → toz `AMOUNT` 10→7, alfa 0.75/0.5→0.55/0.36. KillNotice: daha aşağı (`BOTTOM_OFFSET` 110), duman yana DAĞILMAZ —
+    bildirim alanının (panel dikdörtgeni) ALT kenarından doğup dikey süzülür, alanın üstünü en fazla `SMOKE_TOP_OVERSHOOT` 22 px geçer; 18 tutam 2 sn'ye yayılarak çıkar (sürekli süzülme).
+    **Kullanıcı notu 5 (2026-11-18):** gri fotogerçekçi duman neon/karanlık tarza uymuyordu ve sönüktü. Kullanıcı kararları: kıvılcım + kare efekti, ışık her ölümde herkese, süre ~1.5 sn. Yapılan: `KillNotice.gd` yeniden yazıldı (additive kırmızı/bordo kıvılcım çizgileri + titreyen kareler, okunurluk lekesi, toplam ~1.65 sn), yeni `scenes/fx/DeathFlash.gd` (`Player._apply_death` → gölgesiz kırmızı OmniLight, prewarm ImportedMap'te). AÇIK: parçacıklar ince/seyrek bırakıldı, dolgunluk `STREAK_COUNT` 12 / `SQUARE_COUNT` 7 ile ayarlanır; ışığın 39 m kameradan okunurluğu oyunda test edilmedi (`ENERGY_PEAK`/`RANGE`). Orkestra: 2 paralel ajan.
+    (Önceki) KillNotice: düz fbm oval yerine 3 katman (koyu arka / kömür orta dışa patlayan / açık gri ön tutamlar) gürültü dokulu duman tutamları. İki ajan paralel, ikisi de pencereli ekran görüntüsüyle doğrulandı.
 
 ## 3. Açık işler / fikirler (kullanıcı henüz istemedi, önerildi)
 

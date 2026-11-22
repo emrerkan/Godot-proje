@@ -20,8 +20,11 @@ Menü hover (`ui_hover`) ve yükseltme satın alma (`upgrade_buy`) ayrı dosya d
 | `explosion_2.wav` | "Explosion" — https://opengameart.org/content/explosion-0 |
 | `flash_bang_*.ogg` | "25 CC0 bang / firework SFX" — https://opengameart.org/content/25-cc0-bang-firework-sfx |
 | `mag_in.ogg` | Kenney "Impact Sounds" — https://kenney.nl/assets/impact-sounds |
+| `flesh_hit_1..3.ogg` (impactPunch_medium_000/001/003), `flesh_hit_4.ogg` (impactSoft_medium_001), `shell_casing_1..4.ogg` (impactTin_medium_000/001/002/004), `shell_casing_5.ogg` (impactMetal_light_004) | Kenney "Impact Sounds" — https://kenney.nl/assets/impact-sounds |
 | `card_*.ogg` | Kenney "Interface Sounds" — https://kenney.nl/assets/interface-sounds |
+| `hit_marker_1..3.ogg` (tick_001/002/004), `kill_confirm_bong.ogg` (bong_001) | Kenney "Interface Sounds" — https://kenney.nl/assets/interface-sounds |
 | `mag_out.ogg`, `bolt.ogg`, `stab.ogg`, `throw.ogg` | Kenney "RPG Audio" — https://kenney.nl/assets/rpg-audio |
+| `lunge_whoosh_1.ogg` (cloth4), `lunge_whoosh_2.ogg` (cloth2) | Kenney "RPG Audio" — https://kenney.nl/assets/rpg-audio |
 
 İşleme (wav'lar): 96 kHz → 48 kHz, mono, kesim (atışta ilk geçişe hizalı, nefeste ~90 ms yumuşak giriş), sonda doğrusal sönüm, tepe normalizasyonu.
 Kalan sesler (kulak çınlaması, sis, kilit bipleri, maç sonu akoru) `scenes/audio/Sfx.gd` içinde kodla sentezlenir.

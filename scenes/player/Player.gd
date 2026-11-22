@@ -6,6 +6,7 @@ extends CharacterBody3D
 signal health_changed(new_health: float)
 signal ammo_changed(current: int, total: int, reloading: bool)
 signal healed(amount: float)  # sadece local — HUD yeşil vinyet
+signal hit_confirmed(killed: bool)  # sadece local — host hasarı İŞLEDİ (isabet işareti + ses, HUD)
 ## Görünmezlik (PowerupManager._invis_rpc → set_invisible) — HER peer'da emit edilir, HUD yalnızca yerel oyuncununkine bağlanır.
 ## active=false iken duration = bitişte kalan süre (süre dolduysa 0.0, ateş/bıçakla bozulduysa > 0) — HUD "bozuldu / bitti" ayrımı için.
 signal invisibility_changed(active: bool, duration: float)
@@ -142,6 +143,22 @@ var _air_anim_played := false
 ## Sesler (Sfx.gd — CC0 kayıtlar). Adım: kat edilen yatay mesafe adım boyunu geçince (MOVE_ANIMS sırası: Run, Walk, Crouch)
 const SFX := preload("res://scenes/audio/Sfx.gd")
 const SFX_LISTENER := preload("res://scenes/audio/SfxListener.gd")
+## Vuruş/hareket hissi efektleri (sadece görsel, her peer yerel; headless'ta modüller kendisi atlar)
+const BLOOD_FX := preload("res://scenes/fx/BloodFx.gd")
+const DEATH_FLASH := preload("res://scenes/fx/DeathFlash.gd")
+const SHELL_CASING := preload("res://scenes/fx/ShellCasing.gd")
+const MUZZLE_FLASH := preload("res://scenes/fx/MuzzleFlash.gd")
+const DUST_EMITTER := preload("res://scenes/fx/DustEmitter.gd")   # GPUParticles3D toz bulutu (oyuncu başına hazır)
+var _dust: Node3D = null
+const BLOOD_DEDUP_MS := 250         # mermi zaten kan çıkardıysa _sync_health tekrar çıkarmaz
+const SNIPER_EJECT_DELAY := 0.45    # sürgülü: kovan sürgü çekilince
+## Kamera vuruşları (kullanıcı: ilk değerler 0.3/0.3/0.5 tam ayarda bile fark edilmiyordu → ~3x + kısa sarsıntı)
+const CAM_LUNGE_PUNCH := 1.0        # bıçak hamlesinde kamera itmesi (m)
+const CAM_FLIP_PUNCH := 0.8
+const CAM_FLIP_DIP := 0.6
+const CAM_LAND_DIP := 0.9
+const CAM_LAND_TRAUMA := 0.18       # iniş / takla sonu kısa sarsıntı (add_trauma 0..1)
+var _flip_move_dir := Vector3.ZERO  # takla toz yönü (dünya XZ)
 const STEP_STRIDE: Array[float] = [1.9, 1.25, 0.95]
 const STEP_VOLUME_DB: Array[float] = [-10.0, -16.0, -24.0]   # çömelme neredeyse sessiz (taktik)
 const SHOT_VOLUME_DB := -5.0
@@ -314,6 +331,10 @@ var _bot_repress_t := 0.0
 
 func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner") -> void:
 	character_type = p_character
+	if _dust == null:
+		_dust = DUST_EMITTER.new()   # headless'ta içi boş kalır (burst no-op)
+		add_child(_dust)
+		_dust.position.y = 0.05
 	var char_stats: Dictionary = CHARACTER_STATS.get(p_character, CHARACTER_STATS["Visioner"])
 	# Profil yükseltmeleri (karakter başına, NetworkManager.players[peer]["upgrades"] — her peer aynı değeri görür)
 	_upgrade_mult = PROFILE.multipliers(NetworkManager.players.get(p_peer_id, {}).get("upgrades", {}))
@@ -599,6 +620,8 @@ func _update_animation(delta: float) -> void:
 			# Kullanıcının zıplama kaydı (nefes/efor içeriyor — üstüne ayrıca nefes çalınmaz)
 			SFX.play_voice(_voice, "jump", JUMP_VOLUME_DB, 0.05)
 			_breath_cd = BREATH_MIN_GAP
+			if not _vis_hidden:
+				_dust_burst(&"jump", Vector3.ZERO, 0.8)   # kalkışta ayaktan küçük toz
 			_anim_player.play(ANIM_JUMP, 0.08)
 			_anim_player.speed_scale = JUMP_ANIM_SPEED
 		return
@@ -628,6 +651,10 @@ func _update_footsteps(step_len: float, moving: bool) -> void:
 		_was_airborne = false
 		_step_dist = 0.0
 		SFX.play_voice(_voice, "step", STEP_VOLUME_DB[MoveMode.RUN] + 3.0, 0.05)   # iniş: biraz daha tok adım
+		if not _vis_hidden:
+			_dust_burst(&"land", Vector3.ZERO, 1.0)
+		_local_cam_call(&"dip", CAM_LAND_DIP)
+		_local_cam_call(&"add_trauma", CAM_LAND_TRAUMA)
 		return
 	if not moving or step_len > 3.0:   # durdu ya da ışınlandı (respawn)
 		_step_dist = STEP_STRIDE[move_mode] * 0.6   # yeniden yürüyünce ilk adım çabuk gelsin
@@ -738,12 +765,44 @@ func _on_weapon_fired() -> void:
 		SFX.play_voice(_voice, SPECIAL_SHOT_SOUND, SHOT_VOLUME_DB + SPECIAL_SHOT_EXTRA_DB, 0.04)
 	else:
 		SFX.play_voice(_voice, _shot_sound, SHOT_VOLUME_DB, 0.04)
+	_shot_fx()
 	if _upper == null or _anim_player == null or is_dead:
 		return
 	var clip := ANIM_FIRE_WALK if _move_speed > ANIM_MOVE_THRESHOLD else ANIM_FIRE_STAND
 	if _anim_player.has_animation(clip):
 		var hold_time: float = FIRE_HOLD + (current_weapon.fire_rate if current_weapon else 0.0)
 		_upper.hold(_anim_player.get_animation(clip), hold_time)
+
+
+## Namlu alevi + kovan (her peer, görsel). Görünmez oyuncu rakibe alevle ele verilmez (ateş zaten bozar, aynı kare için)
+func _shot_fx() -> void:
+	if is_dead or _vis_hidden or _hand_rifle == null or current_weapon == null:
+		return
+	var muzzle: Node3D = current_weapon.visual_muzzle
+	if muzzle and is_instance_valid(muzzle):
+		MUZZLE_FLASH.flash(muzzle, character_type)
+	var rifle: Node = _hand_rifle.get("rifle")
+	var eject: Node3D = rifle.get_node_or_null("Eject") if rifle != null and is_instance_valid(rifle) else null
+	if eject:
+		SHELL_CASING.eject(eject, character_type, SNIPER_EJECT_DELAY if character_type == "Sniper" else 0.0)
+
+
+## Toz bulutu (her peer, görsel; çağıranlar _vis_hidden'ı zaten kontrol eder)
+func _dust_burst(kind: StringName, dir: Vector3, strength: float) -> void:
+	if _dust != null and is_instance_valid(_dust):
+		_dust.call("burst", kind, dir, strength)
+
+
+## Yerel oyuncunun kamerası (CameraController: punch/dip/add_trauma)
+func _local_cam_call(method: StringName, a: Variant, b: Variant = null) -> void:
+	if not is_local:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam and cam.has_method(method):
+		if b == null:
+			cam.call(method, a)
+		else:
+			cam.call(method, a, b)
 
 
 ## Local oyuncu: aksiyonu herkese oynat (bağlı peer yoksa sadece kendine)
@@ -778,6 +837,13 @@ func play_action(action: int) -> void:
 		Action.STAB:
 			SFX.play_voice(_voice, "stab", -4.0, 0.1)
 			_stab_timer = STAB_DURATION
+			if not is_trapped:   # hamle: ayaktan geriye toz + kısa hışırtı
+				var fwd := -global_transform.basis.z
+				fwd = Vector3(fwd.x, 0.0, fwd.z).normalized()
+				if not _vis_hidden:
+					_dust_burst(&"lunge", fwd, 1.0)
+				SFX.play_voice(_voice, "lunge_whoosh", -8.0, 0.08)
+				_local_cam_call(&"punch", fwd, CAM_LUNGE_PUNCH)
 			if _anim_player.has_animation(ANIM_STAB):
 				_upper.play_once(_anim_player.get_animation(ANIM_STAB), STAB_DURATION)
 			if _hand_rifle:
@@ -1430,6 +1496,11 @@ func _flip_rpc(kind: int, face_yaw: float) -> void:
 	_flip = kind
 	_flip_t = 0.0
 	_flip_face_yaw = face_yaw
+	# İlerleme yönü: FrontFlip yüzün yönüne, BackFlip tersine
+	_flip_move_dir = Vector3(-sin(face_yaw), 0.0, -cos(face_yaw)) * (1.0 if kind == Flip.FRONT else -1.0)
+	if not _vis_hidden:
+		_dust_burst(&"flip_start", _flip_move_dir, 0.9)
+	_local_cam_call(&"punch", _flip_move_dir, CAM_FLIP_PUNCH)
 	if _upper:
 		_upper.set_enabled_smooth(false)  # tam gövde takla
 
@@ -1448,6 +1519,11 @@ func _end_flip() -> void:
 		return
 	_flip = Flip.NONE
 	_flip_cooldown = FLIP_COOLDOWN
+	if not is_dead:   # takla bitişi: toz halkası + yerel kamera çökmesi (ölümde değil)
+		if not _vis_hidden:
+			_dust_burst(&"flip_end", _flip_move_dir, 1.0)
+		_local_cam_call(&"dip", CAM_FLIP_DIP)
+		_local_cam_call(&"add_trauma", CAM_LAND_TRAUMA)
 	if _upper and not is_dead:
 		_upper.set_enabled_smooth(true)
 
@@ -1526,6 +1602,12 @@ func is_crouching() -> bool:
 
 
 func _get_aim_target() -> Vector3:
+	return get_aim_target_at(global_position.y + 0.9)
+
+
+## Nişangah ışınının verilen yükseklikteki yatay düzlemi kestiği nokta. Weapon mermiyi namlu yüksekliğindeki
+## noktaya yollar → mermi çizgisi ekranda TAM nişangahın altından geçer (0.9 m düzlemi perspektifte kaydırıyordu).
+func get_aim_target_at(height: float) -> Vector3:
 	if _bot_driven:
 		# Bot: BotBrain'in nişan noktası (host'un kamerası/faresi DEĞİL); henüz yoksa mevcut bakış yönü
 		return _bot_aim if _bot_has_aim else global_position - global_transform.basis.z
@@ -1538,8 +1620,8 @@ func _get_aim_target() -> Vector3:
 	var dir   := cam.project_ray_normal(mouse)
 	if absf(dir.y) < 0.001:
 		return global_position
-	# Nişan düzlemi oyuncunun bel hizası (engebeli haritalarda — kum tepesi, arazi — sabit 0.9 sapıyordu)
-	var t := (global_position.y + 0.9 - from.y) / dir.y
+	# Nişan düzlemi oyuncuya göreli (engebeli haritalarda — kum tepesi, arazi — sabit yükseklik sapıyordu)
+	var t := (height - from.y) / dir.y
 	return from + dir * t
 
 
@@ -1603,8 +1685,29 @@ func take_damage(amount: float, shooter_peer_id: int, source: int = DAMAGE_BULLE
 	health -= amount
 	health = clampf(health, 0.0, max_health)
 	_sync_health.rpc(health)
+	_send_hit_confirm(shooter_peer_id, health <= 0.0)
 	if health <= 0.0:
 		_die(shooter_peer_id, source)
+
+
+## Host: hasar gerçekten işlendi → SADECE vurana isabet onayı (çömelme/ısınma reddi yanlış işaret vermesin)
+func _send_hit_confirm(shooter: int, killed: bool) -> void:
+	if shooter == peer_id or NetworkManager.is_bot(shooter):
+		return
+	if shooter == NetworkManager.get_local_id():
+		_hit_confirm_rpc(killed)
+	elif shooter in multiplayer.get_peers():
+		_hit_confirm_rpc.rpc_id(shooter, killed)
+
+
+## Vuranın client'ında (bu düğüm = kurban): yerel oyuncuya ilet
+@rpc("any_peer", "reliable")
+func _hit_confirm_rpc(killed: bool) -> void:
+	if multiplayer.get_remote_sender_id() not in [0, 1]:
+		return   # sadece host onaylar (düğüm yetkisi kurbanın kendisi olabilir → "authority" kullanılamaz)
+	var me: Variant = GameManager.active_players.get(NetworkManager.get_local_id())
+	if me != null and is_instance_valid(me):
+		(me as Node).emit_signal("hit_confirmed", killed)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -1613,6 +1716,11 @@ func _sync_health(new_health: float) -> void:
 	if diff < 0.0:
 		# Hasar → her peer'da kırmızı parıltı (hasara göre), ölmediyse sarsılma
 		flash_fx(FX_HURT_COLOR, 0.55 + (-diff) / 60.0)
+		SFX.play_voice(_voice, "flesh_hit", -6.0, 0.08)   # gövdeye isabet (3D, herkes duyar)
+		# Kan: mermi kendi çıkardıysa tekrar yok; bıçak/bomba/tuzak buradan (görünmez oyuncu rakibe kan ile ele verilmez)
+		if not _vis_hidden and not BLOOD_FX.recent(self, BLOOD_DEDUP_MS):
+			BLOOD_FX.spawn(get_tree(), global_position + Vector3(0, 1.2, 0), global_transform.basis.z,
+					clampf(0.8 + (-diff) / 50.0, 0.8, 2.0), self)
 		if new_health > 0.0:
 			play_action(Action.HIT)
 	elif diff > 0.0:
@@ -1637,6 +1745,8 @@ func _die(killer_peer_id: int, source: int = DAMAGE_BULLET) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _apply_death() -> void:
 	is_dead = true
+	BLOOD_FX.splat(get_tree(), global_position, 1.8)   # yerde kan gölü (solarak kaybolur)
+	DEATH_FLASH.burst(get_tree(), global_position)   # ölüm noktasında kısa kırmızı ışık patlaması
 	drop_card()
 	is_trapped = false
 	_clear_power_states()   # görünmezlik + hazır özel silah sıfırlanır (cesedin görünmesi için gizlemeler geri alınır)

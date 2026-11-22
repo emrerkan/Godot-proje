@@ -230,6 +230,11 @@ func _prewarm_render() -> void:
 	smoke.call("setup", 0.3, 0.0)
 	smoke.set("prewarm", true)
 	rig.add_child(smoke)
+	# Vuruş/hareket efektleri (kan, kovan + namlu alevi, toz) — ilk vuruşta shader derleme takılması olmasın
+	preload("res://scenes/fx/BloodFx.gd").prewarm(rig)
+	preload("res://scenes/fx/ShellCasing.gd").prewarm(rig)   # namlu alevini de ısıtır
+	preload("res://scenes/fx/DustEmitter.gd").prewarm(rig)
+	preload("res://scenes/fx/DeathFlash.gd").prewarm(rig)   # ölüm ışığı
 	for i in PREWARM_FRAMES:
 		await get_tree().process_frame
 		if not is_instance_valid(self):

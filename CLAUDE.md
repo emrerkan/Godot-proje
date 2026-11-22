@@ -85,6 +85,15 @@ menü tıkı `ui_click` = kullanıcının fener-acma-kapama.mp3'ü. Kullanıcı 
 alındı (kendi takım `card_pickup` / rakip `card_alert`), kilit bipleri `_update_unlock_ticks` (KONUMSUZ — kapının yerini ele vermez;
 takım tiz/rakip kalın, hızlanır), `unlock_reset`, maç sonu `match_win/lose`.
 
+## Vuruş/hareket efektleri — `scenes/fx/` (statik, `preload`; headless'ta no-op; `prewarm(rig)` → `ImportedMap._prewarm_render`)
+`BloodFx.spawn(tree,pos,dir,strength,owner)` / `recent(owner,ms)` / `splat(tree,pos,size)` ← `Bullet._on_body_entered` (her peer, match_live), `Player._sync_health` (bıçak/bomba; `BLOOD_DEDUP_MS`),
+`_apply_death` (kan gölü). `DeathFlash.burst(tree,pos)` ← `Player._apply_death` (her peer, her ölüm; gölgesiz kırmızı OmniLight, `MAX_LIGHTS` 4 / `ENERGY_PEAK` 6 / `RANGE` 5.5 m, ~0.18 sn; prewarm ImportedMap'te). **İsabet onayı:** host `take_damage` → `_send_hit_confirm` → `_hit_confirm_rpc` (any_peer, sender 1 doğrulanır; bota yok) → yerel oyuncu `hit_confirmed(killed)` →
+HUD `_on_hit_confirmed` → `Crosshair.show_hit` + `hit_marker`/`kill_confirm` sesi. `Player._shot_fx` (`_on_weapon_fired`): `MuzzleFlash.flash(visual_muzzle, karakter)` + `ShellCasing.eject(Eject marker, karakter, gecikme)`
+(HandRifle `WEAPON_MODELS.eject_fwd` → "Eject" Marker3D). **Toz** `DustEmitter.gd` (Node3D, Player.initialize çocuk olarak ekler; 4 GPUParticles3D top_level, ortak
+ParticleProcessMaterial + `spatial_fx_dust.gdshader` gürültü duman shader'ı, boyut/tohum `instance uniform`) → `Player._dust_burst(kind,dir,str)`: zıplama başı (`_update_animation`), iniş
+(`_update_footsteps`), STAB aksiyonu (lunge), `_flip_rpc`/`_end_flip`; yerel kamera
+`_local_cam_call` → CameraController `punch`/`dip`. Görünmez oyuncu (`_vis_hidden`) rakibe alev/toz/kan ile ele verilmez (mermi isabetinin kanı hariç).
+
 ## Dil (TR/EN) — `scenes/settings/Lang.gd` + `LangEN.gd` (statik, `preload`)
 Kaynak dil TÜRKÇE; `LangEN.STRINGS` = {"<Türkçe metin birebir>": "English"} (~340 anahtar). `Lang.apply(setting)` (GameSettings.apply_all)
 Translation'ları KODLA kurar (CSV import editör ister) + Türkçe birebir tablo (yoksa Godot eksik anahtarı yedek dil "en"e düşürürdü).
@@ -389,8 +398,10 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 
 ## scenes/weapons/Weapon.gd + Bullet.gd — ateş/mermi
 
-- `Weapon.try_shoot(shooter_peer, shooter_team)`: ammo/fire_rate/reload kontrolü → `holder.global_transform.basis.z`
-  ters yönü (forward) + saçılma açısı → `_spawn_bullet.rpc()` (call_local).
+- `Weapon.try_shoot(shooter_peer, shooter_team)`: ammo/fire_rate/reload kontrolü → `_aim_forward(spawn)`: yatay yön NAMLUDAN nişangaha
+  (`Player.get_aim_target_at(spawn.y)` = nişangah ışınının namlu yüksekliğindeki düzlemle kesişimi; bot → `_bot_aim`) — eskiden gövde yönüne
+  paraleldi, namlu ~0.3 m sağda olduğu için mermi nişangahı ıskalıyordu (kullanıcı); nişan < `AIM_CONVERGE_MIN` 0.6 m / namlunun arkasındaysa gövde yönü
+  + saçılma açısı → `_spawn_bullet.rpc()` (call_local).
 - **Dikey nişan** (kullanıcı: farklı yükseklikteki rakip vurulamıyordu — mermiler tamamen yataydı): Player atıştan önce `weapon.aim_point = _get_shot_aim_point()`
   (nişangahtan fizik ışını: rakip gövdesi → onun göğsü `SHOT_AIM_CHEST` 1.15, zemin/üst yüzey (normal.y>0.6) → o noktanın 1.15 m üstü, duvar/boşluk → INF;
   bot: `_bot_aim` + 1.15) → `Weapon._pitched` namludan o noktaya eğim (≤`MAX_PITCH_DEG` 40), yükseklik farkı `PITCH_DEADZONE` 0.45 m altındaysa YATAY
@@ -600,7 +611,7 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
   Hedef çipi çoklu kartta: çerçevesiz "KARTLAR" + altında ortalı kart başına mini kart ikonu `_card_slots` (alınmış = beyaz, yerde = soluk gri; "TÜM KARTLAR SİZDE"/"… TOPLADI" de AYNI görünüm — beyaz, çerçevesiz, `_plain_caps_font` kalın değil 19 px), ESC pause, oyun sonu (`_end_overlay`, ZAFER/YENİLGİ). "Ana Menüye Dön" → `GameManager.return_to_menu()`.
   **Ölüm bandı** `DeathRecap.gd` (= `_death_overlay`, BF1 tarzı alt bant: öldüren amblem/ad/karakter/leş-ölüm/kalan can/"SEN – RAKİP" `_duel`,
   silah (`_method_key`: bomba/tuzak aynı hasar türü → yerel `_trapped_seen_ms` ile ayrılır), halka geri sayım; öldürenin gücü GÖSTERİLMEZ — kullanıcı istemedi) ←
-  `_present_death`. **Öldürme bildirimi** `KillNotice.gd` (orta alt, kafatası + yöntem başlığı + toplam XP + kurban adı) ← `_present_kill`;
+  `_present_death`. **Öldürme bildirimi** `KillNotice.gd` (orta alt `BOTTOM_OFFSET` 110; gri duman YOK (kullanıcı 2026-11-18: stilize/parlak); additive (blend_add) kırmızı/bordo dikey kıvılcımlar `STREAK_COUNT` + titreyen dijital kareler `SQUARE_COUNT`, alanın altından dikey süzülür, yana dağılmaz, üstü en fazla `TOP_OVERSHOOT` 22 px geçer; arkada normal karışımlı hafif koyu okunurluk lekesi `_shade`; panel ölçek 0→1.3 (0.2 sn)→1.0 (0.1 sn), bekleme, sonra yukarı 50 px süzülüp söner, toplam ~1.65 sn — tek Control + tek shader) ← `_present_kill`;
   bu öldürme XP nedenleri (`KILL_XP_REASONS`) sol XP akışında tekrar yazılmaz.
   **Silah resimleri** `scenes/ui/WeaponRender.gd` (statik, preload): `HandRifle.build_weapon_mesh/build_knife_model` modelini saydam SubViewport'ta ortografik yandan
   (namlu sağa, köşe noktalarından sıkı çerçeve) **düz BEYAZ siluet** (CS:GO tarzı, ışıksız beyaz malzeme — kullanıcı) olarak bir kez çizip önbelleğe alır; HUD `_setup_death_overlay` → `prewarm`, `make_rect(key, size)` (key = karakter / "knife").
@@ -621,6 +632,8 @@ gereksiz kılıyor), rifle run/walking (UE Walk/Run bacakları + AimIdle üst g�
 - Collision disable'ı physics callback içinde yaparken `set_deferred("disabled", true)`.
 - RPC çağırmadan önce `multiplayer.get_peers().size() > 0` kontrolü (bağlı peer yoksa hata).
 - Hasar/skor/kart gibi yetkili state değişiklikleri SADECE host'ta işlenir — host guard'ı unutma.
+- **CPUParticles3D:** sahneye ekleyip SONRA `global_position` verilen yayıcı hiç çizilmiyor (fizik interpolasyonu açık) → önce konumlanmış Node3D taşıyıcı, yayıcıyı onun çocuğu yap (`scenes/fx/BloodFx`/`DustFx`).
+- `get_meta(k, null)`: anahtar yoksa varsayılan null olduğunda Godot HATA basar → `has_meta` ile kontrol et.
 - `AnimationPlayer.speed_scale = 0` pozu dondururken **geçişi (blend) de durdurur** → yeni animasyona hiç geçilmez.
   Durağan poz gerekiyorsa ayrı tek-karelik döngü klibi kullan (ör. `CrouchIdle`).
 

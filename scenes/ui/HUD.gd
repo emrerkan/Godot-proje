@@ -1227,6 +1227,9 @@ func _on_local_player_spawned(player: Node) -> void:
 	player.health_changed.connect(_on_health_changed)
 	player.ammo_changed.connect(_on_ammo_changed)
 	player.healed.connect(_on_healed)
+	# İsabet onayı (host sadece atana yollar, hasar gerçekten işlendikten sonra) → nişangah X + ses
+	if player.has_signal("hit_confirmed") and not player.is_connected("hit_confirmed", _on_hit_confirmed):
+		player.connect("hit_confirmed", _on_hit_confirmed)
 	_health_bar.max_value = player.max_health
 	_hp_max.text = "/%d" % int(player.max_health)
 	_last_health = player.health
@@ -1245,6 +1248,22 @@ func _on_local_player_spawned(player: Node) -> void:
 	# Başlangıç ammo göstergesini karakter silahına göre ayarla
 	if player.current_weapon:
 		_on_ammo_changed(player.current_weapon.current_ammo, player.current_weapon.max_ammo, false)
+
+
+const HIT_SOUND_MIN_GAP_MS := 60   # tam otomatikte isabet sesi yağmuru olmasın
+var _last_hit_sound_ms := -100000
+
+
+func _on_hit_confirmed(killed: bool) -> void:
+	if _crosshair != null and is_instance_valid(_crosshair):
+		_crosshair.call(&"show_hit", killed)
+	var now := Time.get_ticks_msec()
+	if killed:
+		SFX.play_ui(get_tree(), "kill_confirm", -3.0, randf_range(0.97, 1.03), SFX.BUS_SFX)
+		_last_hit_sound_ms = now
+	elif now - _last_hit_sound_ms >= HIT_SOUND_MIN_GAP_MS:
+		SFX.play_ui(get_tree(), "hit_marker", -6.0, randf_range(0.97, 1.03), SFX.BUS_SFX)
+		_last_hit_sound_ms = now
 
 
 func _on_health_changed(new_health: float) -> void:

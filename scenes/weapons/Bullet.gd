@@ -21,6 +21,8 @@ var is_special := false
 const SPECIAL_FX_PATH := "res://scenes/weapons/SpecialGunFx.gd"
 ## = Player.DAMAGE_SPECIAL (Player'ı preload etmek Player→Weapon→Bullet döngüsü yaratırdı)
 const DAMAGE_SPECIAL := 4
+const BLOOD_FX := preload("res://scenes/fx/BloodFx.gd")
+const SPLAT_CHANCE := 0.3   # isabetlerin bu kadarında hedefin arkasına küçük yer lekesi
 
 
 ## Özel mermi görünümü: normal tracer modeli gizlenir, SpecialGunFx iz eklenir (Fx dosyası yoksa normal model açık kalır)
@@ -130,6 +132,12 @@ func _on_body_entered(body: Node) -> void:
 		# Özel mermi çömelmeyi umursamaz.
 		if not is_special and body.has_method("is_crouching") and body.is_crouching():
 			return
+
+		# Vuruş geri bildirimi: kan (YEREL görsel, her peer kendi mermisinde çizer — ağ yok). Isınmada / ölüde yok.
+		if GameManager.match_live and body.get("is_dead") != true:
+			BLOOD_FX.spawn(get_tree(), global_position, direction, 2.0 if is_special else 1.0, body)
+			if randf() < SPLAT_CHANCE:
+				BLOOD_FX.splat(get_tree(), global_position + Vector3(direction.x, 0.0, direction.z) * 0.6, 0.6)
 
 		# Sadece atan oyuncunun clienti hasar bildirir — çift hasar önlenir.
 		# Bot mermisi: botun "client"ı yok → host bildirir (diğer peer'lar bildirmez, çift hasar yine yok)

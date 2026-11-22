@@ -126,15 +126,15 @@ func _place_knife(sk: Skeleton3D) -> void:
 ## Dokular içe aktarmada 1024'e sınırlı (4K geliyordu). Tripo GLB'lerde ORM: G=pürüzlülük, B=metal (glTF ile aynı) → importer bağlar.
 const WEAPON_MODELS := {
 	"Medic": {"path": "res://asset model/silahlar/medic_silah.glb", "fwd": Vector3(0, 0.007, 1),
-		"grip": Vector3(0, -0.046, -0.225), "tip": Vector3(0.001, 0.097, 0.491), "tb": 0.986, "length": 0.92},   # Medic gövdesinin kolu uzun
+		"grip": Vector3(0, -0.046, -0.225), "tip": Vector3(0.001, 0.097, 0.491), "tb": 0.986, "length": 0.92, "eject_fwd": 0.10},   # Medic gövdesinin kolu uzun
 	"Runner": {"path": "res://asset model/silahlar/mp5.glb", "fwd": Vector3(0, 0.342, 0.940),
-		"grip": Vector3(0, -0.126, -0.172), "tip": Vector3(0.002, 0.191, 0.493), "tb": 1.022, "length": 0.80},   # gerçeği ~0.7; tüfek animasyonunda sol el boşta kalıyordu
+		"grip": Vector3(0, -0.126, -0.172), "tip": Vector3(0.002, 0.191, 0.493), "tb": 1.022, "length": 0.80, "eject_fwd": 0.09},   # gerçeği ~0.7; tüfek animasyonunda sol el boşta kalıyordu
 	"Sniper": {"path": "res://asset model/silahlar/sniper_tufek.glb", "fwd": Vector3(-0.331, 0.666, 0.965),
-		"grip": Vector3(0.061, -0.184, -0.218), "tip": Vector3(-0.179, 0.380, 0.483), "tb": 1.218, "length": 1.15},
+		"grip": Vector3(0.061, -0.184, -0.218), "tip": Vector3(-0.179, 0.380, 0.483), "tb": 1.218, "length": 1.15, "eject_fwd": 0.12},
 	"Tank": {"path": "res://asset model/silahlar/tank_tufek.glb", "fwd": Vector3(0, 0, 1),
-		"grip": Vector3(0, 0.0, -0.179), "tip": Vector3(-0.001, 0.073, 0.494), "tb": 0.989, "length": 1.02},
+		"grip": Vector3(0, 0.0, -0.179), "tip": Vector3(-0.001, 0.073, 0.494), "tb": 0.989, "length": 1.02, "eject_fwd": 0.10},
 	"Visioner": {"path": "res://asset model/karakterler/Visioner/m4a1.fbx", "fwd": Vector3(0, 0.005, 1),
-		"grip": Vector3(0, -0.028, -0.149), "tip": Vector3(0, 0.077, 0.493), "tb": 0.987, "length": 0.86,
+		"grip": Vector3(0, -0.028, -0.149), "tip": Vector3(0, 0.077, 0.493), "tb": 0.987, "length": 0.86, "eject_fwd": 0.10,
 		# FBX importer pürüzlülük/metal dokularını bağlamadı
 		"rough_tex": "res://asset model/karakterler/Visioner/m4a1_2.png", "metal_tex": "res://asset model/karakterler/Visioner/m4a1_3.png"},
 }
@@ -165,7 +165,19 @@ static func _build_from_model(spec: Dictionary, node_name: String) -> Node3D:
 	tip.name = "Muzzle"
 	tip.position = b * ((spec["tip"] as Vector3) - (spec["grip"] as Vector3))
 	root.add_child(tip)
+	if spec.has("eject_fwd"):
+		root.add_child(_make_eject_marker(tip.position, float(spec["eject_fwd"])))
 	return root
+
+
+## Kovan atma deliği ("Eject", Muzzle'ın kardeşi; ShellCasing.eject kullanır). Tüfek uzayında: kabzanın
+## eject_fwd m önünde, namlu ekseni yüksekliğinin ~%85'inde, gövdenin sağ yüzünde. Bazis birim:
+## -Z = tüfek ileri, +X = atma yönü (tüfeğin sağı), +Y = üst.
+static func _make_eject_marker(muzzle_pos: Vector3, fwd_dist: float) -> Marker3D:
+	var m := Marker3D.new()
+	m.name = "Eject"
+	m.position = Vector3(0.03, muzzle_pos.y * 0.85, -fwd_dist)
+	return m
 
 
 static var _extra_mat_cache := {}
@@ -277,4 +289,9 @@ static func build_rifle_mesh() -> Node3D:
 	tip.name = "Muzzle"
 	tip.position = Vector3(0, 0.035, -0.8)
 	rifle.add_child(tip)
+	# Kovan atma deliği: gövde kutusunun sağ yüzü (x 0.03), kabzanın biraz önü
+	var ej := Marker3D.new()
+	ej.name = "Eject"
+	ej.position = Vector3(0.035, 0.05, -0.1)
+	rifle.add_child(ej)
 	return rifle

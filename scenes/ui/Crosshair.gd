@@ -36,6 +36,17 @@ var _reload_time := 1.0
 var _empty := false
 var _gap := MIN_GAP
 
+## İsabet işareti (show_hit): merkez etrafında 4 çapraz çizgi (X, ortası boş). Normal beyaz, öldürme büyük + kırmızı.
+const HIT_INNER := 9.0         # px, merkezden çizgi başlangıcı
+const HIT_LEN := 10.0
+const HIT_KILL_SCALE := 1.45
+const HIT_TIME := 0.25
+const HIT_KILL_TIME := 0.45
+const HIT_POP := 1.3           # belirirken ölçek 1.3 → 1.0
+var _hit_t := -1.0             # geçen süre, <0 = yok
+var _hit_dur := HIT_TIME
+var _hit_kill := false
+
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -78,6 +89,35 @@ func _on_local_player_spawned(player: Node) -> void:
 		_armed = bool(player.get("special_armed"))
 
 
+## HUD çağırır (Player.hit_confirmed): tekrar isabet animasyonu baştan başlatır; öldürme işareti normal isabetle ezilmez
+func show_hit(killed: bool) -> void:
+	if not killed and _hit_kill and _hit_t >= 0.0 and _hit_t < _hit_dur:
+		return
+	_hit_kill = killed
+	_hit_dur = HIT_KILL_TIME if killed else HIT_TIME
+	_hit_t = 0.0
+	queue_redraw()
+
+
+## extra_inner: nişangah şekli merkezde daha geniş yer kaplıyorsa (bıçak halkası / özel silah) X dışarı itilir
+func _draw_hit_marker(c: Vector2, outline: Color, extra_inner: float = 0.0) -> void:
+	if _hit_t < 0.0:
+		return
+	var k := clampf(_hit_t / _hit_dur, 0.0, 1.0)
+	var pop := clampf(_hit_t / 0.06, 0.0, 1.0)        # ilk 60 ms'de 1.3 → 1.0
+	var s := lerpf(HIT_POP, 1.0, pop) * (HIT_KILL_SCALE if _hit_kill else 1.0)
+	var alpha := 1.0 - k * k
+	var col := Color(UITheme.DANGER if _hit_kill else Color.WHITE, alpha)
+	var oc := Color(outline, outline.a * alpha)
+	var w := 3.5 if _hit_kill else 2.6
+	for d: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+		var dn := d.normalized()
+		var a := c + dn * (HIT_INNER * s + extra_inner)
+		var b := c + dn * ((HIT_INNER + HIT_LEN) * s + extra_inner)
+		draw_line(a, b, oc, w + 4.0, true)
+		draw_line(a, b, col, w, true)
+
+
 func _on_special_armed_changed(armed: bool) -> void:
 	_armed = armed
 
@@ -103,6 +143,10 @@ func _process(delta: float) -> void:
 	if not show:
 		return
 
+	if _hit_t >= 0.0:
+		_hit_t += delta
+		if _hit_t >= _hit_dur:
+			_hit_t = -1.0
 	_kick = maxf(_kick - delta * 66.7, 0.0)
 	if _reload_t >= 0.0:
 		_reload_t = minf(_reload_t + delta / _reload_time, 1.0)
@@ -125,6 +169,7 @@ func _draw() -> void:
 	var outline := Color(0, 0, 0, 0.75)
 	if _armed:
 		_draw_special(c, outline)
+		_draw_hit_marker(c, outline, SPECIAL_TICK_END - HIT_INNER + 2.0)
 		return
 	if NetworkManager.get_weapon_mode() == "knife":
 		# Yakın dövüş nişanı: saçılma/tepme/şarjör halkası yok — küçük sabit nokta + ince halka
@@ -132,7 +177,9 @@ func _draw() -> void:
 		draw_arc(c, 13.0, 0.0, TAU, 32, Color(UITheme.TEXT, 0.9), 2.0, true)
 		draw_circle(c, 3.8, outline)
 		draw_circle(c, 2.2, UITheme.ACCENT)
+		_draw_hit_marker(c, outline, 8.0)   # halkanın dışından başlasın
 		return
+	_draw_hit_marker(c, outline)
 	var col := UITheme.DANGER if _empty else UITheme.ACCENT
 	var g := _gap + _kick
 

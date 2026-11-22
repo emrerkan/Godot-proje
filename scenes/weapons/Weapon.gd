@@ -86,22 +86,37 @@ func try_shoot(shooter_peer_id: int, shooter_team_id: int) -> void:
 	_update_ammo_label()
 	fire_timer.start()
 
-	# WeaponHolder (parent) yönünde ilerle: -Z lokal ekseni = hedefe doğru
-	var holder: Node3D = get_parent()
-	var forward: Vector3 = -holder.global_transform.basis.z
-	forward.y = 0
-	forward = forward.normalized()
-
 	# Saçılma: Y ekseninde rastgele rotasyon
 	var spread_rad := deg_to_rad(randf_range(-spread_degrees, spread_degrees))
 	var spread_rot := Basis(Vector3.UP, spread_rad)
 	var spawn := _safe_spawn_position()
+	var forward := _aim_forward(spawn)
 	var direction := _pitched((spread_rot * forward).normalized(), spawn, aim_point)
 
 	_spawn_bullet.rpc(spawn, direction, shooter_peer_id, shooter_team_id, max_distance)
 
 	if current_ammo <= 0:
 		reload()
+
+
+## Yatay mermi yönü: namludan nişangaha (kullanıcı: "nişan aldığım yere gitmiyor"). Eskiden gövde yönüne PARALELDİ →
+## namlu gövdenin ~0.3 m sağında olduğu için mermi nişangahın hep sağından geçiyordu (yakın nişanda çok belirgin).
+## Nişan noktası = nişangah ışınının NAMLU YÜKSEKLİĞİNDEKİ düzlemle kesişimi → mermi çizgisi ekranda nişangahın üstünden geçer.
+## Nişan namlunun dibinde/arkasındaysa (nişangah gövdeyle namlu arasında) gövde yönü kullanılır.
+const AIM_CONVERGE_MIN := 0.6
+func _aim_forward(spawn: Vector3) -> Vector3:
+	var holder: Node3D = get_parent()
+	var forward: Vector3 = -holder.global_transform.basis.z
+	forward.y = 0
+	forward = forward.normalized()
+	var player := holder.get_parent()
+	if player == null or not player.has_method("get_aim_target_at"):
+		return forward
+	var target: Vector3 = player.get_aim_target_at(spawn.y)
+	var to_aim := Vector3(target.x - spawn.x, 0.0, target.z - spawn.z)
+	if to_aim.length() < AIM_CONVERGE_MIN or to_aim.normalized().dot(forward) < 0.5:
+		return forward
+	return to_aim.normalized()
 
 
 ## Duvarın dibinde namlu duvarın İÇİNE/ARKASINA geçebiliyor → mermi orada doğup duvarı hiç görmüyordu.

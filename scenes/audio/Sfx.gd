@@ -47,6 +47,12 @@ const FILES := {
 	"ui_hover": ["shot_smg_1.wav", "shot_smg_2.wav", "shot_smg_3.wav"],
 	"upgrade_buy": ["shot_rifle_1.wav", "shot_rifle_2.wav", "shot_rifle_3.wav", "shot_rifle_4.wav"],
 	"card_pickup": ["card_pickup.ogg"], "card_alert": ["card_alert.ogg"],
+	# Vuruş geri bildirimi (Kenney, CC0): atanın duyduğu 2D tık / öldürme onayı, 3D gövdeye isabet
+	"hit_marker": ["hit_marker_1.ogg", "hit_marker_2.ogg", "hit_marker_3.ogg"],               # Interface tick_001/002/004
+	"kill_confirm": ["kill_confirm_bong.ogg"],                             # Interface bong_001 (kullanıcı: metal "çank" yerine bong)
+	"flesh_hit": ["flesh_hit_1.ogg", "flesh_hit_2.ogg", "flesh_hit_3.ogg", "flesh_hit_4.ogg"],  # Impact impactPunch_medium + impactSoft_medium
+	"shell_casing": ["shell_casing_1.ogg", "shell_casing_2.ogg", "shell_casing_3.ogg", "shell_casing_4.ogg", "shell_casing_5.ogg"],  # impactTin_medium + impactMetal_light_004
+	"lunge_whoosh": ["lunge_whoosh_1.ogg", "lunge_whoosh_2.ogg"],                             # RPG cloth4/cloth2 (gövde savrulması; stab.ogg = knifeSlice)
 }
 ## Kodla sentezlenen sesler (bip/çan/çınlama — sentezin iyi yaptığı basit sesler)
 const SYNTH: Array[String] = ["tinnitus", "smoke", "unlock_tick", "unlock_tick_enemy", "unlock_reset", "match_win", "match_lose"]

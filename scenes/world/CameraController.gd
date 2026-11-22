@@ -35,6 +35,21 @@ var _limits: Array[Vector3] = []
 var _foot := PackedVector2Array()   # ekran izinin bakış noktasına göre XZ ofsetleri (önbellek)
 var _foot_key := Vector3.ZERO       # (genişlik, yükseklik, fov) değişince yeniden hesaplanır
 
+## ── Hareket vuruşları (yay): punch = bıçak hamlesi/takla yönünde kısa itme, dip = iniş çöküşü ──
+## Takip konumu (_follow_pos) ayrı tutulur, yay ofseti üstüne eklenir → lerp ofseti yutmaz. Ofset küçük (≤ ~0.6 m)
+## ve sınır kıstırmasından SONRA eklenir. Sadece yerel kamera (ağ yok). Ayarlar "Ekran sarsıntısı" ile ölçeklenir.
+const PUNCH_OMEGA := 18.0    # rad/sn — ~0.25 sn'de durulur
+const PUNCH_ZETA  := 0.6     # sönüm (tek küçük geri sekme ~%9)
+const DIP_OMEGA   := 15.0    # ~0.3 sn
+const DIP_ZETA    := 0.55
+const DIP_MAX     := 2.0     # m (kullanıcı: 0.6 m 39 m'den fark edilmiyordu)
+const KICK_MAX    := 2.6     # m — ofset tavanı (sınır mantığını bozmasın)
+var _follow_pos := Vector3.ZERO
+var _punch_x := Vector3.ZERO
+var _punch_v := Vector3.ZERO
+var _dip_x := Vector3.ZERO
+var _dip_v := Vector3.ZERO
+
 var _target: Node3D = null
 var _snapped: bool  = false
 var _trauma := 0.0
@@ -46,6 +61,60 @@ func add_trauma(amount: float) -> void:
 	# Ayarlar → Kontroller → Ekran sarsıntısı (0 = kapalı)
 	var mult := float(preload("res://scenes/settings/GameSettings.gd").get_value("camera_shake"))
 	_trauma = clampf(_trauma + amount * mult, 0.0, 1.0)
+
+
+## Bıçak hamlesi / takla: görüşü dünya XZ yönünde kısa itme (amount m, ~0.25-0.4), yayla geri döner
+func punch(dir: Vector3, amount: float) -> void:
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	if flat.length_squared() < 0.0001:
+		return
+	var mult := float(preload("res://scenes/settings/GameSettings.gd").get_value("camera_shake"))
+	if mult <= 0.0:
+		return
+	# Hız darbesi: tepe ofseti ≈ amount olacak şekilde
+	_punch_v += flat.normalized() * (amount * mult / _spring_peak(PUNCH_OMEGA, PUNCH_ZETA))
+
+
+## İniş: kamera kısa süre oyuncuya doğru (bakış ekseni + biraz aşağı) çöker, ~0.3 sn'de geri yaylanır (amount 0..1)
+func dip(amount: float) -> void:
+	var mult := float(preload("res://scenes/settings/GameSettings.gd").get_value("camera_shake"))
+	var a := clampf(amount, 0.0, 1.0) * mult
+	if a <= 0.0:
+		return
+	var axis := (-global_basis.z + Vector3.DOWN * 0.5).normalized()
+	_dip_v += axis * (DIP_MAX * a / _spring_peak(DIP_OMEGA, DIP_ZETA))
+
+
+## 0'dan birim hızla başlayan sönümlü yayın ulaştığı tepe ofseti — _update_kicks'in AYRIK adımıyla simüle edilir
+## (analitik formül 60 Hz'de tepeyi ~%45 fazla tahmin ediyordu)
+static func _spring_peak(omega: float, zeta: float) -> float:
+	var dt := 1.0 / float(maxi(Engine.physics_ticks_per_second, 1))
+	var x := 0.0
+	var v := 1.0
+	var peak := 0.0
+	for i in 120:
+		v += (-omega * omega * x - 2.0 * zeta * omega * v) * dt
+		x += v * dt
+		if x < peak:
+			break
+		peak = x
+	return maxf(peak, 0.001)
+
+
+## Yarı örtük Euler yay adımı (fizik karesinde kararlı)
+func _update_kicks(delta: float) -> void:
+	var acc := -PUNCH_OMEGA * PUNCH_OMEGA * _punch_x - 2.0 * PUNCH_ZETA * PUNCH_OMEGA * _punch_v
+	_punch_v += acc * delta
+	_punch_x += _punch_v * delta
+	acc = -DIP_OMEGA * DIP_OMEGA * _dip_x - 2.0 * DIP_ZETA * DIP_OMEGA * _dip_v
+	_dip_v += acc * delta
+	_dip_x += _dip_v * delta
+	if _punch_x.length_squared() < 1e-6 and _punch_v.length_squared() < 1e-5:
+		_punch_x = Vector3.ZERO
+		_punch_v = Vector3.ZERO
+	if _dip_x.length_squared() < 1e-6 and _dip_v.length_squared() < 1e-5:
+		_dip_x = Vector3.ZERO
+		_dip_v = Vector3.ZERO
 
 
 ## _physics_process'ten — kamera physics interpolation açık, dönüş fizik karesinde değişmeli
@@ -138,9 +207,16 @@ func _physics_process(delta: float) -> void:
 		_fetch_limits()
 	var desired: Vector3 = _clamp_look(_target.global_position) + OFFSET
 	if not _snapped:
+		_follow_pos = desired
+		_punch_x = Vector3.ZERO
+		_punch_v = Vector3.ZERO
+		_dip_x = Vector3.ZERO
+		_dip_v = Vector3.ZERO
 		global_position = desired
 		reset_physics_interpolation()
 		_snapped = true
 	else:
 		# Exponential decay lerp — framerate bağımsız, sinematik yumuşaklık
-		global_position = global_position.lerp(desired, 1.0 - exp(-FOLLOW_SPEED * delta))
+		_follow_pos = _follow_pos.lerp(desired, 1.0 - exp(-FOLLOW_SPEED * delta))
+		_update_kicks(delta)
+		global_position = _follow_pos + (_punch_x + _dip_x).limit_length(KICK_MAX)
