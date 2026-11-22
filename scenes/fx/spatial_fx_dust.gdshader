@@ -12,12 +12,12 @@ render_mode blend_mix, depth_draw_never, cull_disabled, specular_disabled, shado
 
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
-uniform vec3 dust_color : source_color = vec3(0.66, 0.60, 0.52);
-uniform float emission_floor = 0.06;   // tam karanlıkta çok soluk seçilsin
-uniform float light_gain = 1.0;
-uniform float density = 1.0;
-uniform float soft_dist = 0.9;         // zemine bu kadar (m) yaklaşınca tamamen söner
-uniform float camera_pull = 0.5;       // quad'ı kameraya doğru (boy × bu) çek → zemine gömülmez
+uniform vec3 dust_color : source_color = vec3(0.64, 0.59, 0.52);
+uniform float emission_floor = 0.03;   // tam karanlıkta yapay parlamasın, fener değince aydınlansın
+uniform float light_gain = 1.05;
+uniform float density = 0.85;
+uniform float soft_dist = 0.35;        // zemine yaklaşınca sert çizgi bırakmasın
+uniform float camera_pull = 0.18;      // hafif öne çekim — karakterin üstünde havada yüzmesin
 
 // Yayıcı başına (DustEmitter set_instance_shader_parameter) — malzeme kopyalanmaz
 instance uniform float size_mult = 1.0;
@@ -63,9 +63,9 @@ void fragment() {
 	float edge = (1.0 - smoothstep(0.0, 1.0, r + (n - 0.5) * 0.9 + (n2 - 0.5) * 0.35)) * (1.0 - smoothstep(0.7, 1.0, r));
 	// İç yoğunluk gürültüyle güçlü dalgalanır → topaklar ve aralar (düz pamuk top değil)
 	float dens = edge * (0.15 + n * 1.25);
-	// Yaşla aşınma: eşik yükselir → tutamlar incelir (düz sönme değil)
-	float thr = 0.08 + 0.42 * age;
-	float a = smoothstep(thr, thr + 0.8, dens);
+	// Yaşla aşınma: hızlı kuru dağılma (duman bulutu gibi asılı kalmasın)
+	float thr = 0.16 + 0.56 * age;
+	float a = smoothstep(thr, thr + 0.55, dens);
 	a *= COLOR.a * density;
 	// Yumuşak parçacık (zemin/duvar kesişimi)
 	float d = texture(depth_tex, SCREEN_UV).r;

@@ -22,6 +22,7 @@ const SPECIAL_FX_PATH := "res://scenes/weapons/SpecialGunFx.gd"
 ## = Player.DAMAGE_SPECIAL (Player'ı preload etmek Player→Weapon→Bullet döngüsü yaratırdı)
 const DAMAGE_SPECIAL := 4
 const BLOOD_FX := preload("res://scenes/fx/BloodFx.gd")
+const IMPACT_FX := preload("res://scenes/fx/ImpactFx.gd")
 const SPLAT_CHANCE := 0.3   # isabetlerin bu kadarında hedefin arkasına küçük yer lekesi
 
 
@@ -101,6 +102,7 @@ func _physics_process(delta: float) -> void:
 			exclude.append(hit["rid"])
 			continue
 		global_position = hit["position"]
+		IMPACT_FX.spawn(get_tree(), hit["position"], hit["normal"])
 		_done = true
 		queue_free()
 		return

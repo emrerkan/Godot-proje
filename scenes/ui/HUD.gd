@@ -11,6 +11,8 @@ extends CanvasLayer
 const KILL_FEED_MAX := 5
 const RESPAWN_TIME := 3.0  # GameManager._schedule_respawn ile aynı
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
+const ICONS := preload("res://scenes/ui/IconSet.gd")
+const WEAPON_RENDER := preload("res://scenes/ui/WeaponRender.gd")
 const XP_POPUP_MAX := 4
 ## Sol alt oyuncu kartı ölçeği (kullanıcı: %30 küçük). Kart 567 px tasarlanır → ekranda ~397 px
 const PLAYER_CARD_SCALE := 0.7
@@ -139,7 +141,7 @@ var _crouch_cap: Label
 # Güç envanteri
 var _powerups: Node = null
 var _item_slot: PanelContainer
-var _item_glyph: Label
+var _item_icon_holder: CenterContainer
 var _item_name: Label
 var _item_type := -1                 # slottaki güç (-1 = boş)
 var _slot_style: StyleBoxFlat = null
@@ -597,9 +599,9 @@ func _setup_item_slot() -> void:
 	key.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.08), 7, UITheme.BORDER, 1, 8, 0))
 	key.add_child(UITheme.label("Q", 17, UITheme.TEXT, UITheme.font_bold))
 	head.add_child(key)
-	_item_glyph = UITheme.label("—", 57, UITheme.TEXT_DIM, UITheme.font_bold)
-	_item_glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_item_glyph)
+	_item_icon_holder = CenterContainer.new()
+	_item_icon_holder.custom_minimum_size = Vector2(64, 64)
+	box.add_child(_item_icon_holder)
 	_item_name = UITheme.label("BOŞ", 15, UITheme.TEXT_DIM, UITheme.font_caps)
 	_item_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_item_name)
@@ -669,9 +671,9 @@ func _setup_test_hint() -> void:
 	box.add_theme_constant_override("separation", 3)
 	chip.add_child(box)
 	box.add_child(UITheme.label("TEST MODU", 15, UITheme.ACCENT, UITheme.font_caps))
-	var lines: Array[String] = ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "4 Görünmezlik   - Özel silah   = Tuzak çözücü", "5 Önüne güç doğur   Q Kullan"]
+	var lines: Array[String] = ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "4 Görünmezlik   - Özel silah   = Tuzak çözücü", "5 Önüne güç doğur   Q Kullan   U HUD test"]
 	if not NetworkManager.powers_enabled():
-		lines = ["7 Kart/kapı göster"]
+		lines = ["7 Kart/kapı göster   U HUD test"]
 	for line: String in lines:
 		box.add_child(UITheme.label(line, 18, UITheme.TEXT_DIM))
 	_ignore_mouse_recursive(chip)
@@ -699,15 +701,25 @@ func _power_info(item_type: int) -> Dictionary:
 func _refresh_slot() -> void:
 	var col := UITheme.TEXT_DIM
 	var info := _power_info(_item_type) if _item_type >= 0 else {}
+	for ch in _item_icon_holder.get_children():
+		ch.queue_free()
 	if info.is_empty():
-		_item_glyph.text = "—"
+		var dash := UITheme.label("—", 42, UITheme.TEXT_DIM, UITheme.font_bold)
+		dash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_item_icon_holder.add_child(dash)
 		_item_name.text = "BOŞ"
 	else:
 		col = info["color"]
-		_item_glyph.text = info["glyph"]
+		var icon_id: String = ICONS.power_icon_id(_item_type)
+		if not icon_id.is_empty():
+			_item_icon_holder.add_child(ICONS.make(icon_id, 54.0, col))
+		else:
+			var gl := UITheme.label(info["glyph"], 48, col, UITheme.font_bold)
+			gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_item_icon_holder.add_child(gl)
 		_item_name.text = "HAZIR" if (_item_type == T_SPECIAL and _armed) else info["name"]
+	_ignore_mouse_recursive(_item_icon_holder)
 	_slot_col = col
-	_item_glyph.add_theme_color_override("font_color", col)
 	_item_name.add_theme_color_override("font_color", col)
 	_slot_style = UITheme.style(Color(UITheme.BG, 0.62), 23, Color(col, 0.6) if not info.is_empty() else UITheme.BORDER, 1, 17, 13)
 	if not info.is_empty():
@@ -745,34 +757,34 @@ func _build_status_chips() -> void:
 	var cs := _power_info(T_SPECIAL)
 	var cb := _power_info(T_BREAKER)
 	# Görünüm sırası (üstten alta): özel silah, tuzak çözücü, görünmezlik
-	_chip_armed = _make_chip(cs.get("glyph", "⊕"), cs.get("color", COL_SPECIAL), false)
-	_chip_breaker = _make_chip(cb.get("glyph", "⊘"), cb.get("color", COL_BREAKER), false)
-	_chip_invis = _make_chip(ci.get("glyph", "◐"), ci.get("color", COL_INVIS), true)
-	(_chip_armed["text"] as Label).text = "HAZIR · SOL TIK ATEŞ · Q VAZGEÇ"
+	_chip_armed = _make_chip("special", cs.get("color", COL_SPECIAL), false)
+	_chip_breaker = _make_chip("breaker", cb.get("color", COL_BREAKER), false)
+	_chip_invis = _make_chip("invis", ci.get("color", COL_INVIS), true)
+	(_chip_armed["text"] as Label).text = "SOL TIK ATEŞ · Q VAZGEÇ"
 	(_chip_breaker["text"] as Label).text = "Q · TUZAĞI ÇÖZ"
 	for c: Dictionary in [_chip_armed, _chip_breaker, _chip_invis]:
 		_chip_box.add_child(c["panel"])
 
 
-## Çip: cam panel + güç renkli kenar, glif 24 px + metin 20 px caps; with_bar → altında 6 px eriyen bar
-func _make_chip(glyph: String, color: Color, with_bar: bool) -> Dictionary:
+## Çip: cam panel + güç renkli kenar, IconSet vektör ikon 22 px + metin 17 px caps; with_bar → altında 5 px eriyen bar
+func _make_chip(icon_id: String, color: Color, with_bar: bool) -> Dictionary:
 	var panel := PanelContainer.new()
 	panel.visible = false
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	panel.custom_minimum_size = Vector2(260, 52)
-	var st := UITheme.style(Color(UITheme.BG, 0.62), 17, Color(color, 0.7), 1, 20, 10)
+	panel.custom_minimum_size = Vector2(210, 42)
+	var st := UITheme.style(Color(UITheme.BG, 0.62), 14, Color(color, 0.7), 1, 16, 8)
 	panel.add_theme_stylebox_override("panel", st)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
+	box.add_theme_constant_override("separation", 5)
 	panel.add_child(box)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 10)
 	box.add_child(row)
-	var g := UITheme.label(glyph, 24, color, UITheme.font_bold)
+	var g: Control = ICONS.make(icon_id, 22.0, color)
 	g.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(g)
-	var t := UITheme.label("", 20, UITheme.TEXT, UITheme.font_caps)
+	var t := UITheme.label("", 17, UITheme.TEXT, UITheme.font_caps)
 	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(t)
 	var d := {"panel": panel, "glyph": g, "text": t, "style": st, "color": color, "bar": null, "fill": null}
@@ -867,7 +879,7 @@ func _on_invis_changed(active: bool, duration: float) -> void:
 	var col: Color = _chip_invis["color"]
 	var panel := _chip_invis["panel"] as Control
 	var lbl := _chip_invis["text"] as Label
-	var glyph := _chip_invis["glyph"] as Label
+	var glyph := _chip_invis["glyph"] as Control
 	var bar := _chip_invis["bar"] as ProgressBar
 	if _invis_tween and _invis_tween.is_valid():
 		_invis_tween.kill()
@@ -875,7 +887,7 @@ func _on_invis_changed(active: bool, duration: float) -> void:
 		_invis_active = true
 		_invis_total = maxf(duration, 0.1)
 		_invis_left = _invis_total
-		glyph.add_theme_color_override("font_color", col)
+		glyph.set("color", col)
 		lbl.add_theme_color_override("font_color", UITheme.TEXT)
 		bar.visible = true
 		bar.value = 1.0
@@ -894,7 +906,7 @@ func _on_invis_changed(active: bool, duration: float) -> void:
 	var end_col: Color = UITheme.DANGER if broken else UITheme.TEXT_DIM
 	lbl.text = "GÖRÜNÜRLÜK BOZULDU" if broken else "GÖRÜNMEZLİK BİTTİ"
 	lbl.add_theme_color_override("font_color", end_col)
-	glyph.add_theme_color_override("font_color", end_col)
+	glyph.set("color", end_col)
 	(_chip_invis["style"] as StyleBoxFlat).border_color = Color(end_col, 0.8)
 	bar.visible = false
 	panel.visible = true
@@ -956,8 +968,11 @@ func _setup_chat() -> void:
 func _setup_minimap() -> void:
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	box.offset_left = -360   # Minimap.SIZE 333×247 (labirent oranı), başlıksız
-	box.offset_top = -274
+	# Minimap harita oranına göre kendi boyutunu belirler → sağ alt köşeden sola/yukarı büyüsün
+	box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	box.offset_left = -27
+	box.offset_top = -27
 	box.offset_right = -27
 	box.offset_bottom = -27
 	box.add_theme_constant_override("separation", 7)
@@ -2044,11 +2059,26 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int, method: int) ->
 	k_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # oyuncu adları çevrilmesin
 	h.add_child(k_lbl)
 	if method == GameManager.KILL_KNIFE or method == GameManager.KILL_BACKSTAB:
-		h.add_child(UITheme.label("🔪", 22, UITheme.TEXT))
+		var knife_pic := WEAPON_RENDER.make_rect("knife", Vector2(72, 26))
+		knife_pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(knife_pic)
 	elif method == _kill_special:
-		h.add_child(UITheme.label("⊕", 22, _power_info(T_SPECIAL).get("color", COL_SPECIAL), UITheme.font_bold))
+		h.add_child(_kf_icon("special", 30.0, Vector2(32, 28), _power_info(T_SPECIAL).get("color", COL_SPECIAL)))
+	elif method == PLAYER_SCRIPT.DAMAGE_EXPLOSION:
+		h.add_child(_kf_icon("trap" if killer_peer_id == victim_peer_id else "bomb", 30.0, Vector2(32, 28), UITheme.TEXT))
 	else:
-		h.add_child(UITheme.label("▸", 20, UITheme.TEXT_DIM))
+		# Hangi karakter/silahla öldürüldüyse o silahın 3D modelinden beyaz silueti (CS:GO kill feed tarzı)
+		var kchar: String = String(kd.get("character", ""))
+		if kchar == "":
+			var k_node: Node = GameManager.active_players.get(killer_peer_id)
+			if is_instance_valid(k_node) and k_node.get("character_type") != null:
+				kchar = String(k_node.character_type)
+		if kchar in WEAPON_RENDER.KEYS:
+			var gun_pic := WEAPON_RENDER.make_rect(kchar, Vector2(84, 28))
+			gun_pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			h.add_child(gun_pic)
+		else:
+			h.add_child(_kf_icon("weapon", 48.0, Vector2(48, 28), Color(UITheme.TEXT, 0.92)))
 	var v_lbl := UITheme.label(vname, 22, vcol, UITheme.font_bold)
 	v_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	h.add_child(v_lbl)
@@ -2064,6 +2094,18 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int, method: int) ->
 
 	if _scoreboard_visible:
 		_refresh_scoreboard()
+
+
+## Kill feed ikonu: yatay tüfek/bıçak ikonlarını satır yüksekliğini şişirmeden büyük ve ortalı çizer
+func _kf_icon(icon_id: String, draw_px: float, box_size: Vector2, col: Color) -> Control:
+	var holder := Control.new()
+	holder.custom_minimum_size = box_size
+	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ic: Control = ICONS.make(icon_id, draw_px, col)
+	ic.position = (box_size - Vector2(draw_px, draw_px)) * 0.5
+	holder.add_child(ic)
+	return holder
 
 
 # ─────────────────────────────────────────────

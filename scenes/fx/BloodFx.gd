@@ -9,23 +9,20 @@
 
 extends RefCounted
 
-const MAX_SPAWNS := 12            # aynı anda en fazla püskürme (her biri 3 emitter) — aşılınca en eskisi silinir
+const MAX_SPAWNS := 12            # aynı anda en fazla püskürme (her biri 2 keskin damla yayıcı; duman/sis yok)
 const MAX_SPLATS := 24            # aynı anda en fazla yer lekesi
-const SPRAY_LIFETIME := 0.55
-const PUFF_LIFETIME := 0.35
-const MIST_LIFETIME := 0.45
-const HOLDER_LIFE := 0.8          # püskürme düğümü bu süre sonra silinir (< 0.8 sn)
+const SPRAY_LIFETIME := 0.45
+const PUFF_LIFETIME := 0.28
+const HOLDER_LIFE := 0.65         # püskürme düğümü bu süre sonra silinir
 const SPLAT_HOLD := 5.5           # leke tam görünür kalma süresi
 const SPLAT_FADE := 2.5           # sonra sönme (toplam ~8 sn)
 
-const DROP_COLOR := Color(0.42, 0.02, 0.02)
-const MIST_COLOR := Color(0.32, 0.02, 0.02, 0.55)
-const SPLAT_COLOR := Color(0.30, 0.01, 0.01, 0.92)
+const DROP_COLOR := Color(0.56, 0.03, 0.03)
+const SPLAT_COLOR := Color(0.34, 0.015, 0.015, 0.92)
 
 static var _active_spawns: Array = []   # tipsiz: silinmiş düğümler de durabilir (is_instance_valid ile ayıklanır)
 static var _active_splats: Array = []
 static var _drop_mesh: QuadMesh = null
-static var _mist_mesh: QuadMesh = null
 static var _splat_tex: ImageTexture = null
 
 
@@ -67,11 +64,8 @@ static func _ensure_resources() -> void:
 	if _drop_mesh != null:
 		return
 	_drop_mesh = QuadMesh.new()
-	_drop_mesh.size = Vector2(0.14, 0.14)
-	_drop_mesh.material = _particle_material(_soft_dot(0.55))
-	_mist_mesh = QuadMesh.new()
-	_mist_mesh.size = Vector2(0.55, 0.55)
-	_mist_mesh.material = _particle_material(_soft_dot(0.0))
+	_drop_mesh.size = Vector2(0.11, 0.11)
+	_drop_mesh.material = _particle_material(_soft_dot(0.72))   # keskin kenarlı kan damlası (sis/duman görünümü yok)
 	_splat_tex = _make_splat_texture()
 
 
@@ -147,32 +141,6 @@ static func _make_puff(count: int, strength: float) -> CPUParticles3D:
 	return p
 
 
-static func _make_mist(count: int, strength: float) -> CPUParticles3D:
-	var p := CPUParticles3D.new()
-	p.mesh = _mist_mesh
-	p.amount = count
-	p.lifetime = MIST_LIFETIME
-	p.one_shot = true
-	p.explosiveness = 1.0
-	p.local_coords = false
-	p.direction = Vector3(0, 0.1, -1)
-	p.spread = 35.0
-	p.initial_velocity_min = 0.4
-	p.initial_velocity_max = 1.4
-	p.gravity = Vector3(0, -0.6, 0)
-	p.damping_min = 2.0
-	p.damping_max = 3.0
-	p.scale_amount_min = 0.7 * sqrt(strength)
-	p.scale_amount_max = 1.3 * sqrt(strength)
-	var ramp := Gradient.new()
-	ramp.set_color(0, MIST_COLOR)
-	ramp.set_color(1, Color(MIST_COLOR, 0.0))
-	p.color = MIST_COLOR
-	p.color_ramp = ramp
-	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return p
-
-
 # ─────────────────────────────────────────────
 #  Genel API
 # ─────────────────────────────────────────────
@@ -204,10 +172,9 @@ static func spawn(tree: SceneTree, pos: Vector3, dir: Vector3, strength: float =
 	var up := Vector3.UP if absf(d.y) < 0.98 else Vector3.RIGHT
 	holder.global_basis = Basis.looking_at(d, up)
 
-	var spray_n := clampi(int(round(14.0 * strength)), 6, 24)
-	var puff_n := clampi(int(round(4.0 * strength)), 2, 8)
-	var mist_n := clampi(int(round(3.0 * strength)), 2, 6)
-	for e: CPUParticles3D in [_make_spray(spray_n, strength), _make_puff(puff_n, strength), _make_mist(mist_n, strength)]:
+	var spray_n := clampi(int(round(16.0 * strength)), 8, 26)
+	var puff_n := clampi(int(round(6.0 * strength)), 3, 10)
+	for e: CPUParticles3D in [_make_spray(spray_n, strength), _make_puff(puff_n, strength)]:
 		holder.add_child(e)
 		e.emitting = true
 	_active_spawns.append(holder)
@@ -272,7 +239,7 @@ static func prewarm(rig: Node3D) -> void:
 	if _headless() or rig == null:
 		return
 	_ensure_resources()
-	for e: CPUParticles3D in [_make_spray(4, 1.0), _make_puff(2, 1.0), _make_mist(2, 1.0)]:
+	for e: CPUParticles3D in [_make_spray(4, 1.0), _make_puff(2, 1.0)]:
 		e.one_shot = false   # rig yaşadığı sürece çizilsin
 		e.lifetime = 0.3
 		rig.add_child(e)

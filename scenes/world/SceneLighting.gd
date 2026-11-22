@@ -5,17 +5,29 @@
 ## Çağıranlar: Map.gd / ImportedMap.gd `_ready` (`apply_node`), GameSettings.apply_all (`apply_tree` — oyun içinde
 ## Ayarlar → UYGULA gölge kalitesini değiştirirse SSAO açılır/kapanır).
 ##
-## Hedef görünüm: neredeyse siyah, hafif SOĞUK ortam + SICAK oyuncu ışıkları (fener + Player "Halo"),
-## ACES kontrast, parlak (HDR > 1) emissive yüzeylerde glow, köşe/dip kararması (SSAO), hafif mavi derinlik pusu.
+## Hedef görünüm: neredeyse siyah, haritaya özel ince soğuk/gece tonu + SICAK oyuncu ışıkları (fener + Player "Halo"),
+## ACES kontrast, parlak (HDR > 1) emissive yüzeylerde glow, köşe/dip kararması (SSAO), hafif derinlik pusu.
 
 extends RefCounted
 
-const AMBIENT_COLOR := Color(0.1, 0.125, 0.22)     # soğuk mavi (ACES karanlıkları ezer → doğrusal eskisinden yüksek)
+const AMBIENT_COLOR := Color(0.10, 0.125, 0.22)    # varsayılan soğuk gece mavisi
 const AMBIENT_ENERGY := 1.0
 const EXPOSURE := 1.6                              # ACES orta tonları koyulaştırır → telafi
 const WHITE := 6.0
-const FOG_COLOR := Color(0.035, 0.05, 0.1)
-const FOG_DENSITY := 0.0019                        # kamera ~39 m (FOV 40) → oyuncuda yine ~%7 mavi pus (eskiden 18 m / 0.004)
+const FOG_COLOR := Color(0.035, 0.05, 0.10)
+const FOG_DENSITY := 0.0019                        # kamera ~39 m (FOV 40) → oyuncuda yine ~%7 pus
+
+## Harita bazlı ince gece atmosfer tonları (karanlık gerilimini koruyarak her haritaya kimlik verir)
+const MAP_THEMES := {
+	"desert":    {"ambient": Color(0.13, 0.115, 0.15), "fog": Color(0.055, 0.045, 0.065), "fog_density": 0.0022},
+	"desert_v3": {"ambient": Color(0.13, 0.115, 0.15), "fog": Color(0.055, 0.045, 0.065), "fog_density": 0.0022},
+	"forest":    {"ambient": Color(0.085, 0.135, 0.14), "fog": Color(0.025, 0.055, 0.055), "fog_density": 0.0024},
+	"forest_v3": {"ambient": Color(0.085, 0.135, 0.14), "fog": Color(0.025, 0.055, 0.055), "fog_density": 0.0024},
+	"quantum":   {"ambient": Color(0.075, 0.13, 0.19), "fog": Color(0.02, 0.05, 0.085), "fog_density": 0.0017},
+	"hospital":  {"ambient": Color(0.09, 0.13, 0.135), "fog": Color(0.03, 0.05, 0.052), "fog_density": 0.0020},
+	"subway":    {"ambient": Color(0.095, 0.115, 0.16), "fog": Color(0.03, 0.04, 0.065), "fog_density": 0.0021},
+	"port":      {"ambient": Color(0.085, 0.12, 0.21), "fog": Color(0.025, 0.045, 0.095), "fog_density": 0.0022},
+}
 
 
 static func apply_tree(tree: SceneTree) -> void:
@@ -29,24 +41,33 @@ static func apply_node(scene_root: Node) -> void:
 	var we := scene_root.find_child("WorldEnvironment", false, false) as WorldEnvironment
 	if we == null or we.environment == null:
 		return
-	apply(we.environment, int(GameSettings.get_value("shadows")))
+	var map_id := ""
+	var nm := scene_root.get_tree().root.get_node_or_null("NetworkManager") if scene_root.get_tree() else null
+	if nm != null and nm.has_method("get_map_info"):
+		map_id = String(nm.call("get_map_info").get("id", ""))
+	apply(we.environment, int(GameSettings.get_value("shadows")), map_id)
 
 
 ## quality = GameSettings "shadows" (0 kapalı .. 3 yüksek — kalite presetine bağlı)
-static func apply(env: Environment, quality: int) -> void:
+static func apply(env: Environment, quality: int, map_id: String = "") -> void:
+	var theme: Dictionary = MAP_THEMES.get(map_id, {})
+	var amb: Color = theme.get("ambient", AMBIENT_COLOR)
+	var fog_col: Color = theme.get("fog", FOG_COLOR)
+	var fog_dens: float = float(theme.get("fog_density", FOG_DENSITY))
+
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = AMBIENT_COLOR
+	env.ambient_light_color = amb
 	env.ambient_light_energy = AMBIENT_ENERGY
 
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = EXPOSURE
 	env.tonemap_white = WHITE
 
-	# Glow: sadece HDR > 1 parlayanlar (ampuller, güç küreleri, çıkış sütunu, mermi izi) etrafa ışık saçar
+	# Glow: sadece HDR > 1 parlayanlar (ampuller, güç küreleri, çıkış sütunu, mermi/kıvılcım izi) etrafa ışık saçar
 	# Ölçüm (1600×900, iGPU): glow ~3.2 ms → Yüksek ve Ultra'da; Düşük/Orta'da kapalı
 	env.glow_enabled = quality >= 2
 	env.glow_normalized = true
-	env.glow_intensity = 0.7
+	env.glow_intensity = 0.72
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.0
 	env.glow_hdr_threshold = 1.0
@@ -57,7 +78,6 @@ static func apply(env: Environment, quality: int) -> void:
 	RenderingServer.environment_glow_set_use_bicubic_upscale(false)
 
 	# SSAO: SADECE Ultra. Ölçüm (1600×900): tam çözünürlük ~4.4 ms, yarım çözünürlük + düşük kalite ~2.5 ms.
-	# light_affect: ortam ışığı düşük → doğrudan ışığı da biraz karartır.
 	env.ssao_enabled = quality >= 3
 	RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_LOW, true, 0.5, 2, 50.0, 300.0)
 	env.ssao_radius = 1.4
@@ -68,13 +88,13 @@ static func apply(env: Environment, quality: int) -> void:
 	# Hafif kontrast + doygunluk (sıcak/soğuk zıtlığı belirginleşsin)
 	env.adjustment_enabled = true
 	env.adjustment_brightness = 1.0
-	env.adjustment_contrast = 1.04
+	env.adjustment_contrast = 1.05
 	env.adjustment_saturation = 1.12
 
 	# Ucuz derinlik pusu (hacimsel değil). SmokeCloud hacimsel sisi ayrıca açıp kapatır — çakışmaz.
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	env.fog_light_color = FOG_COLOR
+	env.fog_light_color = fog_col
 	env.fog_light_energy = 1.0
-	env.fog_density = FOG_DENSITY
+	env.fog_density = fog_dens
 	env.fog_sky_affect = 0.0

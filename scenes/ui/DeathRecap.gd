@@ -115,7 +115,7 @@ func present(info: Dictionary) -> void:
 			icon = WEAPON_RENDER.make_rect("knife", WEAPON_PIC_SIZE)
 		"special":
 			_weapon_name.text = tr("ÖZEL SİLAH")
-			icon = UITheme.label("⊕", 64, UITheme.TEXT, UITheme.font_bold)   # görseller beyaz (kullanıcı)
+			icon = ICONS.make("special", 72.0, UITheme.TEXT)
 		"bomb":
 			_weapon_name.text = tr("BOMBA")
 			icon = ICONS.make("bomb", 72.0, UITheme.TEXT)

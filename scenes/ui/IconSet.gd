@@ -3,7 +3,7 @@
 ## Tarifler docs/SANAT_KITABI.md §8.2'deki 24×24 birimlik ızgaradan: tek renk, düz uçlu çizgi, sivri köşe,
 ## "daire" yerine sekizgen, kapalı gövdelerde α 0.25 iç dolgu, küçük vurgu parçaları tam dolu.
 ## `color` değişince kendini yeniden çizer. Kimlikler: health, speed, damage, weapon, stamina, bomb, heal, sat, flash,
-## smoke, trap, lock, check. Ölçek `custom_minimum_size`'dan (px/24) alınır → her çözünürlükte keskin.
+## smoke, trap, lock, check, invis, special, breaker, knife, dot. Ölçek `custom_minimum_size`'dan (px/24) alınır.
 ## Sınıf adı YOK (global class cache'e bağımlı olmasın) — kullanan dosya preload eder.
 
 extends Control
@@ -24,6 +24,21 @@ var color: Color = Color.WHITE:
 
 var _s := 1.0          # birim → piksel
 var _w := 1.5          # çizgi kalınlığı (px)
+
+
+## PowerupManager.Type (0..9) → IconSet kimliği
+static func power_icon_id(item_type: int) -> String:
+	match item_type:
+		0: return "bomb"
+		1: return "heal"
+		2, 3: return "sat"
+		4: return "flash"
+		5: return "smoke"
+		6: return "trap"
+		7: return "invis"
+		8: return "special"
+		9: return "breaker"
+	return ""
 
 
 ## Verilen kimlikte, px×px boyutunda, tek renkli ikon üretir (fare olaylarını geçirir).
@@ -120,6 +135,34 @@ func _draw() -> void:
 			_ln(12, 16, 12, 18.5)
 		"check":
 			_poly([4, 12.5, 9.5, 18, 20, 6.5], false, false, 2.5)
+		"invis":
+			# Hayalet göz: pahlı göz çerçevesi + merkez elmas + diyagonal görünmezlik kesimi
+			_poly([2, 12, 6.5, 6.5, 17.5, 6.5, 22, 12, 17.5, 17.5, 6.5, 17.5], true, true)
+			_poly([12, 9, 15, 12, 12, 15, 9, 12], true, false, 1.8)
+			_ln(4, 20, 20, 4)
+		"special":
+			# Tek-atış özel silah: dış sekizgen halka + 4 uzun keskin çentik + dolu çekirdek (Crosshair ile aynı dil)
+			_poly([14.68, 5.53, 18.47, 9.32, 18.47, 14.68, 14.68, 18.47, 9.32, 18.47, 5.53, 14.68, 5.53, 9.32, 9.32, 5.53], true, true)
+			_ln(12, 1.5, 12, 6.5)
+			_ln(12, 17.5, 12, 22.5)
+			_ln(1.5, 12, 6.5, 12)
+			_ln(17.5, 12, 22.5, 12)
+			_solid([10.5, 10.5, 13.5, 10.5, 13.5, 13.5, 10.5, 13.5])
+		"breaker":
+			# Tuzak çözücü: kesilen çene halkası + diyagonal kırma çizgisi
+			_poly([14.87, 5.07, 18.93, 9.13, 18.93, 14.87, 14.87, 18.93, 9.13, 18.93, 5.07, 14.87, 5.07, 9.13, 9.13, 5.07], true, true)
+			_ln(6.5, 17.5, 17.5, 6.5)
+			_poly([3, 12, 7.5, 12])
+			_poly([16.5, 12, 21, 12])
+		"knife":
+			# Diyagonal taktik bıçak: sivri ağız + siper + kabza
+			_poly([20.5, 3.5, 17.5, 10.5, 11.5, 16.5, 8.5, 13.5, 14.5, 7.5], true, true, 1.8)
+			_ln(6.5, 11.5, 13.5, 18.5)
+			_poly([9, 16, 5.5, 19.5, 3.5, 17.5, 7, 14], true, false, 1.8)
+		"dot":
+			# Minimal taktik nokta: yumuşak dış hale + keskin dolu merkez daire
+			draw_circle(Vector2(12, 12) * _s, 8.5 * _s, Color(color, color.a * 0.22), true, -1.0, true)
+			draw_circle(Vector2(12, 12) * _s, 4.8 * _s, color, true, -1.0, true)
 
 
 ## Düz sayı listesi (x, y, x, y …) birim → piksel noktaları

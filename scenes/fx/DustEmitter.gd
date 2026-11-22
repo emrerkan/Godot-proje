@@ -14,11 +14,11 @@ extends Node3D
 const SHADER := preload("res://scenes/fx/spatial_fx_dust.gdshader")
 
 const MAX_CAMERA_DIST := 70.0     # kameradan uzaksa patlama atlanır
-const AMOUNT := 7                 # yayıcı başına parçacık (amount_ratio ile kısılır) — kullanıcı: 10 kalabalıktı
-const RING_LIFETIME := 1.7
-const DIR_LIFETIME := 1.5
-const DUST_COLOR := Color(0.66, 0.60, 0.52)    # kirli açık gri-kahve
-const AABB_BOX := AABB(Vector3(-5, -1, -5), Vector3(10, 5, 10))
+const AMOUNT := 9                 # ince taneli, küçük ayak tozu (eskiden 2.5 m dev bulutlar vardı)
+const RING_LIFETIME := 0.55       # hızlı açılıp sönen kuru toz (havada duman gibi asılı kalmaz)
+const DIR_LIFETIME := 0.48
+const DUST_COLOR := Color(0.64, 0.59, 0.52)    # kirli açık gri-kahve
+const AABB_BOX := AABB(Vector3(-4, -1, -4), Vector3(8, 3, 8))
 
 static var _mesh: QuadMesh = null
 static var _proc_ring: ParticleProcessMaterial = null
@@ -54,25 +54,24 @@ func burst(kind: StringName, dir: Vector3 = Vector3.ZERO, strength: float = 1.0)
 	flat = flat.normalized() if flat.length_squared() > 0.0001 else Vector3.ZERO
 	match kind:
 		&"jump":
-			_fire_ring(foot, 0.6, 0.9 * lerpf(0.9, 1.1, s - 0.5))
+			_fire_ring(foot, 0.45, 0.72 * lerpf(0.9, 1.1, s - 0.5))
 		&"land":
-			_fire_ring(foot, clampf(0.6 + 0.35 * s, 0.6, 1.0), lerpf(0.85, 1.25, (s - 0.5) / 1.1))
+			_fire_ring(foot, clampf(0.65 + 0.25 * s, 0.65, 1.0), lerpf(0.85, 1.15, (s - 0.5) / 1.1))
 		&"lunge":
+			# Bıçak hamlesinde asıl görsel SlashFx kesme yayı; ayakta sadece hafif sürtünme tozu
 			if flat == Vector3.ZERO:
-				_fire_ring(foot, 0.5, 0.8)
+				_fire_ring(foot, 0.35, 0.55)
 			else:
-				_fire_dir(foot, -flat, clampf(0.6 + 0.3 * s, 0.6, 1.0), lerpf(0.85, 1.15, (s - 0.5) / 1.1))
+				_fire_dir(foot, -flat, 0.45, 0.65)
 		&"flip_start":
 			if flat == Vector3.ZERO:
-				_fire_ring(foot, 0.4, 0.75)
+				_fire_ring(foot, 0.38, 0.65)
 			else:
-				_fire_dir(foot, -flat, 0.7, 0.9 * lerpf(0.9, 1.1, s - 0.5))
+				_fire_dir(foot, -flat, 0.50, 0.75 * lerpf(0.9, 1.1, s - 0.5))
 		&"flip_end":
-			_fire_ring(foot, 0.6, 0.9 * lerpf(0.9, 1.15, (s - 0.5) / 1.1))
-			if flat != Vector3.ZERO:
-				_fire_dir(foot + flat * 0.3, flat, 0.5, 0.85)
+			_fire_ring(foot, 0.75, 0.95 * lerpf(0.9, 1.1, (s - 0.5) / 1.1))
 		_:
-			_fire_ring(foot, 0.7, 1.0)
+			_fire_ring(foot, 0.55, 0.8)
 
 
 ## Harita perde açıkken (ImportedMap._prewarm_render) süreç + çizim shader'ları derlensin diye rig altına sürekli yayan
@@ -170,71 +169,71 @@ static func _ensure_resources() -> void:
 	_mesh.size = Vector2(1, 1)
 	_mesh.material = mat
 
-	# Renk/alfa: hızlı belir, uzun süre dur, yavaş sön (shader ayrıca yaşla aşındırır)
+	# Renk/alfa: hızlı belirir, çabuk söner (havada duman bulutu birikmesin)
 	var ramp := Gradient.new()
 	ramp.set_offset(0, 0.0)
 	ramp.set_color(0, Color(1, 1, 1, 0.0))
 	ramp.set_offset(1, 1.0)
-	ramp.set_color(1, Color(0.9, 0.88, 0.85, 0.0))
-	ramp.add_point(0.04, Color(1, 1, 1, 0.55))      # kullanıcı: yoğundu (0.75 / 0.5)
-	ramp.add_point(0.45, Color(0.96, 0.95, 0.93, 0.36))
+	ramp.set_color(1, Color(0.88, 0.85, 0.80, 0.0))
+	ramp.add_point(0.08, Color(1, 1, 1, 0.42))
+	ramp.add_point(0.40, Color(0.94, 0.92, 0.88, 0.24))
 	var ramp_tex := GradientTexture1D.new()
 	ramp_tex.gradient = ramp
 
-	# Boy: küçük doğar, hızla açılır, sonra yavaşça biraz küçülür
+	# Boy: ayak dibinde küçük başlar, yatay yayılırken hafif açılır, dağılır
 	var curve := Curve.new()
-	curve.add_point(Vector2(0.0, 0.5))
-	curve.add_point(Vector2(0.22, 0.85))
-	curve.add_point(Vector2(0.6, 1.0))
-	curve.add_point(Vector2(1.0, 0.88))
+	curve.add_point(Vector2(0.0, 0.42))
+	curve.add_point(Vector2(0.28, 0.88))
+	curve.add_point(Vector2(0.7, 1.0))
+	curve.add_point(Vector2(1.0, 0.78))
 	var curve_tex := CurveTexture.new()
 	curve_tex.curve = curve
 
-	# Halka: ayak genişliğinde halka, yukarı ±90° → dışa yayılır, yere yakın kalır, yavaşça yükselir
+	# Halka: yere yapışık küçük ayak tozu, hızla dışa saçılır ve çöker
 	_proc_ring = _base_process(ramp_tex, curve_tex)
 	_proc_ring.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
 	_proc_ring.emission_ring_axis = Vector3.UP
-	_proc_ring.emission_ring_radius = 0.35
-	_proc_ring.emission_ring_inner_radius = 0.1
-	_proc_ring.emission_ring_height = 0.05
+	_proc_ring.emission_ring_radius = 0.28
+	_proc_ring.emission_ring_inner_radius = 0.08
+	_proc_ring.emission_ring_height = 0.03
 	_proc_ring.direction = Vector3.UP
-	_proc_ring.spread = 90.0
-	_proc_ring.initial_velocity_min = 0.3
-	_proc_ring.initial_velocity_max = 0.8
-	_proc_ring.radial_velocity_min = 1.2
-	_proc_ring.radial_velocity_max = 2.0
+	_proc_ring.spread = 82.0
+	_proc_ring.initial_velocity_min = 0.25
+	_proc_ring.initial_velocity_max = 0.55
+	_proc_ring.radial_velocity_min = 1.8
+	_proc_ring.radial_velocity_max = 3.2
 	var rad := Curve.new()
 	rad.add_point(Vector2(0.0, 1.0))
-	rad.add_point(Vector2(0.35, 0.25))
+	rad.add_point(Vector2(0.3, 0.2))
 	rad.add_point(Vector2(1.0, 0.0))
 	var rad_tex := CurveTexture.new()
 	rad_tex.curve = rad
 	_proc_ring.radial_velocity_curve = rad_tex
-	_proc_ring.scale_min = 2.0
-	_proc_ring.scale_max = 2.8
+	_proc_ring.scale_min = 0.50
+	_proc_ring.scale_max = 0.88
 
-	# Yönlü: yerel -Z'ye (biraz yukarı) savrulan koni
+	# Yönlü: ayaktan geriye kısa ve alçak toz serpintisi
 	_proc_dir = _base_process(ramp_tex, curve_tex)
 	_proc_dir.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	_proc_dir.emission_sphere_radius = 0.25
-	_proc_dir.direction = Vector3(0.0, 0.3, -1.0).normalized()
-	_proc_dir.spread = 18.0
-	_proc_dir.initial_velocity_min = 2.5
-	_proc_dir.initial_velocity_max = 6.0
-	_proc_dir.scale_min = 1.8
-	_proc_dir.scale_max = 2.5
+	_proc_dir.emission_sphere_radius = 0.14
+	_proc_dir.direction = Vector3(0.0, 0.14, -1.0).normalized()
+	_proc_dir.spread = 22.0
+	_proc_dir.initial_velocity_min = 1.6
+	_proc_dir.initial_velocity_max = 3.4
+	_proc_dir.scale_min = 0.42
+	_proc_dir.scale_max = 0.74
 
 
 static func _base_process(ramp_tex: Texture2D, curve_tex: Texture2D) -> ParticleProcessMaterial:
 	var pm := ParticleProcessMaterial.new()
-	pm.gravity = Vector3(0.0, 0.5, 0.0)        # hafifçe yükselir
-	pm.damping_min = 3.0                         # hızla yavaşlar, sonra asılı kalır
-	pm.damping_max = 4.5
+	pm.gravity = Vector3(0.0, -1.8, 0.0)       # duman gibi yukarı yükselmez, yere çöker
+	pm.damping_min = 5.0                        # hızlı sürtünme → kısa ve keskin hareket
+	pm.damping_max = 7.0
 	pm.angle_min = 0.0
 	pm.angle_max = 360.0
-	pm.angular_velocity_min = -30.0
-	pm.angular_velocity_max = 30.0
+	pm.angular_velocity_min = -45.0
+	pm.angular_velocity_max = 45.0
 	pm.scale_curve = curve_tex
 	pm.color_ramp = ramp_tex
-	pm.lifetime_randomness = 0.25
+	pm.lifetime_randomness = 0.22
 	return pm

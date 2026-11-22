@@ -22,6 +22,7 @@ const RANGE := 6.5
 const LIGHT_OFFSET := 0.55   # ışık kaynağı duvar yüzünden koridora doğru (m)
 const SHAFT_INTENSITY := 0.16  # huzmenin tam parlaklıktaki yoğunluğu (LightShaft.gdshader)
 const SHAFT_SHADER := preload("res://scenes/world/LightShaft.gdshader")
+static var _housing_mat: StandardMaterial3D = null
 
 var _lamps: Array[Dictionary] = []
 ## Harita bazlı lamba gücü çarpanı (ImportedMap: MAPS "lamp_energy")
@@ -54,11 +55,12 @@ func _build_lamp(marker: Marker3D, idx: int) -> void:
 	hb.size = Vector3(0.42, 0.12, 0.34)
 	housing.mesh = hb
 	housing.position = Vector3(0, 0.12, -0.12)
-	var metal := StandardMaterial3D.new()
-	metal.albedo_color = Color(0.13, 0.13, 0.14)
-	metal.metallic = 0.6
-	metal.roughness = 0.5
-	housing.material_override = metal
+	if _housing_mat == null:
+		_housing_mat = StandardMaterial3D.new()
+		_housing_mat.albedo_color = Color(0.13, 0.13, 0.14)
+		_housing_mat.metallic = 0.6
+		_housing_mat.roughness = 0.5
+	housing.material_override = _housing_mat
 	housing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	marker.add_child(housing)
 

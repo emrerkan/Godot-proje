@@ -20,6 +20,32 @@ func _ready() -> void:
 	preload("res://scenes/world/SceneLighting.gd").apply_node(self)
 	_build_maze_collision()
 	_register_spawn_points()
+	_prewarm_fx()
+
+
+## İlk vuruş/bıçak/toz/kıvılcım anında shader derleme takılması olmasın (Labirent sahnesi)
+func _prewarm_fx() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var rig := Node3D.new()
+	rig.name = "FxPrewarmRig"
+	rig.position = Vector3(0.0, 0.0, -3.5)
+	cam.add_child(rig)
+	preload("res://scenes/fx/BloodFx.gd").prewarm(rig)
+	preload("res://scenes/fx/ShellCasing.gd").prewarm(rig)
+	preload("res://scenes/fx/DustEmitter.gd").prewarm(rig)
+	preload("res://scenes/fx/DeathFlash.gd").prewarm(rig)
+	preload("res://scenes/fx/SlashFx.gd").prewarm(rig)
+	preload("res://scenes/fx/ImpactFx.gd").prewarm(rig)
+	for _i in 4:
+		await get_tree().process_frame
+		if not is_instance_valid(self):
+			return
+	if is_instance_valid(rig):
+		rig.queue_free()
 
 
 ## CameraController: kamera görüş alanı Bounds iç yüzlerini (±62 / ±46) geçmesin — Vector3(nx, nz, d): n·p ≤ d

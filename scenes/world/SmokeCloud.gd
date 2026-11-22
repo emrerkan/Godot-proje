@@ -112,7 +112,7 @@ func _enable_volumetric_fog() -> void:
 	_env.volumetric_fog_enabled = true
 	if not bool(_env_prev["enabled"]):
 		_env.volumetric_fog_density = 0.0        # global sis yok — sadece FogVolume'lar
-	_env.volumetric_fog_length = maxf(_env.volumetric_fog_length, 40.0)  # kamera 14 m yukarıda
+	_env.volumetric_fog_length = maxf(_env.volumetric_fog_length, 72.0)  # FOV 40 kamera ~39 m uzakta → ekranın üst yarısındaki sis kesilmesin
 	_env.volumetric_fog_temporal_reprojection_enabled = true  # yumuşak, titremesiz
 
 

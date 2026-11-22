@@ -148,6 +148,7 @@ const BLOOD_FX := preload("res://scenes/fx/BloodFx.gd")
 const DEATH_FLASH := preload("res://scenes/fx/DeathFlash.gd")
 const SHELL_CASING := preload("res://scenes/fx/ShellCasing.gd")
 const MUZZLE_FLASH := preload("res://scenes/fx/MuzzleFlash.gd")
+const SLASH_FX := preload("res://scenes/fx/SlashFx.gd")
 const DUST_EMITTER := preload("res://scenes/fx/DustEmitter.gd")   # GPUParticles3D toz bulutu (oyuncu başına hazır)
 var _dust: Node3D = null
 const BLOOD_DEDUP_MS := 250         # mermi zaten kan çıkardıysa _sync_health tekrar çıkarmaz
@@ -653,8 +654,6 @@ func _update_footsteps(step_len: float, moving: bool) -> void:
 		SFX.play_voice(_voice, "step", STEP_VOLUME_DB[MoveMode.RUN] + 3.0, 0.05)   # iniş: biraz daha tok adım
 		if not _vis_hidden:
 			_dust_burst(&"land", Vector3.ZERO, 1.0)
-		_local_cam_call(&"dip", CAM_LAND_DIP)
-		_local_cam_call(&"add_trauma", CAM_LAND_TRAUMA)
 		return
 	if not moving or step_len > 3.0:   # durdu ya da ışınlandı (respawn)
 		_step_dist = STEP_STRIDE[move_mode] * 0.6   # yeniden yürüyünce ilk adım çabuk gelsin
@@ -837,9 +836,11 @@ func play_action(action: int) -> void:
 		Action.STAB:
 			SFX.play_voice(_voice, "stab", -4.0, 0.1)
 			_stab_timer = STAB_DURATION
-			if not is_trapped:   # hamle: ayaktan geriye toz + kısa hışırtı
-				var fwd := -global_transform.basis.z
-				fwd = Vector3(fwd.x, 0.0, fwd.z).normalized()
+			var fwd := -global_transform.basis.z
+			fwd = Vector3(fwd.x, 0.0, fwd.z).normalized()
+			if not _vis_hidden:
+				SLASH_FX.spawn(get_tree(), global_position, fwd)
+			if not is_trapped:   # hamle: hafif ayak sürtünme tozu + kısa hışırtı
 				if not _vis_hidden:
 					_dust_burst(&"lunge", fwd, 1.0)
 				SFX.play_voice(_voice, "lunge_whoosh", -8.0, 0.08)
@@ -1500,7 +1501,6 @@ func _flip_rpc(kind: int, face_yaw: float) -> void:
 	_flip_move_dir = Vector3(-sin(face_yaw), 0.0, -cos(face_yaw)) * (1.0 if kind == Flip.FRONT else -1.0)
 	if not _vis_hidden:
 		_dust_burst(&"flip_start", _flip_move_dir, 0.9)
-	_local_cam_call(&"punch", _flip_move_dir, CAM_FLIP_PUNCH)
 	if _upper:
 		_upper.set_enabled_smooth(false)  # tam gövde takla
 
@@ -1519,11 +1519,9 @@ func _end_flip() -> void:
 		return
 	_flip = Flip.NONE
 	_flip_cooldown = FLIP_COOLDOWN
-	if not is_dead:   # takla bitişi: toz halkası + yerel kamera çökmesi (ölümde değil)
+	if not is_dead:   # takla bitişi: ayak tozu (kamera sarsıntısı kapalı)
 		if not _vis_hidden:
 			_dust_burst(&"flip_end", _flip_move_dir, 1.0)
-		_local_cam_call(&"dip", CAM_FLIP_DIP)
-		_local_cam_call(&"add_trauma", CAM_LAND_TRAUMA)
 	if _upper and not is_dead:
 		_upper.set_enabled_smooth(true)
 

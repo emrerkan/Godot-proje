@@ -8,12 +8,12 @@
 extends RefCounted
 
 const MAX_LIGHTS := 4
-const COLOR := Color(1.0, 0.12, 0.08)
-const ENERGY_PEAK := 6.0
-const RANGE := 5.5
+const COLOR := Color(0.95, 0.14, 0.10)
+const ENERGY_PEAK := 3.6
+const RANGE := 4.2
 const HEIGHT := 1.0               # göğüs yüksekliği (pos'a eklenir)
 const RISE_TIME := 0.03
-const DECAY_TIME := 0.15          # toplam ~0.18 sn
+const DECAY_TIME := 0.19          # toplam ~0.22 sn — yumuşak, sinematik kızıl parlama
 
 static var _lights: Array = []   # tipsiz: silinmiş düğümler de durabilir (is_instance_valid ile ayıklanır)
 

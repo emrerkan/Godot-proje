@@ -25,6 +25,7 @@ const GAME_SETTINGS := preload("res://scenes/settings/GameSettings.gd")
 const SFX := preload("res://scenes/audio/Sfx.gd")
 const NUMBER_STEPPER := preload("res://scenes/ui/NumberStepper.gd")
 const TOGGLE_SWITCH := preload("res://scenes/ui/ToggleSwitch.gd")
+const ICONS := preload("res://scenes/ui/IconSet.gd")
 
 ## OYNA alt menüsü: [anahtar, metin, panel başlığı] — anahtar = _pages anahtarı
 const PLAY_ITEMS := [["browse", "ODALAR"], ["create", "ODA KUR"], ["code", "KOD İLE KATIL"]]
@@ -449,9 +450,9 @@ func _nav_divider() -> Label:
 func _build_play_item(key: String, text: String) -> Control:
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_END
-	row.add_theme_constant_override("separation", 7)
+	row.add_theme_constant_override("separation", 14)
 
-	var marker := UITheme.label("▸", 40, UITheme.ACCENT)
+	var marker: Control = ICONS.make("dot", 22.0, UITheme.TEXT)
 	marker.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	marker.modulate.a = 0.0
 	row.add_child(marker)

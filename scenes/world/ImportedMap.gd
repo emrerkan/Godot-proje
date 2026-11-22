@@ -118,8 +118,7 @@ func _ready() -> void:
 	_bounds = _compute_bounds(_model)
 	_water_floor = bool(info.get("water_floor", false))
 	_convex_props = bool(info.get("convex_props", false))
-	if _convex_props:
-		_optimize_render(_model)   # v3: yer decal/ot/serpinti gölge atmaz + uzakta çizilmez
+	_optimize_render(_model, _convex_props)   # su/neon/cam tüm haritalarda gölgesiz; v3'te decal/ot/serpinti kırpma + gölgesiz
 	_build_collisions(_model)
 	_build_bounds_walls(String(info.get("play_octagon", "")))
 	if bool(info.get("outer_world", false)):
@@ -161,12 +160,12 @@ const DETAIL_VIS_END := 90.0   # kameradan; FOV 40 kamerası oyuncudan ~39 m (es
 const DETAIL_VIS_MARGIN := 6.0
 
 
-func _optimize_render(root: Node) -> void:
+func _optimize_render(root: Node, cull_details: bool = true) -> void:
 	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
 		if mi.mesh == null:
 			continue
 		var nm := String(mi.name)
-		if _has_keyword(nm, DETAIL_KEYWORDS):
+		if cull_details and _has_keyword(nm, DETAIL_KEYWORDS):
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mi.visibility_range_end = DETAIL_VIS_END
 			mi.visibility_range_end_margin = DETAIL_VIS_MARGIN
@@ -230,11 +229,13 @@ func _prewarm_render() -> void:
 	smoke.call("setup", 0.3, 0.0)
 	smoke.set("prewarm", true)
 	rig.add_child(smoke)
-	# Vuruş/hareket efektleri (kan, kovan + namlu alevi, toz) — ilk vuruşta shader derleme takılması olmasın
+	# Vuruş/hareket efektleri (kan, kovan + namlu alevi, toz, bıçak yayı, duvar kıvılcımı, ölüm ışığı)
 	preload("res://scenes/fx/BloodFx.gd").prewarm(rig)
 	preload("res://scenes/fx/ShellCasing.gd").prewarm(rig)   # namlu alevini de ısıtır
 	preload("res://scenes/fx/DustEmitter.gd").prewarm(rig)
-	preload("res://scenes/fx/DeathFlash.gd").prewarm(rig)   # ölüm ışığı
+	preload("res://scenes/fx/DeathFlash.gd").prewarm(rig)
+	preload("res://scenes/fx/SlashFx.gd").prewarm(rig)
+	preload("res://scenes/fx/ImpactFx.gd").prewarm(rig)
 	for i in PREWARM_FRAMES:
 		await get_tree().process_frame
 		if not is_instance_valid(self):

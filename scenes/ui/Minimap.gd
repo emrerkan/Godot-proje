@@ -8,12 +8,13 @@ extends Control
 ## Harita sınırları (3D dünya X/Z) — labirent (Maze_walls.obj) ayak izi, Maze_minimap.png ile birebir (1 px = 1 m)
 const MAP_MIN := Vector2(-62.0, -46.0)
 const MAP_MAX := Vector2(62.0, 46.0)
-const SIZE := Vector2(333.0, 247.0)   # labirentin en/boy oranı (124:92)
+const MAX_SIZE := Vector2(333.0, 260.0) # harita oranını koruyarak bu kutuya sığar (kare haritalar basıklaşmaz)
 const PAD := 10.0
 const WALLS_TEXTURE := "res://asset model/Maze_minimap.png"
 ## false yapılırsa minimapte duvarlar çizilmez (sadece oyuncular)
 const SHOW_WALLS := true
 
+var _size := Vector2(333.0, 247.0)      # güncel çizim boyutu (Labirent 124:92 varsayılanı)
 var _walls_tex: Texture2D = null
 ## Haritaya göre (ImportedMap `minimap_min/max/texture` sağlar; yoksa labirent sabitleri)
 var _map_min := MAP_MIN
@@ -26,15 +27,28 @@ var _alert_timer: float = 0.0
 var _alert_pos: Vector3 = Vector3.ZERO
 var _alert_color: Color = Color.RED
 
-var _bg_style: StyleBoxFlat = UITheme.style(Color(UITheme.BG, 0.82), 20, UITheme.BORDER, 1)
+var _bg_style: StyleBoxFlat = UITheme.style(Color(UITheme.BG, 0.82), 14, UITheme.BORDER, 1)
 
 
 func _ready() -> void:
-	custom_minimum_size = SIZE
+	_fit_aspect()
+	UITheme.add_brackets(self, Color(UITheme.FRAME, 0.55), 14.0, 2.0, -3.0)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST  # duvar pikselleri keskin kalsın
 	if SHOW_WALLS and ResourceLoader.exists(WALLS_TEXTURE):
 		_walls_tex = load(WALLS_TEXTURE)
 	GameManager.card_picked_up.connect(_on_card_picked_up)
+
+
+## Haritanın gerçek X:Z en-boy oranına göre MAX_SIZE içine oturt (kare/dikdörtgen haritalarda bozulma yok)
+func _fit_aspect() -> void:
+	var ws := (_map_max - _map_min).abs()
+	if ws.x < 1.0 or ws.y < 1.0:
+		return
+	var inner_max := MAX_SIZE - Vector2(PAD, PAD) * 2.0
+	var scale_v := minf(inner_max.x / ws.x, inner_max.y / ws.y)
+	_size = (ws * scale_v + Vector2(PAD, PAD) * 2.0).round()
+	custom_minimum_size = _size
+	size = _size
 
 
 ## İçe aktarılan harita hazır olunca kendi sınırlarını ve üretilmiş duvar maskesini verir
@@ -51,6 +65,7 @@ func _check_map_source() -> void:
 	_map_min = scene.get("minimap_min")
 	_map_max = scene.get("minimap_max")
 	_walls_tex = scene.get("minimap_texture")
+	_fit_aspect()
 
 
 func _process(delta: float) -> void:
@@ -62,16 +77,16 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	# ── Arka plan: UITheme paletiyle yuvarlak panel + taktik ızgara ──
-	draw_style_box(_bg_style, Rect2(Vector2.ZERO, SIZE))
-	var inner := Rect2(Vector2(PAD, PAD), SIZE - Vector2(PAD, PAD) * 2.0)
+	draw_style_box(_bg_style, Rect2(Vector2.ZERO, _size))
+	var inner := Rect2(Vector2(PAD, PAD), _size - Vector2(PAD, PAD) * 2.0)
 	if _walls_tex:
 		draw_texture_rect(_walls_tex, inner, false, Color(0.75, 0.78, 0.9, 0.28))
 	else:
 		for i in range(1, 6):
 			var ox := inner.position.x + inner.size.x * i / 6.0
 			var oy := inner.position.y + inner.size.y * i / 6.0
-			draw_line(Vector2(ox, PAD), Vector2(ox, SIZE.y - PAD), Color(1, 1, 1, 0.04), 1.0)
-			draw_line(Vector2(PAD, oy), Vector2(SIZE.x - PAD, oy), Color(1, 1, 1, 0.04), 1.0)
+			draw_line(Vector2(ox, PAD), Vector2(ox, _size.y - PAD), Color(1, 1, 1, 0.04), 1.0)
+			draw_line(Vector2(PAD, oy), Vector2(_size.x - PAD, oy), Color(1, 1, 1, 0.04), 1.0)
 
 	if not multiplayer.has_multiplayer_peer():
 		return
@@ -100,11 +115,13 @@ func _draw() -> void:
 		var color := TeamManager.get_color(team_id)
 		var radius := 8.3 if is_self else 5.8
 
-		# Kendi el feneri konisi (Player root -Z yönüne bakar)
+		# Kendi el feneri konisi (Player root -Z yönüne bakar; harita çerçevesi dışına taşmasın)
 		if is_self:
 			var fwd3: Vector3 = -(player as Node3D).global_transform.basis.z
 			var fwd := Vector2(fwd3.x, fwd3.z).normalized()
-			var cone := PackedVector2Array([p, p + fwd.rotated(-0.45) * 43.0, p + fwd.rotated(0.45) * 43.0])
+			var p1 := (p + fwd.rotated(-0.45) * 43.0).clamp(inner.position, inner.end)
+			var p2 := (p + fwd.rotated(0.45) * 43.0).clamp(inner.position, inner.end)
+			var cone := PackedVector2Array([p, p1, p2])
 			draw_colored_polygon(cone, Color(UITheme.ACCENT, 0.22))
 
 		draw_circle(p, radius + 2.5, Color(0.05, 0.05, 0.08))
@@ -196,7 +213,7 @@ func _draw_satellite_reveals(local_team: int) -> void:
 		status += tr("TEST: ■ KAPI ◆ KART")
 
 	if not status.is_empty():
-		draw_string(font, Vector2(PAD + 7, SIZE.y - PAD - 7), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.9))
+		draw_string(font, Vector2(PAD + 7, _size.y - PAD - 7), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.9))
 
 
 ## Görünmez + yerel oyuncunun rakibi → minimapte hiçbir yolda çizilmez (Player.is_hidden_from_local)
@@ -207,9 +224,9 @@ func _is_hidden(pl: Node) -> bool:
 ## 3D dünya konumunu (X/Z) minimap koordinatına çevirir
 func _w2m(world_pos: Vector3) -> Vector2:
 	var t := (Vector2(world_pos.x, world_pos.z) - _map_min) / (_map_max - _map_min)
-	var inner_size := SIZE - Vector2(PAD, PAD) * 2.0
+	var inner_size := _size - Vector2(PAD, PAD) * 2.0
 	# Harita dışına taşan noktalar panelin kenarında kalsın
-	return (Vector2(PAD, PAD) + t * inner_size).clamp(Vector2(PAD, PAD), SIZE - Vector2(PAD, PAD))
+	return (Vector2(PAD, PAD) + t * inner_size).clamp(Vector2(PAD, PAD), _size - Vector2(PAD, PAD))
 
 
 func _on_card_picked_up(carrier_peer_id: int, carrier_pos: Vector3, carrier_team_id: int) -> void:
