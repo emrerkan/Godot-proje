@@ -1274,7 +1274,7 @@ func _on_hit_confirmed(killed: bool) -> void:
 		_crosshair.call(&"show_hit", killed)
 	var now := Time.get_ticks_msec()
 	if killed:
-		SFX.play_ui(get_tree(), "kill_confirm", -3.0, randf_range(0.97, 1.03), SFX.BUS_SFX)
+		SFX.play_ui(get_tree(), "kill_confirm", 0.0, randf_range(0.97, 1.03), SFX.BUS_SFX)
 		_last_hit_sound_ms = now
 	elif now - _last_hit_sound_ms >= HIT_SOUND_MIN_GAP_MS:
 		SFX.play_ui(get_tree(), "hit_marker", -6.0, randf_range(0.97, 1.03), SFX.BUS_SFX)

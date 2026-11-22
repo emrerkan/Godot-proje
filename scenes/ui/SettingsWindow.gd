@@ -6,9 +6,13 @@
 extends Control
 
 signal closed
+signal applied
 
 const SETTINGS := preload("res://scenes/settings/GameSettings.gd")
 const CARD_SIZE := Vector2(1367, 983)   # UITheme taban 1920×1080'e sığar
+
+## true ise ana menüde sekme içeriği olarak gömülür (bulanık modal/çerçeve/✕ yok)
+var embedded := false
 
 var _draft: Dictionary = {}
 var _refreshers: Array[Callable] = []   # taslak değişince (profil/varsayılan) kontrolleri günceller
@@ -24,8 +28,12 @@ var _suppress_preset := false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	visible = false
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	if embedded:
+		visible = true
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	else:
+		visible = false
+		mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
 
 
@@ -33,6 +41,8 @@ func open() -> void:
 	_draft = SETTINGS.get_all()
 	_refresh_all()
 	_show_tab("graphics")
+	if embedded:
+		return
 	visible = true
 	_card.modulate.a = 0.0
 	var tw := create_tween().set_parallel(true)
@@ -41,7 +51,7 @@ func open() -> void:
 
 
 func close() -> void:
-	if not visible:
+	if embedded or not visible:
 		return
 	var tw := create_tween().set_parallel(true)
 	tw.tween_method(func(v: float) -> void: _blur_mat.set_shader_parameter("amount", v), 1.0, 0.0, 0.14)
@@ -52,7 +62,7 @@ func close() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if visible and event.is_action_pressed("ui_cancel"):
+	if not embedded and visible and event.is_action_pressed("ui_cancel"):
 		close()
 		get_viewport().set_input_as_handled()
 
@@ -62,45 +72,56 @@ func _input(event: InputEvent) -> void:
 # ─────────────────────────────────────────────
 
 func _build() -> void:
-	var blur := ColorRect.new()
-	blur.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_blur_mat = ShaderMaterial.new()
-	_blur_mat.shader = preload("res://scenes/ui/BlurBackdrop.gdshader")
-	blur.material = _blur_mat
-	blur.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			close())
-	add_child(blur)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(center)
-	_card = PanelContainer.new()
-	_card.custom_minimum_size = CARD_SIZE
-	_card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.96), 20, UITheme.BORDER, 1, 40, 30))
-	UITheme.add_brackets(_card, UITheme.FRAME, 30)
-	center.add_child(_card)
-
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 17)
-	_card.add_child(box)
 
-	# Başlık
-	var head := HBoxContainer.new()
-	box.add_child(head)
-	var tbox := VBoxContainer.new()
-	tbox.add_theme_constant_override("separation", 0)
-	tbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(tbox)
-	tbox.add_child(UITheme.label("SİSTEM", 17, UITheme.TEXT_DIM, UITheme.font_caps))
-	tbox.add_child(UITheme.label("AYARLAR", 40, UITheme.TEXT, UITheme.font_title))
-	var x := Button.new()
-	x.text = "✕"
-	x.theme_type_variation = "GhostButton"
-	x.focus_mode = Control.FOCUS_NONE
-	x.pressed.connect(close)
-	head.add_child(x)
+	if embedded:
+		var wrap := MarginContainer.new()
+		wrap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		wrap.add_theme_constant_override("margin_left", 260)
+		wrap.add_theme_constant_override("margin_right", 260)
+		wrap.add_theme_constant_override("margin_top", 26)
+		wrap.add_theme_constant_override("margin_bottom", 30)
+		add_child(wrap)
+		wrap.add_child(box)
+	else:
+		var blur := ColorRect.new()
+		blur.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_blur_mat = ShaderMaterial.new()
+		_blur_mat.shader = preload("res://scenes/ui/BlurBackdrop.gdshader")
+		blur.material = _blur_mat
+		blur.gui_input.connect(func(e: InputEvent) -> void:
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				close())
+		add_child(blur)
+
+		var center := CenterContainer.new()
+		center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(center)
+		_card = PanelContainer.new()
+		_card.custom_minimum_size = CARD_SIZE
+		_card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.96), 20, UITheme.BORDER, 1, 40, 30))
+		UITheme.add_brackets(_card, UITheme.FRAME, 30)
+		center.add_child(_card)
+		_card.add_child(box)
+
+		# Başlık (yalnız modal pencerede; ana menüde üst sekme zaten AYARLAR)
+		var head := HBoxContainer.new()
+		box.add_child(head)
+		var tbox := VBoxContainer.new()
+		tbox.add_theme_constant_override("separation", 0)
+		tbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(tbox)
+		tbox.add_child(UITheme.label("SİSTEM", 17, UITheme.TEXT_DIM, UITheme.font_caps))
+		tbox.add_child(UITheme.label("AYARLAR", 40, UITheme.TEXT, UITheme.font_title))
+		var x := Button.new()
+		x.text = "✕"
+		x.theme_type_variation = "GhostButton"
+		x.focus_mode = Control.FOCUS_NONE
+		x.pressed.connect(close)
+		head.add_child(x)
 
 	# Sekmeler
 	var tabs := HBoxContainer.new()
@@ -146,12 +167,13 @@ func _build() -> void:
 	_dirty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_dirty_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.add_child(_dirty_lbl)
-	var cancel := Button.new()
-	cancel.text = "KAPAT"
-	cancel.focus_mode = Control.FOCUS_NONE
-	cancel.custom_minimum_size = Vector2(200, 0)
-	cancel.pressed.connect(close)
-	foot.add_child(cancel)
+	if not embedded:
+		var cancel := Button.new()
+		cancel.text = "KAPAT"
+		cancel.focus_mode = Control.FOCUS_NONE
+		cancel.custom_minimum_size = Vector2(200, 0)
+		cancel.pressed.connect(close)
+		foot.add_child(cancel)
 	var apply := Button.new()
 	apply.text = "UYGULA"
 	apply.theme_type_variation = "PrimaryButton"
@@ -243,10 +265,10 @@ func _build_graphics(col: VBoxContainer) -> void:
 		func(b: bool) -> void:
 			_draft["menu_background"] = b
 			_mark_custom())
-	_slider(col, "Arayüz ölçeği", "Menü ve HUD boyutu", 80, 100, 5,
-		func() -> float: return float(_draft["ui_scale"]) * 100.0,
-		func(v: float) -> void: _draft["ui_scale"] = v / 100.0,
-		func(v: float) -> String: return "%d%%" % int(v))
+	_slider(col, "Arayüz ölçeği", "Menü ve HUD boyutu", 80, 120, 10,
+		func() -> float: return roundf(float(_draft["ui_scale"]) * 100.0),
+		func(v: float) -> void: _draft["ui_scale"] = roundf(v) / 100.0,
+		func(v: float) -> String: return "%d%%" % int(roundf(v)))
 
 
 func _build_controls(col: VBoxContainer) -> void:
@@ -456,4 +478,6 @@ func _on_apply() -> void:
 	SETTINGS.save()
 	SETTINGS.apply_all(get_tree())
 	_update_dirty()
-	close()
+	applied.emit()
+	if not embedded:
+		close()

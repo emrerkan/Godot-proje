@@ -73,7 +73,7 @@ const SPECIAL_SPENT_LOCK_MS := 1500   # yerel atıştan sonra host slotu boşalt
 
 ## Maç başında karaktere özel TEK SEFERLİK güç (GameManager._begin_actual_game_rpc → grant_starting_items)
 const STARTING_ITEMS := {
-	"Tank": Type.BOMB, "Visioner": Type.INTEL_SAT, "Runner": Type.BOMB, "Sniper": Type.FLASH, "Medic": Type.HEAL,
+	"Tank": Type.BOMB, "Visioner": Type.INTEL_SAT, "Runner": Type.SMOKE, "Sniper": Type.FLASH, "Medic": Type.HEAL,
 }
 ## Medic sağlığı takım arkadaşına da verebilir: nişan noktasına en yakın, yaralı, menzildeki takım arkadaşı
 ## (Medic'e uzaklık "heal_medic_range", nişana uzaklık "heal_medic_aim" — PowerTrees)

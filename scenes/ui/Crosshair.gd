@@ -39,10 +39,10 @@ var _gap := MIN_GAP
 ## İsabet işareti (show_hit): merkez etrafında 4 çapraz çizgi (X, ortası boş). Normal beyaz, öldürme büyük + kırmızı.
 const HIT_INNER := 9.0         # px, merkezden çizgi başlangıcı
 const HIT_LEN := 10.0
-const HIT_KILL_SCALE := 1.45
+const HIT_KILL_SCALE := 1.68
 const HIT_TIME := 0.25
-const HIT_KILL_TIME := 0.45
-const HIT_POP := 1.3           # belirirken ölçek 1.3 → 1.0
+const HIT_KILL_TIME := 0.55
+const HIT_POP := 1.38          # belirirken ölçek 1.38 → 1.0
 var _hit_t := -1.0             # geçen süre, <0 = yok
 var _hit_dur := HIT_TIME
 var _hit_kill := false
@@ -109,13 +109,19 @@ func _draw_hit_marker(c: Vector2, outline: Color, extra_inner: float = 0.0) -> v
 	var alpha := 1.0 - k * k
 	var col := Color(UITheme.DANGER if _hit_kill else Color.WHITE, alpha)
 	var oc := Color(outline, outline.a * alpha)
-	var w := 3.5 if _hit_kill else 2.6
+	var w := 4.4 if _hit_kill else 2.6
 	for d: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
 		var dn := d.normalized()
 		var a := c + dn * (HIT_INNER * s + extra_inner)
 		var b := c + dn * ((HIT_INNER + HIT_LEN) * s + extra_inner)
 		draw_line(a, b, oc, w + 4.0, true)
 		draw_line(a, b, col, w, true)
+	# Öldürme anında nişangah etrafında hızla genişleyen kızıl darbe halkası (göz tam nişangahtayken hissettirir)
+	if _hit_kill and _hit_t < 0.24:
+		var ru := _hit_t / 0.24
+		var re := 1.0 - (1.0 - ru) * (1.0 - ru)
+		var rad := lerpf(12.0 + extra_inner, 38.0 + extra_inner, re)
+		draw_arc(c, rad, 0.0, TAU, 28, Color(UITheme.DANGER, (1.0 - ru) * 0.85), 2.4, true)
 
 
 func _on_special_armed_changed(armed: bool) -> void:

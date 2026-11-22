@@ -10,6 +10,7 @@ extends Node3D
 signal exploded(pos: Vector3, is_flash: bool)
 
 const SMOKE_CLOUD := preload("res://scenes/world/SmokeCloud.gd")
+const EXPLOSION_FX := preload("res://scenes/fx/ExplosionFx.gd")
 const SFX := preload("res://scenes/audio/Sfx.gd")
 ## Yerel oyuncu patlamaya bu mesafeden (m) yakınsa yakın patlama sesi (bomba-1), uzaksa uzak ses (bomba-2).
 ## Varsayılan patlama yarıçapı 4 m → 10 m "hemen yanında" sayılır.
@@ -122,7 +123,7 @@ func _explode() -> void:
 		SFX.play_at(get_tree(), "flashbang", _to, -3.0, 14.0, 70.0)
 	else:
 		var near := _local_distance() <= NEAR_SOUND_DIST
-		SFX.play_at(get_tree(), "explosion_near" if near else "explosion_far", _to, -4.0, 18.0, 90.0)
+		SFX.play_at(get_tree(), "explosion_near" if near else "explosion_far", _to, -2.0, 20.0, 95.0)
 	if is_smoke:
 		# Sis: patlama yok — yerde duman bulutu kalır
 		var cloud: Node3D = SMOKE_CLOUD.new()
@@ -135,29 +136,9 @@ func _explode() -> void:
 	if is_flash:
 		_explode_flash()
 		return
-	_light.light_color = Color(1.0, 0.6, 0.3)
-	_light.omni_range = _radius * 2.5
-	_light.light_energy = 9.0
-	_light.position.y = 1.0
-
-	var blast := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 1.0
-	sm.height = 2.0
-	blast.mesh = sm
-	var bm := StandardMaterial3D.new()
-	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bm.albedo_color = Color(1.0, 0.55, 0.2, 0.7)
-	blast.material_override = bm
-	blast.scale = Vector3.ONE * 0.3
-	add_child(blast)
-
-	var tw := create_tween().set_parallel(true)
-	tw.tween_property(blast, "scale", Vector3.ONE * _radius, 0.35).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
-	tw.tween_property(bm, "albedo_color:a", 0.0, 0.45)
-	tw.tween_property(_light, "light_energy", 0.0, 0.6)
-	tw.chain().tween_callback(queue_free)
+	# Çok katmanlı patlama görseli: flaş, şok dalgası, alev topu, yükselen koyu duman, yer tozu, kıvılcım ve yanık izi
+	EXPLOSION_FX.spawn(get_tree(), _to, _radius)
+	queue_free()
 
 
 ## Flaş: çok kısa, çok parlak beyaz ışık (karanlık labirentte koridoru bir anlığına aydınlatır) + küçük parlak küre

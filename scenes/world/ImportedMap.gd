@@ -236,6 +236,7 @@ func _prewarm_render() -> void:
 	preload("res://scenes/fx/DeathFlash.gd").prewarm(rig)
 	preload("res://scenes/fx/SlashFx.gd").prewarm(rig)
 	preload("res://scenes/fx/ImpactFx.gd").prewarm(rig)
+	preload("res://scenes/fx/ExplosionFx.gd").prewarm(rig)
 	for i in PREWARM_FRAMES:
 		await get_tree().process_frame
 		if not is_instance_valid(self):

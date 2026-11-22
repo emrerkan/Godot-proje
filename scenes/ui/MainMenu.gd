@@ -33,17 +33,26 @@ const PLAY_ITEMS := [["browse", "ODALAR"], ["create", "ODA KUR"], ["code", "KOD 
 const PLAY_CARD_SIZE := {"browse": Vector2(1150, 760), "create": Vector2(1000, 0), "code": Vector2(680, 0)}
 const TOAST_TIME := 5.0
 
+const TOP_BAR_H := 76.0
+const SECTION_ORDER := {"play": 0, "profile": 1, "settings": 2}
+
 var _settings_window: Control
 var _menu_bg_setting := true
 
-# Profil (üst menü PROFİL → bulanık pencere)
+# Ana sekmeler (üst bar: OYNA | PROFİL | AYARLAR — modal değil, ana ekranda animasyonlu geçiş)
 var _profile_level_lbl: Label
 var _profile_xp_lbl: Label
-var _profile_modal: Control
-var _profile_card: Control
 var _profile_page: Node
-var _profile_blur: ShaderMaterial
 var _background: Node = null
+var _top_bar: Control
+var _nav_strip: ColorRect             # aktif sekme altında kayan beyaz şerit
+var _nav_buttons: Dictionary = {}     # "play"/"profile"/"settings" → Button
+var _sections: Dictionary = {}        # "play"/"profile"/"settings" → Control
+var _page_scrim: ColorRect            # PROFİL / AYARLAR açılınca 3D arka planı hafif koyulaştırır
+var _section := "play"
+var _section_tween: Tween
+var _strip_tween: Tween
+var _play_menu_tween: Tween
 
 # Üst gezinme + OYNA alt menüsü
 var _nav_play: Button
@@ -132,6 +141,8 @@ func _ready() -> void:
 	MENU_MUSIC.play(get_tree()) # karakter seçimine kadar sürer (lobi de çalar, kesilmez)
 	_name_input.text = _load_name()
 	_show_tab("browse")
+	_set_section("play", true, false)
+	_sync_nav_strip.call_deferred(true)
 	_update_listening()
 	# Maçtan atılarak dönüldüyse (yükleme süresi aşımı) sebebi göster
 	if not GameManager.menu_notice.is_empty():
@@ -154,7 +165,7 @@ func _process(_delta: float) -> void:
 		_scan_dot.modulate.a = 0.35 + 0.65 * (0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0))
 
 
-## ESC sırası: şifre modalı → oyun paneli → profil → OYNA alt menüsü (ayarlar penceresi kendi ESC'sini yönetir)
+## ESC sırası: şifre modalı → oyun paneli → PROFİL/AYARLAR'dan ana ekrana dönüş → OYNA alt menüsünü kapat
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
 		return
@@ -162,10 +173,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_close_modal()
 	elif _play_modal.visible:
 		_close_play_panel()
-	elif _profile_modal.visible:
-		_close_profile()
+	elif _section != "play":
+		_set_section("play", false, false)
 	elif _play_open:
 		_set_play_open(false)
+		_sync_nav_strip(false)
 	else:
 		return
 	get_viewport().set_input_as_handled()
@@ -187,46 +199,197 @@ func _build_ui() -> void:
 	overlay.material = om
 	add_child(overlay)
 
+	# Üst bar altındaki içerik alanı (PROFİL / AYARLAR açıkken 3D arka planı hafifçe koyulaştıran örtü)
+	_page_scrim = ColorRect.new()
+	_page_scrim.anchor_left = 0.0
+	_page_scrim.anchor_right = 1.0
+	_page_scrim.anchor_top = 0.0
+	_page_scrim.anchor_bottom = 1.0
+	_page_scrim.offset_top = TOP_BAR_H
+	_page_scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_page_scrim.color = Color(UITheme.BG, 0.0)
+	add_child(_page_scrim)
+
+	# 1) OYNA bölümü: solda kimlik + operatör kartı, OYNA altında alt menü
+	var play_sec := _make_section_root()
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_theme_constant_override("margin_left", 93)
 	margin.add_theme_constant_override("margin_right", 93)
-	margin.add_theme_constant_override("margin_top", 73)
+	margin.add_theme_constant_override("margin_top", 48)
 	margin.add_theme_constant_override("margin_bottom", 60)
-	add_child(margin)
-
+	play_sec.add_child(margin)
 	var columns := HBoxContainer.new()
 	columns.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	columns.add_theme_constant_override("separation", 80)
 	margin.add_child(columns)
-
 	columns.add_child(_build_brand_column())
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	columns.add_child(gap)
-	columns.add_child(_build_nav_column())
+	_play_menu = _build_play_menu()
+	play_sec.add_child(_play_menu)
+	_sections["play"] = play_sec
+
+	# 2) PROFİL bölümü: modal değil, doğrudan ana ekran üzerinde UpgradePage
+	var prof_sec := _make_section_root()
+	prof_sec.visible = false
+	var prof_scroll := ScrollContainer.new()
+	prof_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	prof_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	prof_scroll.follow_focus = true
+	prof_sec.add_child(prof_scroll)
+	var prof_wrap := MarginContainer.new()
+	prof_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	prof_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prof_wrap.add_theme_constant_override("margin_left", 120)
+	prof_wrap.add_theme_constant_override("margin_right", 120)
+	prof_wrap.add_theme_constant_override("margin_top", 22)
+	prof_wrap.add_theme_constant_override("margin_bottom", 26)
+	prof_scroll.add_child(prof_wrap)
+	_profile_page = UPGRADE_PAGE.new()
+	_profile_page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	prof_wrap.add_child(_profile_page)
+	_sections["profile"] = prof_sec
+
+	# 3) AYARLAR bölümü: modal değil, doğrudan ana ekran üzerinde gömülü SettingsWindow
+	var set_sec := _make_section_root()
+	set_sec.visible = false
+	_settings_window = SETTINGS_WINDOW.new()
+	_settings_window.embedded = true
+	_settings_window.applied.connect(_on_settings_applied)
+	set_sec.add_child(_settings_window)
+	_sections["settings"] = set_sec
+
+	# Üst gezinme çubuğu (tam genişlik + alt şerit + kayan aktif sekme çizgisi)
+	add_child(_build_top_nav())
 
 	_build_toast()
 	_build_play_modal()
 	_build_password_modal()
-	_build_profile_modal()
-	_settings_window = SETTINGS_WINDOW.new()
-	_settings_window.closed.connect(_on_settings_closed)
-	add_child(_settings_window)
 
 
-## AYARLAR (grafik / kontrol / ses / oyun) — SettingsWindow kendi ESC/kapama mantığını yönetir
-func _open_settings() -> void:
-	_set_play_open(false)
-	_menu_bg_setting = bool(GAME_SETTINGS.get_value("menu_background"))
-	_settings_window.open()
+func _make_section_root() -> Control:
+	var c := Control.new()
+	c.anchor_left = 0.0
+	c.anchor_right = 1.0
+	c.anchor_top = 0.0
+	c.anchor_bottom = 1.0
+	c.offset_top = TOP_BAR_H
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(c)
+	return c
 
 
-func _on_settings_closed() -> void:
-	# "Menü 3D arka planı" değiştiyse arka planı yeniden kur (askerler eklensin/kalksın)
-	if bool(GAME_SETTINGS.get_value("menu_background")) != _menu_bg_setting and _background:
+## OYNA düğmesi: ana ekrandayken alt menüyü aç/kapat; PROFİL/AYARLAR'dan geliyorsa ana ekrana dönüp alt menüyü aç
+func _on_nav_play_pressed() -> void:
+	if _section == "play":
+		_set_play_open(not _play_open)
+		_sync_nav_strip(false)
+	else:
+		_set_section("play", false, true)
+
+
+## Sekme geçişi (OYNA / PROFİL / AYARLAR): ana ekranda yönlü kayma + solma animasyonu ve kayan üst şerit
+func _set_section(sec: String, instant: bool = false, open_play: bool = true) -> void:
+	if not _sections.has(sec):
+		return
+	var prev := _section
+	if prev == sec and not instant:
+		(_nav_buttons[sec] as Button).set_pressed_no_signal(true)
+		return
+	_section = sec
+
+	# Ayrılırken: PROFİL'den dönüyorsak operatör kartındaki seviye/XP'yi güncelle
+	if prev == "profile" and sec != "profile":
+		_refresh_profile_summary()
+
+	# Girerken: veri tazele
+	if sec == "profile":
+		_profile_page.refresh()
+	elif sec == "settings":
+		_menu_bg_setting = bool(GAME_SETTINGS.get_value("menu_background"))
+		_settings_window.open()
+
+	_set_play_open(sec == "play" and open_play)
+	for k: String in _nav_buttons:
+		var active := (k == sec) and (k != "play" or _play_open)
+		(_nav_buttons[k] as Button).set_pressed_no_signal(active)
+	_sync_nav_strip(instant)
+
+	if _section_tween and _section_tween.is_valid():
+		_section_tween.kill()
+
+	var target_scrim := 0.0 if sec == "play" else 0.66
+	if instant:
+		for k: String in _sections:
+			var node: Control = _sections[k]
+			node.visible = (k == sec)
+			node.modulate.a = 1.0 if k == sec else 0.0
+			node.offset_left = 0.0
+			node.offset_right = 0.0
+		_page_scrim.color.a = target_scrim
+		return
+
+	# Diğer açık kalmış üçüncü bölümleri hemen gizle (hızlı tıklamalarda üst üste binmesin)
+	for k: String in _sections:
+		if k != sec and k != prev:
+			var other: Control = _sections[k]
+			other.visible = false
+			other.offset_left = 0.0
+			other.offset_right = 0.0
+
+	var dir: float = 1.0 if int(SECTION_ORDER.get(sec, 0)) >= int(SECTION_ORDER.get(prev, 0)) else -1.0
+	var out_ctrl: Control = _sections.get(prev)
+	var in_ctrl: Control = _sections[sec]
+
+	in_ctrl.visible = true
+	in_ctrl.modulate.a = 0.0
+	in_ctrl.offset_left = 68.0 * dir
+	in_ctrl.offset_right = 68.0 * dir
+
+	_section_tween = create_tween().set_parallel(true)
+	_section_tween.tween_property(_page_scrim, "color:a", target_scrim, 0.24).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	if out_ctrl and out_ctrl != in_ctrl and out_ctrl.visible:
+		_section_tween.tween_property(out_ctrl, "offset_left", -52.0 * dir, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		_section_tween.tween_property(out_ctrl, "offset_right", -52.0 * dir, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		_section_tween.tween_property(out_ctrl, "modulate:a", 0.0, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		_section_tween.chain().tween_callback(func() -> void:
+			if _section != prev:
+				out_ctrl.visible = false
+				out_ctrl.offset_left = 0.0
+				out_ctrl.offset_right = 0.0)
+	_section_tween.tween_property(in_ctrl, "offset_left", 0.0, 0.28).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_section_tween.tween_property(in_ctrl, "offset_right", 0.0, 0.28).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_section_tween.tween_property(in_ctrl, "modulate:a", 1.0, 0.24).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+
+## Aktif sekmenin altındaki beyaz şeridi hedef sekme düğmesine kaydırır (ana ekranda OYNA kapalıysa söner)
+func _sync_nav_strip(instant: bool = false) -> void:
+	if _nav_strip == null or not _nav_buttons.has(_section):
+		return
+	var btn: Button = _nav_buttons[_section]
+	var target_x := btn.position.x
+	var target_w := btn.size.x
+	if target_w <= 1.0:
+		return
+	var target_a := 1.0 if (_section != "play" or _play_open) else 0.0
+	if _strip_tween and _strip_tween.is_valid():
+		_strip_tween.kill()
+	if instant:
+		_nav_strip.position.x = target_x
+		_nav_strip.size.x = target_w
+		_nav_strip.modulate.a = target_a
+		return
+	_strip_tween = create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_strip_tween.tween_property(_nav_strip, "position:x", target_x, 0.24)
+	_strip_tween.tween_property(_nav_strip, "size:x", target_w, 0.24)
+	_strip_tween.tween_property(_nav_strip, "modulate:a", target_a, 0.18)
+
+
+func _on_settings_applied() -> void:
+	# "Menü 3D arka planı" değiştiyse arka planı hemen yenile (askerler eklensin/kalksın)
+	var cur := bool(GAME_SETTINGS.get_value("menu_background"))
+	if cur != _menu_bg_setting and _background:
+		_menu_bg_setting = cur
 		var idx := _background.get_index()
 		_background.queue_free()
 		_background = MENU_BACKGROUND.new()
@@ -287,43 +450,6 @@ func _fade_layer(layer: Control, mat: ShaderMaterial, card: Control, show: bool)
 		tw.tween_method(func(v: float) -> void: mat.set_shader_parameter("amount", v), 1.0, 0.0, 0.14)
 		tw.tween_property(card, "modulate:a", 0.0, 0.12)
 		tw.chain().tween_callback(func() -> void: layer.visible = false)
-
-
-## PROFİL penceresi: bulanık arka plan + ortada UpgradePage (karakter başına yükseltme). Dışına tık / ✕ / ESC kapatır.
-func _build_profile_modal() -> void:
-	var parts := _make_blur_layer(_close_profile)
-	_profile_modal = parts[0]
-	_profile_blur = parts[1]
-
-	# UpgradePage ~1000 px yüksek → başlık satırı yok, kenar payı ince (1080'e sığsın); ✕ ekranın sağ üstünde
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(1667, 0)
-	card.add_theme_stylebox_override("panel", UITheme.style(Color(UITheme.BG, 0.97), 23, Color(UITheme.ACCENT, 0.35), 1, 43, 20))
-	UITheme.add_brackets(card, UITheme.FRAME, 33)
-	(parts[2] as Control).add_child(card)
-	_profile_card = card
-	_profile_page = UPGRADE_PAGE.new()
-	card.add_child(_profile_page)
-
-	var close := _modal_head(Label.new(), _close_profile)
-	close.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	close.offset_left = -100
-	close.offset_right = -23
-	close.offset_top = 17
-	_profile_modal.add_child(close)
-
-
-func _open_profile() -> void:
-	_set_play_open(false)
-	_profile_page.refresh()
-	_fade_layer(_profile_modal, _profile_blur, _profile_card, true)
-
-
-func _close_profile() -> void:
-	if not _profile_modal.visible:
-		return
-	_refresh_profile_summary()
-	_fade_layer(_profile_modal, _profile_blur, _profile_card, false)
 
 
 func _refresh_profile_summary() -> void:
@@ -400,56 +526,117 @@ func _build_brand_column() -> Control:
 	return col
 
 
-## Sağ üst: OYNA | PROFİL | AYARLAR + OYNA'nın açtığı alt menü (sağa yaslı)
-func _build_nav_column() -> Control:
-	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(600, 0)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 0)
+## Üst gezinme çubuğu (tam genişlik + alt şerit + kayan aktif sekme çizgisi): ortada PROFİL, solunda OYNA, sağında AYARLAR
+func _build_top_nav() -> Control:
+	_top_bar = Control.new()
+	_top_bar.anchor_left = 0.0
+	_top_bar.anchor_right = 1.0
+	_top_bar.anchor_top = 0.0
+	_top_bar.anchor_bottom = 0.0
+	_top_bar.offset_bottom = TOP_BAR_H
+	_top_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_top_bar.resized.connect(func() -> void: _sync_nav_strip.call_deferred(true))
+
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.color = Color(UITheme.BG, 0.72)
+	_top_bar.add_child(bg)
 
 	var nav := HBoxContainer.new()
-	nav.alignment = BoxContainer.ALIGNMENT_END
-	nav.add_theme_constant_override("separation", 7)
-	col.add_child(nav)
-	_nav_play = _nav_button("OYNA", func() -> void: _set_play_open(not _play_open))
-	_nav_play.toggle_mode = true
+	nav.set_anchors_preset(Control.PRESET_FULL_RECT)
+	nav.alignment = BoxContainer.ALIGNMENT_CENTER
+	nav.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	nav.add_theme_constant_override("separation", 12)
+	_top_bar.add_child(nav)
+
+	_nav_play = _nav_button("OYNA", _on_nav_play_pressed)
+	var btn_prof := _nav_button("PROFİL", func() -> void: _set_section("profile"))
+	var btn_set := _nav_button("AYARLAR", func() -> void: _set_section("settings"))
+	_nav_buttons["play"] = _nav_play
+	_nav_buttons["profile"] = btn_prof
+	_nav_buttons["settings"] = btn_set
+
 	nav.add_child(_nav_play)
 	nav.add_child(_nav_divider())
-	nav.add_child(_nav_button("PROFİL", _open_profile))
+	nav.add_child(btn_prof)
 	nav.add_child(_nav_divider())
-	nav.add_child(_nav_button("AYARLAR", _open_settings))
+	nav.add_child(btn_set)
 
-	col.add_child(_spacer(47))
-	_play_menu = VBoxContainer.new()
-	_play_menu.add_theme_constant_override("separation", 10)
-	_play_menu.visible = false
-	col.add_child(_play_menu)
+	# Üst barın altında tam genişlik şerit
+	var base_strip := ColorRect.new()
+	base_strip.anchor_left = 0.0
+	base_strip.anchor_right = 1.0
+	base_strip.anchor_top = 1.0
+	base_strip.anchor_bottom = 1.0
+	base_strip.offset_top = -2.0
+	base_strip.offset_bottom = 0.0
+	base_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	base_strip.color = Color(UITheme.TEXT, 0.24)
+	_top_bar.add_child(base_strip)
+
+	# Aktif sekmenin altında yumuşak kayan parlak beyaz gösterge şeridi
+	_nav_strip = ColorRect.new()
+	_nav_strip.anchor_top = 1.0
+	_nav_strip.anchor_bottom = 1.0
+	_nav_strip.offset_top = -3.0
+	_nav_strip.offset_bottom = 0.0
+	_nav_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_nav_strip.color = Color.WHITE
+	_top_bar.add_child(_nav_strip)
+	return _top_bar
+
+
+## OYNA alt menüsü: OYNA sekmesinin hemen altında sola yaslı açılır (ODALAR / ODA KUR / KOD İLE KATIL)
+func _build_play_menu() -> VBoxContainer:
+	var menu := VBoxContainer.new()
+	menu.anchor_left = 0.5
+	menu.anchor_right = 0.5
+	menu.anchor_top = 0.0
+	menu.anchor_bottom = 0.0
+	menu.offset_left = -332.0   # OYNA sekmesiyle hizalı (PROFİL merkez, OYNA solu)
+	menu.offset_right = 160.0
+	menu.offset_top = 28.0      # play_sec zaten TOP_BAR_H altında başlar
+	menu.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.add_theme_constant_override("separation", 10)
+	menu.visible = false
 	for item: Array in PLAY_ITEMS:
-		_play_menu.add_child(_build_play_item(item[0], item[1]))
-	return col
+		menu.add_child(_build_play_item(item[0], item[1]))
+	return menu
 
 
 func _nav_button(text: String, on_press: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
+	b.toggle_mode = true
 	b.theme_type_variation = "TabButton"
 	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(210, 74)   # üç sekme eşit genişlik → PROFİL tam ekran ortasında
+	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	b.add_theme_font_size_override("font_size", 27)
+	b.add_theme_font_size_override("font_size", 25)
+	# Alt çizgiyi kayan _nav_strip çizer; düğme sadece seçili/hover zemin vurgusu verir
+	var sb_norm := UITheme.style(Color.TRANSPARENT, 0, Color.TRANSPARENT, 0, 24, 16)
+	var sb_hover := UITheme.style(Color(1, 1, 1, 0.05), 0, Color.TRANSPARENT, 0, 24, 16)
+	var sb_sel := UITheme.style(Color(1, 1, 1, 0.09), 0, Color.TRANSPARENT, 0, 24, 16)
+	b.add_theme_stylebox_override("normal", sb_norm)
+	b.add_theme_stylebox_override("hover", sb_hover)
+	b.add_theme_stylebox_override("pressed", sb_sel)
+	b.add_theme_stylebox_override("hover_pressed", sb_sel)
 	b.pressed.connect(on_press)
 	return b
 
 
 func _nav_divider() -> Label:
-	var l := UITheme.label("|", 27, Color(UITheme.TEXT_DIM, 0.3))
+	var l := UITheme.label("|", 24, Color(UITheme.TEXT_DIM, 0.28))
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return l
 
 
-## Alt menü maddesi: [▸ işareti][metin][oda sayısı] — arkasında fener lekesi (show_behind_parent ColorRect)
+## Alt menü maddesi: [• işareti][metin][oda sayısı] — arkasında fener lekesi (show_behind_parent ColorRect)
 func _build_play_item(key: String, text: String) -> Control:
 	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_END
+	row.alignment = BoxContainer.ALIGNMENT_BEGIN
 	row.add_theme_constant_override("separation", 14)
 
 	var marker: Control = ICONS.make("dot", 22.0, UITheme.TEXT)
@@ -460,10 +647,10 @@ func _build_play_item(key: String, text: String) -> Control:
 	var b := Button.new()
 	b.text = text
 	b.flat = true
-	b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	b.add_theme_font_override("font", UITheme.font_caps)
-	b.add_theme_font_size_override("font_size", 43)
+	b.add_theme_font_size_override("font_size", 40)
 	b.add_theme_color_override("font_color", Color(UITheme.TEXT_DIM, 0.85))
 	for state: String in ["font_hover_color", "font_focus_color", "font_hover_pressed_color"]:
 		b.add_theme_color_override(state, Color.WHITE)
@@ -472,17 +659,18 @@ func _build_play_item(key: String, text: String) -> Control:
 	b.pressed.connect(_open_play_panel.bind(key))
 	row.add_child(b)
 
-	# Fener lekesi: yazıdan geniş, sola doğru (fener sağ üstten gelir gibi) taşar; tıklamaları engellemez
+	# Fener lekesi: yazıdan geniş, sağa doğru yumuşak taşar; tıklamaları engellemez
 	var beam := ColorRect.new()
 	beam.show_behind_parent = true
 	beam.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	beam.set_anchors_preset(Control.PRESET_FULL_RECT)
-	beam.offset_left = -200
-	beam.offset_right = 67
-	beam.offset_top = -37
-	beam.offset_bottom = 37
+	beam.offset_left = -67
+	beam.offset_right = 180
+	beam.offset_top = -34
+	beam.offset_bottom = 34
 	var mat := ShaderMaterial.new()
 	mat.shader = MENU_BEAM
+	mat.set_shader_parameter("spot_center", Vector2(0.38, 0.5))
 	beam.material = mat
 	b.add_child(beam)
 
@@ -523,26 +711,38 @@ func _set_item_lit(key: String, lit: bool) -> void:
 
 func _set_play_open(open: bool) -> void:
 	if _play_open == open:
+		if _nav_play:
+			_nav_play.set_pressed_no_signal(open)
 		return
 	_play_open = open
-	_nav_play.set_pressed_no_signal(open)
+	if _nav_play:
+		_nav_play.set_pressed_no_signal(open)
 	_update_listening()
+	if _play_menu_tween and _play_menu_tween.is_valid():
+		_play_menu_tween.kill()
 	if open:
 		_refresh_room_list()
 		_play_menu.visible = true
+		_play_menu.modulate.a = 1.0
 		# Maddeler sırayla belirir (yukarıdan aşağı, kısa gecikmeyle)
+		_play_menu_tween = create_tween().set_parallel(true)
 		var i := 0
 		for row: Control in _play_menu.get_children():
 			row.modulate.a = 0.0
-			create_tween().tween_property(row, "modulate:a", 1.0, 0.2).set_delay(0.05 * i)
+			_play_menu_tween.tween_property(row, "modulate:a", 1.0, 0.18).set_delay(0.045 * i)
 			i += 1
 		(_play_items["browse"]["button"] as Button).grab_focus()
 	else:
 		for key: String in _play_items:
 			(_play_items[key]["button"] as Button).release_focus()
-		_play_menu.visible = false
 		if _background and _background.has_method("release_light"):
 			_background.release_light()
+		if _play_menu.visible:
+			_play_menu_tween = create_tween()
+			_play_menu_tween.tween_property(_play_menu, "modulate:a", 0.0, 0.14)
+			_play_menu_tween.tween_callback(func() -> void:
+				if not _play_open:
+					_play_menu.visible = false)
 
 
 ## Oda keşfi: OYNA alt menüsü ya da oyun paneli açıkken dinle (liste panel açılmadan dolsun, ODALAR sayacı canlı)

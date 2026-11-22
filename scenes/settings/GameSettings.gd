@@ -38,7 +38,7 @@ const DEFAULTS := {
 	"aa": AA.MSAA_2X,
 	"shadows": Shadows.MEDIUM,
 	"menu_background": true,    # ana menü/lobi 3D devriye arka planı (kapalı = hafif)
-	"ui_scale": 1.0,            # arayüz ölçeği (0.8–1.0)
+	"ui_scale": 1.0,            # arayüz ölçeği (0.8–1.2, adım 0.1; %100 = 0.80 gerçek ölçek)
 	# Kontrol
 	"mouse_sensitivity": 1.0,   # sanal nişangah hızı (0.2–3.0)
 	"camera_shake": 1.0,        # patlama sarsıntısı (0 = kapalı)
@@ -161,8 +161,9 @@ static func apply_all(tree: SceneTree) -> void:
 	# Oyun içindeysek haritanın post-process'i (SSAO kaliteye bağlı) yeniden uygulanır
 	SCENE_LIGHTING.apply_tree(tree)
 
-	# Arayüz ölçeği (UITheme taban 1920×1080 — 1'in üstü ekrana sığmaz)
-	root.content_scale_factor = clampf(float(get_value("ui_scale")), 0.8, 1.0)
+	# Arayüz ölçeği: kullanıcı %80–%120 (10'ar adım) seçer → gerçek ölçek %60–%100 (%100 = eski %80, %120 = eski %100)
+	var ui_s := clampf(float(get_value("ui_scale")), 0.8, 1.2)
+	root.content_scale_factor = clampf(ui_s - 0.2, 0.6, 1.0)
 
 	_apply_audio()
 	_apply_fps_counter(tree)

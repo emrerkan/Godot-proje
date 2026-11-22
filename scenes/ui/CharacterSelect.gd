@@ -10,13 +10,35 @@ extends Control
 
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
 const SHARP_VIEWPORT := preload("res://scenes/ui/SharpViewport.gd")
+const WEAPON_RENDER := preload("res://scenes/ui/WeaponRender.gd")
+const ICONS := preload("res://scenes/ui/IconSet.gd")
 
 const CHARACTERS: Array[Dictionary] = [
-	{"name": "Tank",     "role": "Ön Hat",       "color": Color(0.9,  0.35, 0.25), "stats": {"Can": 150.0, "Hız": 5.5,  "Hasar": 22.0,  "Menzil": 45.0}},
-	{"name": "Visioner", "role": "Keşif",        "color": Color(0.25, 0.55, 1.0),  "stats": {"Can": 100.0, "Hız": 8.0,  "Hasar": 18.0,  "Menzil": 35.0}},
-	{"name": "Runner",   "role": "Hızlı Sızma",  "color": Color(0.25, 0.9,  0.35), "stats": {"Can": 75.0,  "Hız": 10.0, "Hasar": 11.0,  "Menzil": 25.0}},
-	{"name": "Sniper",   "role": "Uzun Menzil",  "color": Color(0.95, 0.85, 0.15), "stats": {"Can": 80.0,  "Hız": 7.0,  "Hasar": 120.0, "Menzil": 130.0}},
-	{"name": "Medic",    "role": "Destek",       "color": Color(0.85, 0.35, 0.95), "stats": {"Can": 110.0, "Hız": 7.5,  "Hasar": 45.0,  "Menzil": 55.0}},
+	{
+		"name": "Tank", "role": "Ön Hat", "color": Color(0.92, 0.35, 0.25),
+		"weapon": "AĞIR TÜFEK", "power_icon": "bomb", "power": "BOMBA", "power_color": Color(1.0, 0.42, 0.22),
+		"stats": {"Can": 150.0, "Hız": 5.5, "Hasar": 22.0, "Menzil": 45.0},
+	},
+	{
+		"name": "Visioner", "role": "Keşif", "color": Color(0.25, 0.58, 1.0),
+		"weapon": "KARABİNA", "power_icon": "sat", "power": "TAKIM UYDUSU", "power_color": Color(0.28, 0.85, 1.0),
+		"stats": {"Can": 100.0, "Hız": 8.0, "Hasar": 18.0, "Menzil": 35.0},
+	},
+	{
+		"name": "Runner", "role": "Hızlı Sızma", "color": Color(0.25, 0.90, 0.38),
+		"weapon": "HAFİF MAKİNELİ", "power_icon": "smoke", "power": "SİS BOMBASI", "power_color": Color(0.72, 0.78, 0.86),
+		"stats": {"Can": 75.0, "Hız": 10.0, "Hasar": 11.0, "Menzil": 25.0},
+	},
+	{
+		"name": "Sniper", "role": "Uzun Menzil", "color": Color(0.96, 0.84, 0.18),
+		"weapon": "KESKİN NİŞANCI TÜFEĞİ", "power_icon": "flash", "power": "FLAŞ BOMBASI", "power_color": Color(0.85, 0.93, 1.0),
+		"stats": {"Can": 80.0, "Hız": 7.0, "Hasar": 120.0, "Menzil": 130.0},
+	},
+	{
+		"name": "Medic", "role": "Destek", "color": Color(0.85, 0.38, 0.96),
+		"weapon": "YARI OTOMATİK TÜFEK", "power_icon": "heal", "power": "SAĞLIK", "power_color": Color(0.32, 0.92, 0.50),
+		"stats": {"Can": 110.0, "Hız": 7.5, "Hasar": 45.0, "Menzil": 55.0},
+	},
 ]
 
 const STAT_ORDER: Array[String] = ["Can", "Hız", "Hasar", "Menzil"]
@@ -50,6 +72,7 @@ var _font_caps: FontVariation
 
 func _ready() -> void:
 	preload("res://scenes/audio/MenuMusic.gd").duck(get_tree())   # menü müziği sürer ama yarı sese kısılır; oyun başlayınca HUD durdurur
+	WEAPON_RENDER.prewarm(get_tree())
 	_init_fonts()
 	NetworkManager.player_list_updated.connect(_refresh)
 	_build_ui()
@@ -140,19 +163,19 @@ func _build_ui() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side: String in ["left", "right"]:
-		margin.add_theme_constant_override("margin_" + side, 67)
-	margin.add_theme_constant_override("margin_top", 23)
-	margin.add_theme_constant_override("margin_bottom", 23)
+		margin.add_theme_constant_override("margin_" + side, 40)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
 	add_child(margin)
 
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 20)
+	root.add_theme_constant_override("separation", 14)
 	margin.add_child(root)
 
 	root.add_child(_build_header(team_id))
 
 	var cards_row := HBoxContainer.new()
-	cards_row.add_theme_constant_override("separation", 27)
+	cards_row.add_theme_constant_override("separation", 20)
 	cards_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	cards_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(cards_row)
@@ -228,7 +251,7 @@ func _build_footer() -> Control:
 
 	_confirm_btn = Button.new()
 	_confirm_btn.text = "ONAYLA"
-	_confirm_btn.custom_minimum_size = Vector2(383, 80)
+	_confirm_btn.custom_minimum_size = Vector2(383, 68)
 	_confirm_btn.disabled = true
 	_confirm_btn.focus_mode = Control.FOCUS_NONE
 	_confirm_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -251,7 +274,7 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	var char_color: Color = char_data["color"]
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(327, 0)
+	panel.custom_minimum_size = Vector2(346, 0)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.gui_input.connect(_on_card_input.bind(char_name))
 	panel.mouse_entered.connect(_on_card_hover.bind(char_name, true))
@@ -261,9 +284,10 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	vbox.add_theme_constant_override("separation", 0)
 	panel.add_child(vbox)
 
-	# ── 3D önizleme (üst köşeleri yuvarlak maske ile kırpılır) ──
+	# ── 3D önizleme: kalan dikey alanı doldurur → altta boş siyah boşluk kalmaz, operatör gövdeden başa sergilenir ──
 	var mask := Panel.new()
-	mask.custom_minimum_size = Vector2(0, 250)  # ekran 1920×1080 tabana sığsın (UITheme.BASE_RESOLUTION)
+	mask.custom_minimum_size = Vector2(0, 195)
+	mask.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mask.clip_children = CanvasItem.CLIP_CHILDREN_ONLY
 	var mask_style := _rounded_style(Color.WHITE, 0)
 	mask_style.corner_radius_top_left  = CARD_RADIUS - 3
@@ -329,50 +353,54 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 	lv_box.add_child(_make_label("SV", 15, Color(lv_col, 0.8), _font_caps))
 	lv_box.add_child(_make_label(str(up_count), 23, lv_col, _font_bold))
 
-	# ── İsim / rol / statlar ──
+	# ── İsim / rol / statlar / silah + başlangıç gücü (tam dolu taktik kart, boşluk yok) ──
 	var content_margin := MarginContainer.new()
-	content_margin.add_theme_constant_override("margin_left",   23)
-	content_margin.add_theme_constant_override("margin_right",  23)
-	content_margin.add_theme_constant_override("margin_top",    3)
-	content_margin.add_theme_constant_override("margin_bottom", 20)
-	content_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_margin.add_theme_constant_override("margin_left",   22)
+	content_margin.add_theme_constant_override("margin_right",  22)
+	content_margin.add_theme_constant_override("margin_top",    6)
+	content_margin.add_theme_constant_override("margin_bottom", 16)
+	content_margin.size_flags_vertical = Control.SIZE_SHRINK_END
 	vbox.add_child(content_margin)
 
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 10)
+	content.add_theme_constant_override("separation", 9)
 	content_margin.add_child(content)
 
-	content.add_child(_make_label(char_name.to_upper(), 30, COL_TEXT, _font_bold))
+	# Ad + rol satırı
+	var id_box := VBoxContainer.new()
+	id_box.add_theme_constant_override("separation", 3)
+	content.add_child(id_box)
+	id_box.add_child(_make_label(char_name.to_upper(), 28, COL_TEXT, _font_bold))
 
 	var role_row := HBoxContainer.new()
-	role_row.add_theme_constant_override("separation", 13)
-	content.add_child(role_row)
+	role_row.add_theme_constant_override("separation", 10)
+	id_box.add_child(role_row)
 	var accent := ColorRect.new()
 	accent.color = char_color
-	accent.custom_minimum_size = Vector2(30, 3)
+	accent.custom_minimum_size = Vector2(26, 3)
 	accent.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	role_row.add_child(accent)
-	role_row.add_child(_make_label(tr(char_data["role"] as String).to_upper(), 17, char_color, _font_caps))
+	role_row.add_child(_make_label(tr(char_data["role"] as String).to_upper(), 16, char_color, _font_caps))
 
-	# Seviye ilerlemesi: "SEVİYE 3 / 25" + ince çubuk
+	# Seviye ilerlemesi: "SEVİYE 17 / 25" + ince çubuk
+	var lv_col_box := VBoxContainer.new()
+	lv_col_box.add_theme_constant_override("separation", 4)
+	content.add_child(lv_col_box)
 	var lv_row := HBoxContainer.new()
-	content.add_child(lv_row)
-	var lv_lbl := _make_label("SEVİYE", 15, COL_TEXT_DIM, _font_caps)
+	lv_col_box.add_child(lv_row)
+	var lv_lbl := _make_label("SEVİYE", 14, COL_TEXT_DIM, _font_caps)
 	lv_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lv_row.add_child(lv_lbl)
-	lv_row.add_child(_make_label("%d / %d" % [up_count, max_count], 17, lv_col, _font_bold))
-	var lv_bar := _make_bar(UITheme.ACCENT, 5)
+	lv_row.add_child(_make_label("%d / %d" % [up_count, max_count], 16, lv_col, _font_bold))
+	var lv_bar := _make_bar(UITheme.ACCENT, 4)
 	lv_bar.value = float(up_count) / float(max_count)
-	content.add_child(lv_bar)
+	lv_col_box.add_child(lv_bar)
 
+	# 4 temel istatistik
 	var stats_box := VBoxContainer.new()
-	stats_box.add_theme_constant_override("separation", 12)
+	stats_box.add_theme_constant_override("separation", 8)
 	content.add_child(stats_box)
-	var spacer_top := Control.new()
-	spacer_top.custom_minimum_size = Vector2(0, 3)
-	stats_box.add_child(spacer_top)
 
-	# Profil yükseltmeleri (bu karakter için) — yükseltilmiş değer vurgulu
 	var m := PROFILE.multipliers(PROFILE.get_levels(char_name))
 	var stat_mult := {"Can": m["health"], "Hız": m["speed"], "Hasar": m["damage"], "Menzil": 1.0}
 	var stats: Dictionary = char_data["stats"]
@@ -380,24 +408,73 @@ func _build_card(char_data: Dictionary) -> PanelContainer:
 		var value: float = snappedf(float(stats[stat_name]) * float(stat_mult[stat_name]), 0.1)
 		var boosted: bool = float(stat_mult[stat_name]) > 1.0
 		var stat_col := VBoxContainer.new()
-		stat_col.add_theme_constant_override("separation", 5)
+		stat_col.add_theme_constant_override("separation", 3)
 		stats_box.add_child(stat_col)
 
 		var label_row := HBoxContainer.new()
 		stat_col.add_child(label_row)
-		var name_lbl := _make_label(tr(stat_name).to_upper(), 15, COL_TEXT_DIM, _font_caps)
+		var name_lbl := _make_label(tr(stat_name).to_upper(), 14, COL_TEXT_DIM, _font_caps)
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label_row.add_child(name_lbl)
-		#label_row.add_child(_make_label("%g" % value, 17, COL_TEXT, _font_bold))
-		label_row.add_child(_make_label(str(value), 17, UITheme.ACCENT if boosted else COL_TEXT, _font_bold))
+		label_row.add_child(_make_label(str(value), 16, UITheme.ACCENT if boosted else COL_TEXT, _font_bold))
 
-		var bar := _make_bar(char_color, 8)
+		var bar := _make_bar(char_color, 6)
 		bar.value = minf(value / (STAT_MAX[stat_name] as float), 1.0)
 		stat_col.add_child(bar)
 
+	# İnce ayırıcı çizgi
+	var sep := ColorRect.new()
+	sep.color = Color(1, 1, 1, 0.08)
+	sep.custom_minimum_size = Vector2(0, 1)
+	content.add_child(sep)
+
+	# Silah vitrini (3D beyaz silah silueti + ortalı silah sınıfı adı)
+	var is_knife_mode := NetworkManager.get_weapon_mode() == "knife"
+	var weap_box := PanelContainer.new()
+	weap_box.add_theme_stylebox_override("panel", UITheme.style(Color(1, 1, 1, 0.032), 10, Color(char_color, 0.22), 1, 14, 9))
+	content.add_child(weap_box)
+	var weap_v := VBoxContainer.new()
+	weap_v.add_theme_constant_override("separation", 5)
+	weap_box.add_child(weap_v)
+
+	var weap_title := tr("BIÇAK") if is_knife_mode else tr(String(char_data["weapon"]))
+	var weap_lbl := _make_label(weap_title, 13, COL_TEXT_DIM, _font_caps)
+	weap_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	weap_v.add_child(weap_lbl)
+
+	var weap_center := CenterContainer.new()
+	weap_v.add_child(weap_center)
+	var weap_key := "knife" if is_knife_mode else char_name
+	weap_center.add_child(WEAPON_RENDER.make_rect(weap_key, Vector2(210, 54)))
+
+	# Başlangıç gücü çipi (bıçak modunda veya güçler kapalıysa yakın dövüş göstergesi)
+	var powers_on := (not is_knife_mode) and NetworkManager.powers_enabled()
+	var p_col: Color = (char_data["power_color"] as Color) if powers_on else char_color
+	var p_icon_id: String = String(char_data["power_icon"]) if powers_on else "knife"
+	var p_name: String = tr(String(char_data["power"])) if powers_on else tr("YAKIN DÖVÜŞ")
+	var pow_panel := PanelContainer.new()
+	var pow_sb := UITheme.style(Color(1, 1, 1, 0.028), 8, Color(1, 1, 1, 0.07), 1, 12, 8)
+	pow_sb.border_width_left = 3
+	pow_sb.border_color = Color(p_col, 0.78)
+	pow_panel.add_theme_stylebox_override("panel", pow_sb)
+	content.add_child(pow_panel)
+
+	var pow_row := HBoxContainer.new()
+	pow_row.add_theme_constant_override("separation", 12)
+	pow_panel.add_child(pow_row)
+	var p_ic: Control = ICONS.make(p_icon_id, 26.0, p_col)
+	p_ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pow_row.add_child(p_ic)
+	var pow_txt := VBoxContainer.new()
+	pow_txt.add_theme_constant_override("separation", 1)
+	pow_txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pow_row.add_child(pow_txt)
+	pow_txt.add_child(_make_label(tr("BAŞLANGIÇ GÜCÜ"), 12, COL_TEXT_DIM, _font_caps))
+	pow_txt.add_child(_make_label(p_name, 15, COL_TEXT, _font_bold))
+
 	# ── Alt şerit: durum ──
 	var footer := PanelContainer.new()
-	footer.custom_minimum_size = Vector2(0, 57)
+	footer.custom_minimum_size = Vector2(0, 52)
 	vbox.add_child(footer)
 	var footer_lbl := _make_label("", 18, COL_TEXT_DIM, _font_caps)
 	footer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -488,11 +565,11 @@ func _build_preview_world(sv: SubViewport, char_name: String, char_color: Color)
 	fill_light.omni_range   = 7.0
 	world.add_child(fill_light)
 
-	# Kamera — yakın plan: yüz + omuzlar (göğüs hizasından başın üstüne). CharacterMesh -Z yönüne bakar, kamera karşısında.
+	# Kamera — operatör gövdesinden başının üstüne ferah kahraman kadrajı (şapka/anten üstte kırpılmaz)
 	var cam := Camera3D.new()
-	cam.position         = Vector3(0.0, 1.62, -1.6)
+	cam.position         = Vector3(0.0, 1.54, -2.14)
 	cam.rotation_degrees = Vector3(-4.0, 180.0, 0.0)
-	cam.fov              = 30.0
+	cam.fov              = 32.0
 	world.add_child(cam)
 
 	return player_inst
@@ -755,10 +832,10 @@ func _make_bar(fill_color: Color, height: int) -> ProgressBar:
 
 
 func _style_confirm_button(accent: Color) -> void:
-	var normal := _rounded_style(accent.darkened(0.15), 40)
-	var hover  := _rounded_style(accent, 40)
-	var pressed := _rounded_style(accent.darkened(0.3), 40)
-	var disabled := _rounded_style(Color(1, 1, 1, 0.06), 40)
+	var normal := _rounded_style(accent.darkened(0.15), 14)
+	var hover  := _rounded_style(accent, 14)
+	var pressed := _rounded_style(accent.darkened(0.3), 14)
+	var disabled := _rounded_style(Color(1, 1, 1, 0.06), 14)
 	disabled.border_color = Color(1, 1, 1, 0.1)
 	disabled.set_border_width_all(1)
 	hover.shadow_color = Color(accent, 0.4)

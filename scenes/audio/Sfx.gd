@@ -36,9 +36,9 @@ const FILES := {
 	"jump": ["ziplama-ses.mp3"],                                                # kullanıcının kaydı
 	"crouch": ["crouch_1.wav"],                     # kullanıcının AI kaydı (çömelmeye geçiş; baştaki sessizlik kesildi)
 	"flip": ["flip_1.mp3", "flip_2.mp3"],           # kullanıcının AI kayıtları (takla başı)
-	# Bomba: kullanıcının kayıtları — yakın patlama / uzaktan duyulan (Bomb._explode mesafeye göre seçer)
-	"explosion_near": ["bomba-1.wav"],
-	"explosion_far": ["bomba-2.wav"],
+	# Bomba: çok katmanlı taktik el bombası patlaması — yakın (2 varyant) / uzaktan boğuk yankılı
+	"explosion_near": ["grenade_near_1.wav", "grenade_near_2.wav"],
+	"explosion_far": ["grenade_far_1.wav"],
 	"flashbang": ["flash_bang_01.ogg", "flash_bang_04.ogg", "flash_bang_10.ogg"],
 	"mag_out": ["mag_out.ogg"], "mag_in": ["mag_in.ogg"], "bolt": ["bolt.ogg"],
 	"stab": ["stab.ogg"], "throw": ["throw.ogg"],

@@ -13,24 +13,26 @@
 
 extends Control
 
-const POP_TIME := 0.16
-const POP_SCALE := 1.22
-const SETTLE_TIME := 0.10
-const HOLD_TIME := 0.55
-const FADE_TIME := 0.70
-const FLOAT_RISE := 42.0
+const POP_TIME := 0.14
+const POP_SCALE := 1.42
+const SETTLE_TIME := 0.12
+const HOLD_TIME := 1.05
+const FADE_TIME := 0.65
+const FLOAT_RISE := 54.0
 const TOTAL_TIME := POP_TIME + SETTLE_TIME + HOLD_TIME + FADE_TIME
 const FADE_START := POP_TIME + SETTLE_TIME + HOLD_TIME
 
-const BOTTOM_OFFSET := 148.0     # durum çipleriyle çakışmadan ekranın alt orta bölgesinde
-const KILL_RED := Color(0.95, 0.22, 0.20)
-const KILL_HOT := Color(1.0, 0.78, 0.72)
-const SKULL_SIZE := 54.0
+const BOTTOM_OFFSET := 182.0     # durum çiplerinin üstünde, alt orta görüş alanında belirgin
+const KILL_RED := Color(0.98, 0.20, 0.18)
+const KILL_HOT := Color(1.0, 0.86, 0.78)
+const SKULL_SIZE := 76.0
 
-const SPARK_COUNT := 10
-const LINE_HALF_WIDTH := 148.0   # kafatası arkasında iki yana açılan keskin darbe çizgisi (px)
-const LINE_DURATION := 0.42
-const RING_DURATION := 0.32
+const SPARK_COUNT := 16
+const LINE_HALF_WIDTH := 230.0   # kafatası arkasında iki yana hızla açılan keskin darbe çizgisi (px)
+const LINE_DURATION := 0.52
+const RING_DURATION := 0.44
+const FLASH_DURATION := 0.18
+const EDGE_PULSE_DURATION := 0.30
 
 var _stage: Control
 var _panel: PanelContainer
@@ -85,11 +87,11 @@ func _init() -> void:
 	_skull.draw.connect(_draw_skull)
 	v.add_child(_skull)
 
-	_victim = UITheme.label("", 22, UITheme.TEXT, UITheme.font_regular)
+	_victim = UITheme.label("", 28, Color.WHITE, UITheme.font_bold)
 	_victim.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_victim.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	_victim.add_theme_constant_override("outline_size", 5)
-	_victim.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.8))
+	_victim.add_theme_constant_override("outline_size", 6)
+	_victim.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.88))
 	v.add_child(_victim)
 
 	for n: Control in [_panel, v, _skull, _victim]:
@@ -125,7 +127,7 @@ func show_kill(victim_name: String) -> void:
 	_fx.queue_redraw()
 
 	_tween = create_tween()
-	_tween.tween_property(_panel, "scale", Vector2.ONE * POP_SCALE, POP_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_tween.tween_property(_panel, "scale", Vector2.ONE * POP_SCALE, POP_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_tween.tween_property(_panel, "scale", Vector2.ONE, SETTLE_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 	_tween.tween_interval(HOLD_TIME)
 	_tween.tween_property(_stage, "position:y", -FLOAT_RISE, FADE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -141,6 +143,8 @@ func _process(delta: float) -> void:
 		_active = false
 		_sparks.clear()
 		set_process(false)
+	if _t <= FLASH_DURATION + 0.04:
+		_skull.queue_redraw()
 	_fx.queue_redraw()
 
 
@@ -149,17 +153,17 @@ func _spawn_sparks() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	for i in SPARK_COUNT:
-		var ang := rng.randf_range(-PI * 0.85, -PI * 0.15) if i < 6 else rng.randf_range(-PI, PI)
-		var speed := rng.randf_range(55.0, 125.0)
+		var ang := rng.randf_range(-PI * 0.92, -PI * 0.08) if i < 10 else rng.randf_range(-PI, PI)
+		var speed := rng.randf_range(85.0, 210.0)
 		_sparks.append({
-			"x": _center.x + rng.randf_range(-_half_w * 0.65, _half_w * 0.65),
-			"y": _center.y + rng.randf_range(-10.0, 18.0),
-			"vx": cos(ang) * speed * 0.35,
-			"vy": -absf(sin(ang)) * speed - 20.0,
-			"len": rng.randf_range(8.0, 18.0),
-			"delay": rng.randf_range(0.0, 0.12),
-			"life": rng.randf_range(0.32, 0.62),
-			"hot": i % 3 == 0,
+			"x": _center.x + rng.randf_range(-_half_w * 0.72, _half_w * 0.72),
+			"y": _center.y + rng.randf_range(-14.0, 20.0),
+			"vx": cos(ang) * speed * 0.55,
+			"vy": -absf(sin(ang)) * speed - 28.0,
+			"len": rng.randf_range(12.0, 26.0),
+			"delay": rng.randf_range(0.0, 0.08),
+			"life": rng.randf_range(0.36, 0.72),
+			"hot": i % 2 == 0,
 		})
 
 
@@ -169,30 +173,41 @@ func _draw_fx() -> void:
 	var stage_dy := _stage.position.y
 	var c := _center + Vector2(0.0, stage_dy)
 
-	# 1. Keskin yatay kızıl darbe çizgisi (merkezden iki yana açılıp söner — duman/leke yok)
+	# 0. Alt ekran kenarında kısa kızıl çevresel darbe parıltısı (göz nişangahtayken bile vuruşu hissettirir)
+	if _t < EDGE_PULSE_DURATION:
+		var eu := _t / EDGE_PULSE_DURATION
+		var ea := (1.0 - eu) * (1.0 - eu) * 0.24
+		var band_h := 96.0
+		var y0 := size.y - band_h
+		var pts := PackedVector2Array([Vector2(0, y0), Vector2(size.x, y0), Vector2(size.x, size.y), Vector2(0, size.y)])
+		var c0 := Color(KILL_RED, 0.0)
+		var c1 := Color(KILL_RED, ea)
+		_fx.draw_polygon(pts, PackedColorArray([c0, c0, c1, c1]))
+
+	# 1. Keskin yatay kızıl + sıcak beyaz darbe çizgisi (merkezden iki yana hızla açılır)
 	if _t < LINE_DURATION:
 		var u := _t / LINE_DURATION
 		var ease_u := 1.0 - pow(1.0 - u, 3.0)
 		var half := LINE_HALF_WIDTH * ease_u
-		var a := (1.0 - smoothstep(0.25, 1.0, u))
+		var a := (1.0 - smoothstep(0.28, 1.0, u))
 		var left := c - Vector2(half, 0.0)
 		var right := c + Vector2(half, 0.0)
-		_fx.draw_line(left, right, Color(KILL_RED, a * 0.55), 3.0, true)
-		_fx.draw_line(c - Vector2(half * 0.55, 0.0), c + Vector2(half * 0.55, 0.0), Color(KILL_HOT, a * 0.85), 1.5, true)
+		_fx.draw_line(left, right, Color(KILL_RED, a * 0.35), 9.0, true)
+		_fx.draw_line(left, right, Color(KILL_RED, a * 0.85), 3.6, true)
+		_fx.draw_line(c - Vector2(half * 0.62, 0.0), c + Vector2(half * 0.62, 0.0), Color(KILL_HOT, a * 0.95), 2.0, true)
 
-	# 2. Sekizgen şok halkası (sanat kitabı dili — keskin, tek atım)
+	# 2. Çift sekizgen şok halkası (birincil yoğun + ikincil hızlı dış halka)
 	if _t < RING_DURATION:
 		var ru := _t / RING_DURATION
 		var re := 1.0 - (1.0 - ru) * (1.0 - ru)
-		var rad := lerpf(SKULL_SIZE * 0.35, SKULL_SIZE * 0.95, re)
-		var ra := (1.0 - ru) * 0.72
-		var oct := PackedVector2Array()
-		for k in 9:
-			var a := PI * 0.125 + float(k % 8) * (TAU / 8.0)
-			oct.append(c + Vector2(cos(a), sin(a)) * rad)
-		_fx.draw_polyline(oct, Color(KILL_RED, ra), 2.0, true)
+		var rad1 := lerpf(SKULL_SIZE * 0.32, SKULL_SIZE * 1.28, re)
+		var ra1 := (1.0 - ru) * 0.92
+		_draw_oct_ring(c, rad1, Color(KILL_RED, ra1), 3.2)
+		var rad2 := lerpf(SKULL_SIZE * 0.45, SKULL_SIZE * 1.72, pow(re, 0.85))
+		var ra2 := (1.0 - ru) * 0.55
+		_draw_oct_ring(c, rad2, Color(KILL_HOT, ra2), 1.8)
 
-	# 3. İnce keskin kıvılcım iğneleri (az sayıda, temiz, bulanık hale yok)
+	# 3. İnce keskin kıvılcım iğneleri
 	var global_k := 1.0 - smoothstep(FADE_START, TOTAL_TIME, _t)
 	for sp: Dictionary in _sparks:
 		var lt: float = _t - float(sp["delay"])
@@ -205,10 +220,18 @@ func _draw_fx() -> void:
 		var drag := 1.0 - 0.5 * u
 		var pos := Vector2(float(sp["x"]) + float(sp["vx"]) * lt * drag,
 			float(sp["y"]) + float(sp["vy"]) * lt * drag + stage_dy)
-		var a := (1.0 - u) * global_k * 0.9
-		var seg := float(sp["len"]) * (1.0 - 0.55 * u)
+		var a := (1.0 - u) * global_k * 0.95
+		var seg := float(sp["len"]) * (1.0 - 0.5 * u)
 		var col: Color = KILL_HOT if bool(sp["hot"]) else KILL_RED
-		_fx.draw_line(pos, pos + Vector2(0.0, seg), Color(col, a), 1.8, true)
+		_fx.draw_line(pos, pos + Vector2(0.0, seg), Color(col, a), 2.2, true)
+
+
+func _draw_oct_ring(c: Vector2, rad: float, col: Color, width: float) -> void:
+	var oct := PackedVector2Array()
+	for k in 9:
+		var a := PI * 0.125 + float(k % 8) * (TAU / 8.0)
+		oct.append(c + Vector2(cos(a), sin(a)) * rad)
+	_fx.draw_polyline(oct, col, width, true)
 
 
 func _plain_style() -> StyleBoxEmpty:
@@ -220,18 +243,22 @@ func _plain_style() -> StyleBoxEmpty:
 	return sb
 
 
-## Kafatası (sanat kitabı ikon dili: sekizgen kafa, tek renk, iç dolgu α 0.25, gözler/dişler dolu)
+## Kafatası (koyu arka kontur + canlı kızıl gövde + ilk 0.18 sn sıcak beyaz darbe parıltısı)
 func _draw_skull() -> void:
 	var s := _skull.size.x / 24.0
-	var w := maxf(1.5, 2.0 * s)
-	var col := KILL_RED
+	var w := maxf(2.0, 2.2 * s)
+	var flash := clampf(1.0 - _t / FLASH_DURATION, 0.0, 1.0) if _active else 0.0
+	var col := KILL_RED.lerp(Color.WHITE, flash * 0.72)
 	var head := PackedVector2Array([Vector2(8, 2), Vector2(16, 2), Vector2(21, 7), Vector2(21, 13), Vector2(17, 16),
 		Vector2(17, 20), Vector2(7, 20), Vector2(7, 16), Vector2(3, 13), Vector2(3, 7)])
 	for i in head.size():
 		head[i] *= s
-	_skull.draw_colored_polygon(head, Color(col, 0.25))
-	head.append(head[0])
-	_skull.draw_polyline(head, col, w, true)
+	var outline := head.duplicate()
+	outline.append(outline[0])
+	# Koyu dış çerçeve → aydınlık ve karanlık her zeminde anında seçilir
+	_skull.draw_polyline(outline, Color(0.0, 0.0, 0.0, 0.85), w + 4.5, true)
+	_skull.draw_colored_polygon(head, Color(col, 0.42))
+	_skull.draw_polyline(outline, col, w, true)
 	# Göz çukurları
 	_skull.draw_rect(Rect2(Vector2(6.5, 8) * s, Vector2(4, 4) * s), col)
 	_skull.draw_rect(Rect2(Vector2(13.5, 8) * s, Vector2(4, 4) * s), col)
@@ -239,4 +266,4 @@ func _draw_skull() -> void:
 	_skull.draw_colored_polygon(PackedVector2Array([Vector2(12, 12.5) * s, Vector2(13.3, 14.8) * s, Vector2(10.7, 14.8) * s]), col)
 	# Dişler
 	for x: float in [10.0, 12.0, 14.0]:
-		_skull.draw_line(Vector2(x, 17) * s, Vector2(x, 20) * s, col, maxf(1.0, 1.5 * s))
+		_skull.draw_line(Vector2(x, 17) * s, Vector2(x, 20) * s, col, maxf(1.2, 1.7 * s))
