@@ -1,0 +1,9 @@
+TacticalDark - Map5_Karantina_Hastanesi_3v3v3v3_v3 PBR Textures
+CC0 Photogrammetry Textures from Poly Haven & ambientCG (shared with Map3_Col_v3 & Map4_Orman_v3):
+- chipped_concrete_2k, concrete_moss_2k, concrete_road_barrier, portable_generator, Barrel_01_explosive
+- wooden_military_crate, steel_frame_shelves_01, power_box_01, sandbag_burlap, tent_camo_canvas
+- rusty_metal_2k, corrugated_iron_02_2k, dark_wooden_planks_2k, gravel_ground_01_2k, rock_face_01, boulder_01
+- Custom procedural baked 2K/1K hospital PBR textures: hospital_vinyl_tile_2k, surgical_green_linoleum_2k,
+  icu_blue_linoleum_2k, hospital_wall_plaster_2k, hospital_ceramic_tile_2k, hospital_brushed_steel_1k,
+  hero_medical_enamel_2k, quarantine_yellow_tarp_1k, decal_blood_trail, decal_blood_cross, decal_blood_guideline,
+  decal_hazard_stripes, decal_chemical_puddle, decal_medical_charts.

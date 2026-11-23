@@ -25,10 +25,12 @@ const SPECIAL_MAX_DISTANCE := 1000.0
 var last_shot_special := false
 ## Eldeki tüfeğin namlu ağzı (HandRifle "Muzzle", Player atar). Yoksa / anormal konumdaysa $Muzzle kullanılır.
 var visual_muzzle: Node3D = null
-## Karakter modeli görsel olarak büyütülmüşse (Player.CHARACTER_VISUAL_SCALE) namlu da yükselir —
-## mermi yüksekliği ölçeksiz hizaya indirilir (vuruş kutusu 1.8 m; yoksa mermiler kafaların üstünden geçerdi)
+## Karakter modeli görsel olarak büyütülmüşse (Player.CHARACTER_VISUAL_SCALE) namlu da yükselir.
+## Fizik mermisi vuruş kutusunun (1.8 m) üstünden geçmesin diye PHYSICS_MAX_HEIGHT'te tutulur;
+## görsel tracer ise Bullet.set_visual_offset ile tam namlu ağzından çıkıp uçuş çizgisine kavuşur.
 var visual_scale := 1.0
-const VISUAL_MUZZLE_MAX_DIST := 1.4   # gövdeden yatay uzaklık sınırı (animasyon geçişi sapması)
+const VISUAL_MUZZLE_MAX_DIST := 2.2   # gövdeden yatay uzaklık sınırı (1.3x ölçekli Sniper namlusu dahil)
+const PHYSICS_MAX_HEIGHT := 1.50      # 1.8 m oyuncu kapsülünü asla üstünden atlamayan fizik tavanı
 
 @onready var muzzle: Marker3D = $Muzzle
 @onready var fire_timer: Timer = $FireTimer
@@ -129,7 +131,8 @@ func _safe_spawn_position(ignore_walls: bool = false) -> Vector3:
 		var tip := visual_muzzle.global_position
 		var off := Vector2(tip.x - player.global_position.x, tip.z - player.global_position.z)
 		if off.length() < VISUAL_MUZZLE_MAX_DIST:
-			muzzle_pos = Vector3(tip.x, player.global_position.y + (tip.y - player.global_position.y) / visual_scale, tip.z)
+			var phys_y: float = clampf(tip.y, player.global_position.y + 0.35, player.global_position.y + PHYSICS_MAX_HEIGHT)
+			muzzle_pos = Vector3(tip.x, phys_y, tip.z)
 	if pierce_walls or ignore_walls or player == null:
 		return muzzle_pos
 	var body_pos := Vector3(player.global_position.x, muzzle_pos.y, player.global_position.z)
@@ -139,6 +142,18 @@ func _safe_spawn_position(ignore_walls: bool = false) -> Vector3:
 	if get_world_3d().direct_space_state.intersect_ray(q).is_empty():
 		return muzzle_pos
 	return body_pos
+
+
+## Görsel namlu ağzı ile fizik doğma noktası arasındaki dikey fark (mermi görseli tam namlu ucundan başlar).
+func _visual_muzzle_offset(spawn_pos: Vector3) -> Vector3:
+	if not is_instance_valid(visual_muzzle) or not visual_muzzle.is_visible_in_tree():
+		return Vector3.ZERO
+	var tip := visual_muzzle.global_position
+	# Duvar dibinde body_pos fallback'i kullanıldıysa görseli duvarın önüne kaydırma
+	if Vector2(tip.x - spawn_pos.x, tip.z - spawn_pos.z).length() > 0.8:
+		return Vector3.ZERO
+	var dy: float = clampf(tip.y - spawn_pos.y, -0.8, 0.8)
+	return Vector3(0.0, dy, 0.0) if absf(dy) > 0.01 else Vector3.ZERO
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -154,6 +169,9 @@ func _spawn_bullet(
 	bullet.global_position = spawn_pos
 	bullet.initialize(direction, bullet_speed, damage, shooter_peer_id, shooter_team_id, p_max_distance)
 	bullet.pierce_walls = pierce_walls
+	var vis_off := _visual_muzzle_offset(spawn_pos)
+	if vis_off != Vector3.ZERO and bullet.has_method("set_visual_offset"):
+		bullet.set_visual_offset(vis_off)
 	last_shot_special = false
 	fired.emit()
 
@@ -188,6 +206,9 @@ func _spawn_special_bullet(
 	bullet.initialize(direction, SPECIAL_SPEED, SPECIAL_DAMAGE, shooter_peer_id, shooter_team_id, SPECIAL_MAX_DISTANCE)
 	bullet.pierce_walls = true
 	bullet.make_special()
+	var vis_off := _visual_muzzle_offset(spawn_pos)
+	if vis_off != Vector3.ZERO and bullet.has_method("set_visual_offset"):
+		bullet.set_visual_offset(vis_off)
 	# Atış anında her peer'da lazer sönsün (host'un _special_gun_rpc(false)'u RTT sonra gelir)
 	var player := get_parent().get_parent()
 	if player != null and player.has_method("set_special_armed"):

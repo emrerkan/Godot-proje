@@ -55,7 +55,7 @@ const FILES := {
 	"lunge_whoosh": ["lunge_whoosh_1.ogg", "lunge_whoosh_2.ogg"],                             # RPG cloth4/cloth2 (gövde savrulması; stab.ogg = knifeSlice)
 }
 ## Kodla sentezlenen sesler (bip/çan/çınlama — sentezin iyi yaptığı basit sesler)
-const SYNTH: Array[String] = ["tinnitus", "smoke", "unlock_tick", "unlock_tick_enemy", "unlock_reset", "match_win", "match_lose"]
+const SYNTH: Array[String] = ["tinnitus", "smoke", "unlock_tick", "unlock_tick_enemy", "unlock_reset", "match_win", "match_lose", "xp_tick", "xp_roll", "xp_level_up"]
 
 static var _cache: Dictionary = {}   # ad → Array[AudioStream]
 static var _mutex := Mutex.new()
@@ -232,6 +232,22 @@ static func _synth(sound: String) -> PackedFloat32Array:
 			for k in 3:
 				_tone(b, 0.12 * k, 0.5, [392.0, 311.1, 261.6][k], 0.0, 0.0, 0.01, 0.9, 0.25)
 			return _finish(b, 0.6, 1.0)
+		"xp_tick":
+			# Maç sonu XP satırı gelişi: keskin cam/metal tınısı
+			var b := _buf(0.14)
+			_tone(b, 0.0, 0.75, 1180.0, 1480.0, 0.025, 0.002, 0.045, 0.22, 0.08)
+			return _finish(b, 0.42, 1.0)
+		"xp_roll":
+			# XP çubuğu / toplam sayaç artarken ince taktik tık
+			var b := _buf(0.05)
+			_tone(b, 0.0, 0.7, 880.0, 960.0, 0.012, 0.001, 0.014, 0.12, 0.0)
+			return _finish(b, 0.26, 1.0)
+		"xp_level_up":
+			# Seviye atlama: yükselen parlak akor (D5 F#5 A5 D6)
+			var b := _buf(1.6)
+			for k in 4:
+				_tone(b, 0.055 * k, 0.5, [587.3, 740.0, 880.0, 1174.7][k], 0.0, 0.0, 0.008, 0.65, 0.25, 0.1)
+			return _finish(b, 0.65, 1.05)
 	push_warning("Sfx: bilinmeyen ses '%s'" % sound)
 	return _buf(0.05)
 

@@ -54,7 +54,7 @@ const XP_POWERUP := 25                # yerden güç aldı (PowerupManager)
 const XP_TRAP_RESCUE := 75            # tuzaktaki takım arkadaşını kurtardı (PowerupManager)
 const XP_MATCH := 100                 # maçı bitirdi
 const XP_WIN := 300                   # kazanan takım
-const RETURN_TO_LOBBY_DELAY := 5.0    # maç bitince lobiye otomatik dönüş (HUD oyun sonu ekranı bu sabiti okur)
+const RETURN_TO_LOBBY_DELAY := 9.0    # maç bitince lobiye otomatik dönüş (HUD oyun sonu XP animasyonu + bekleme)
 ## ─── Yükleme bekleme + ISINMA (CS tarzı) ───
 ## Herkes haritayı yükleyip kendi oyuncusunu doğurunca host'a bildirir (_peer_loaded) ve perdesi kalkar: yüklenen oyuncu
 ## haritada serbestçe dolaşır (ısınma — hasar yok, kart/kapı/güç yok, XP yok; HUD hedef çipi "n/N oyuncu hazır · süre").
@@ -74,6 +74,10 @@ var _load_wait_left := 0.0            # host
 var _load_status_timer := 0.0         # host
 
 var match_xp := 0                     # bu maçta kazanılan (oyun sonu ekranı)
+var match_xp_breakdown: Array[Dictionary] = []   # [{reason, amount, count}] — oyun sonunda kalem kalem gösterilir
+var match_start_xp := 0               # maç başındaki harcanabilir profil XP'si (oyun sonu sayaç animasyonu)
+var match_start_total_xp := 0         # maç başındaki toplam XP (seviye çubuğu animasyonu)
+var _match_xp_snapshot_taken := false
 var _xp_survive_timer := 0.0
 var _xp_carry_timer := 0.0
 var _match_xp_closed := false
@@ -179,10 +183,7 @@ func check_all_characters_selected() -> void:
 @rpc("authority", "call_local", "reliable")
 func _begin_actual_game_rpc() -> void:
 	state = State.IN_GAME
-	match_xp = 0
-	_xp_survive_timer = 0.0
-	_xp_carry_timer = 0.0
-	_match_xp_closed = false
+	_reset_match_xp(true)
 	_match_stats_recorded = false
 	door_unlock = 0.0
 	match_live = false
@@ -503,12 +504,32 @@ func _spawn_card_and_door() -> void:
 	var card_points := _fair_points(_get_marker_positions("CardPoints"), CARD_MIN_FROM_SPAWN)
 	var door_points := _fair_points(_get_marker_positions("DoorPoints"), DOOR_MIN_FROM_SPAWN)
 	var door_pos: Vector3 = door_points.pick_random() if not door_points.is_empty() else Vector3(-44.5, 0.0, -34.5)
-	_spawn_objects_rpc.rpc(_pick_card_positions(card_points, maxi(get_card_total(), 1)), door_pos)
+	# Kart-kapı ayrımı: seçilen kapının hemen dibindeki kart adayları elenir (yeterli aday kalmazsa kademeli gevşetilir)
+	var filtered_cards := _filter_away_from_door(card_points, door_pos, maxi(get_card_total(), 1))
+	_spawn_objects_rpc.rpc(_pick_card_positions(filtered_cards, maxi(get_card_total(), 1)), door_pos)
 
 
 const DOOR_MIN_FROM_SPAWN := 25.0   # kapı: hiçbir takımın spawn'ına bundan yakın olmasın (m)
 const CARD_MIN_FROM_SPAWN := 15.0
+const CARD_MIN_FROM_DOOR := 22.0    # kart: seçilen çıkış kapısına en az bu kadar uzak doğsun (m)
 const CARD_MIN_SPACING := 15.0      # kartlar arası en az (m); yetmezse kademeli düşer
+
+
+## Seçilen kapı konumuna çok yakın kart adaylarını eler; en az max(need * 2, 4) aday kalacak şekilde eşiği kademeli gevşetir
+func _filter_away_from_door(candidates: Array[Vector3], door_pos: Vector3, need: int) -> Array[Vector3]:
+	if candidates.size() <= need:
+		return candidates
+	var min_pool := mini(candidates.size(), maxi(need * 2, 4))
+	var dist := CARD_MIN_FROM_DOOR
+	while dist >= 6.0:
+		var out: Array[Vector3] = []
+		for p: Vector3 in candidates:
+			if Vector2(p.x - door_pos.x, p.z - door_pos.z).length() >= dist:
+				out.append(p)
+		if out.size() >= min_pool:
+			return out
+		dist *= 0.75
+	return candidates
 
 
 ## n kart noktası: aralık şartıyla rastgele; yetmezse aralığı %70'e düşür; aday n'den azsa aynı noktayı ±1.5 m ofsetle kullan
@@ -874,11 +895,8 @@ func _return_to_lobby_rpc() -> void:
 	_bot_nav = null  # bot düğümleri + BotBrain sahneyle birlikte silinir
 	match_time_left = -1.0
 	end_reason = ""
-	match_xp = 0
-	_match_xp_closed = false
+	_reset_match_xp(false)
 	_match_stats_recorded = false
-	_xp_survive_timer = 0.0
-	_xp_carry_timer = 0.0
 	if NetworkManager.is_host():
 		NetworkManager.reset_for_rematch()
 	LOADING.open(get_tree(), "LOBİYE DÖNÜLÜYOR", "")
@@ -1016,12 +1034,41 @@ func _teams_with_cards() -> Array[int]:
 # XP
 # ─────────────────────────────────────────────
 
-## Yerel oyuncuya XP ver (profil kaydedilir). PowerupManager de çağırır (güç alma, Medic iyileştirme).
+## Maç XP sayaçlarını sıfırlar; take_snapshot=true ise maç başı profil XP'sini kaydeder (oyun sonu animasyonu için).
+func _reset_match_xp(take_snapshot: bool) -> void:
+	match_xp = 0
+	match_xp_breakdown.clear()
+	_xp_survive_timer = 0.0
+	_xp_carry_timer = 0.0
+	_match_xp_closed = false
+	if take_snapshot:
+		match_start_xp = PROFILE.get_xp()
+		match_start_total_xp = PROFILE.get_total_xp()
+		_match_xp_snapshot_taken = true
+	else:
+		_match_xp_snapshot_taken = false
+
+
+## Yerel oyuncuya XP ver (profil kaydedilir). Oyun içinde HUD'da gösterilmez; oyun sonu ekranında
+## kalem kalem efektlerle sunulur. PowerupManager de çağırır (güç alma, Medic iyileştirme).
 func gain_xp(amount: int, reason: String) -> void:
 	if amount <= 0:
 		return
+	if not _match_xp_snapshot_taken:
+		match_start_xp = PROFILE.get_xp()
+		match_start_total_xp = PROFILE.get_total_xp()
+		_match_xp_snapshot_taken = true
 	PROFILE.add_xp(amount)
 	match_xp += amount
+	var found := false
+	for entry: Dictionary in match_xp_breakdown:
+		if str(entry.get("reason", "")) == reason:
+			entry["amount"] = int(entry.get("amount", 0)) + amount
+			entry["count"] = int(entry.get("count", 0)) + 1
+			found = true
+			break
+	if not found:
+		match_xp_breakdown.append({"reason": reason, "amount": amount, "count": 1})
 	xp_gained.emit(amount, reason)
 
 
@@ -1307,6 +1354,8 @@ func return_to_menu() -> void:
 	_bot_nav = null  # bot düğümleri + BotBrain sahne değişiminde silinir
 	match_time_left = -1.0
 	end_reason = ""
+	_reset_match_xp(false)
+	_match_stats_recorded = false
 	state = State.MENU
 	match_live = false
 	_local_loaded = false

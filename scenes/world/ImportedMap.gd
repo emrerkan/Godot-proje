@@ -143,6 +143,11 @@ func _ready() -> void:
 		pm.set_points(_pick_powerup_points(seed_base))
 	_place_lamps(space, seed_base)
 	_collect_canopies(_model)
+	var lamp_nodes: Array = []
+	var wl := get_node_or_null("WallLamps")
+	if wl:
+		lamp_nodes = wl.get_children()
+	preload("res://scenes/fx/MapEnvFx.gd").setup(self, String(info.get("id", "map")), _bounds, lamp_nodes)
 	await _prewarm_render()
 	if not is_instance_valid(self):
 		return
@@ -237,6 +242,7 @@ func _prewarm_render() -> void:
 	preload("res://scenes/fx/SlashFx.gd").prewarm(rig)
 	preload("res://scenes/fx/ImpactFx.gd").prewarm(rig)
 	preload("res://scenes/fx/ExplosionFx.gd").prewarm(rig)
+	preload("res://scenes/fx/MapEnvFx.gd").prewarm(rig)
 	for i in PREWARM_FRAMES:
 		await get_tree().process_frame
 		if not is_instance_valid(self):

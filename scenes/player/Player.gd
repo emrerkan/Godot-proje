@@ -268,10 +268,20 @@ var _card_pickup_blocked: float = 0.0
 ## Işık sadece BODY_LIGHT_LAYER_BIT katmanına (karakter mesh'leri) değer, zemine taşmaz.
 const FX_HURT_COLOR := Color(1.0, 0.12, 0.08)
 const FX_HEAL_COLOR := Color(0.3, 1.0, 0.45)
+const FX_SPAWN_SHIELD_COLOR := Color(0.55, 0.85, 1.0)
 const FX_ENERGY := 7.0
 const FX_DECAY := 1.8               # 1/sn
 var _fx_light: OmniLight3D = null
 var _fx_level := 0.0
+
+## Doğma koruması (spawn invulnerability): doğunca / yeniden doğunca bu süre boyunca görünür kalır ama HİÇBİR hasar
+## (mermi, bıçak, bomba, özel silah, tuzak) işlemez. Görünmezlik değildir — sadece vurulamazdır.
+const SPAWN_INVULN_DURATION := 2.5
+const SPAWN_BLINK_HZ := 6.5        # saniyede kaç kez yanıp sönsün (klasik dokunulmazlık sinyali)
+const SPAWN_BLINK_TRANS := 0.65    # sönük fazda yarı saydamlık (tamamen kaybolmaz, rakip hâlâ görür)
+var _spawn_invuln_left := 0.0
+var _spawn_blink_active := false
+var _spawn_meshes: Array[GeometryInstance3D] = []
 
 ## Profil yükseltme çarpanları (PlayerProfile.multipliers) — initialize'da dolar
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
@@ -430,6 +440,7 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	_last_anim_pos = global_position
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	reset_physics_interpolation()
+	_spawn_invuln_left = SPAWN_INVULN_DURATION
 
 	_equip_default_weapon()
 
@@ -885,6 +896,9 @@ func _process(delta: float) -> void:
 		_update_light_lod(get_viewport())
 	if _special_laser != null:
 		_aim_special_laser()   # animasyon namluyu oynattıkça lazer nişangaha kilitli kalsın
+	if _spawn_invuln_left > 0.0:
+		_spawn_invuln_left = maxf(_spawn_invuln_left - delta, 0.0)
+	_update_spawn_blink()
 	if is_invisible:
 		_invis_left -= delta
 		if _invis_left <= 0.0:
@@ -896,7 +910,17 @@ func _process(delta: float) -> void:
 		_set_shimmer_intensity(_shimmer_fade_from * _shimmer_fade_t / SHIMMER_FADE_TIME)
 		if _shimmer_fade_t <= 0.0:
 			_restore_overlays()
-	if _fx_light == null or _fx_level <= 0.0:
+	if _fx_light == null:
+		return
+	if _spawn_invuln_left > 0.0 and not is_dead and not _vis_hidden and _fx_level <= 0.0:
+		# Doğma koruması aktifken karakter üzerinde hafif nabızlı mavi-beyaz kalkan parıltısı (sadece gövde katmanı)
+		var pulse := 0.35 + 0.25 * sin(Time.get_ticks_msec() * 0.014)
+		_fx_light.light_color = FX_SPAWN_SHIELD_COLOR
+		_fx_light.light_energy = FX_ENERGY * 0.42 * pulse
+		_fx_light.visible = true
+		return
+	if _fx_level <= 0.0:
+		_fx_light.visible = false
 		return
 	_fx_level = maxf(_fx_level - delta * FX_DECAY, 0.0)
 	_fx_light.light_energy = FX_ENERGY * _fx_level * _fx_level
@@ -1599,6 +1623,35 @@ func is_crouching() -> bool:
 	return move_mode == MoveMode.CROUCH and not is_dead
 
 
+## Doğma koruması aktif mi? (Görünmez değil, sadece vurulamaz — mermi/bıçak/bomba/tuzak hasarı işlemez)
+func is_spawn_protected() -> bool:
+	return _spawn_invuln_left > 0.0 and not is_dead
+
+
+## Doğma koruması yanıp sönme görseli: karakter yarı saydam ↔ tam opak arasında ritmik yanıp söner (asla tamamen kaybolmaz)
+func _update_spawn_blink() -> void:
+	var want_active := _spawn_invuln_left > 0.0 and not is_dead and not _vis_hidden
+	if not want_active:
+		if _spawn_blink_active:
+			_spawn_blink_active = false
+			for gi: GeometryInstance3D in _spawn_meshes:
+				if is_instance_valid(gi):
+					gi.transparency = 0.0
+		return
+	if _spawn_meshes.is_empty() and _char_mesh != null:
+		for child in _char_mesh.find_children("*", "GeometryInstance3D", true, false):
+			if child != _special_laser:
+				_spawn_meshes.append(child as GeometryInstance3D)
+	_spawn_blink_active = true
+	# Son 0.8 sn'de yanıp sönme hafifçe hızlanır (koruma bitiyor ipucu)
+	var freq := SPAWN_BLINK_HZ * (1.45 if _spawn_invuln_left < 0.8 else 1.0)
+	var phase := sin(Time.get_ticks_msec() * 0.001 * TAU * freq)
+	var trans := SPAWN_BLINK_TRANS if phase < 0.0 else 0.0
+	for gi: GeometryInstance3D in _spawn_meshes:
+		if is_instance_valid(gi):
+			gi.transparency = trans
+
+
 func _get_aim_target() -> Vector3:
 	return get_aim_target_at(global_position.y + 0.9)
 
@@ -1677,6 +1730,8 @@ func take_damage(amount: float, shooter_peer_id: int, source: int = DAMAGE_BULLE
 		return
 	if is_dead or not GameManager.match_live:
 		return  # ısınmada (diğer oyuncuların yüklemesi bekleniyor) hasar yok
+	if is_spawn_protected():
+		return  # doğma koruması (2.5 sn): görünür kalır ama hiçbir hasar işlemez
 	# Çömelme: mermiler üstünden geçer (host, hedefin _broadcast_state ile gelen moduna göre karar verir)
 	if source == DAMAGE_BULLET and is_crouching():
 		return
@@ -1743,6 +1798,7 @@ func _die(killer_peer_id: int, source: int = DAMAGE_BULLET) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _apply_death() -> void:
 	is_dead = true
+	_spawn_invuln_left = 0.0
 	BLOOD_FX.splat(get_tree(), global_position, 1.8)   # yerde kan gölü (solarak kaybolur)
 	DEATH_FLASH.burst(get_tree(), global_position)   # ölüm noktasında kısa kırmızı ışık patlaması
 	drop_card()
@@ -1796,6 +1852,7 @@ func respawn(spawn_pos: Vector3) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _apply_respawn(spawn_pos: Vector3) -> void:
 	is_dead = false
+	_spawn_invuln_left = SPAWN_INVULN_DURATION
 	drop_card()
 	is_trapped = false
 	_clear_power_states()

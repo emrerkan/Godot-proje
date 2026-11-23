@@ -1,6 +1,7 @@
 ## Powerup.gd — yerde duran güç nesnesi (PowerupManager oluşturur, sahne dosyası yok).
-## Görsel: renkli parlayan sembol + taban halkası + ışık + etiket; süzülür ve döner, son 2 sn yanıp söner.
-## Tip siluetleri: 0 küre, 1 artı, 2 prizma, 4 düşük silindir, 5 kapsül, 6 disk+çarpı, 7 pahlı yarı saydam kristal
+## Görsel: 3D model (bomba/sağlık/uydu/flaş FBX) veya renkli parlayan sembol + taban halkası + ışık + etiket;
+## süzülür ve döner, son 2 sn yanıp söner.
+## Tip siluetleri: 0/1/2/4 asset model/PowerUp_*.fbx, 5 kapsül, 6 disk+çarpı, 7 pahlı yarı saydam kristal
 ## (InvisibilityShimmer), 8 uzun yatay kasa + kırmızı nokta (özel silah), 9 dikey açık makas (tuzak çözücü), diğer halka.
 ## Kart gibi SADECE yaklaşınca görünür (ProximityReveal). Alma: yerel oyuncu yakındaysa ve slotu boşsa
 ## PowerupManager.local_touched → host doğrular. (Area3D sinyali yerine mesafe kontrolü: slot boşalınca
@@ -11,6 +12,13 @@ extends Area3D
 const PICK_RADIUS := 1.3
 const PROXIMITY_SCRIPT := preload("res://scenes/world/ProximityReveal.gd")
 const SHIMMER_SHADER := preload("res://scenes/player/InvisibilityShimmer.gdshader")
+const MODEL_TARGET_SIZE := 0.65      # FBX modellerinin en büyük eksen uzunluğu (m)
+const MODEL_SCENES := {
+	0: preload("res://asset model/PowerUp_Grenade.fbx"),    # BOMBA
+	1: preload("res://asset model/PowerUp_Health.fbx"),     # SAĞLIK
+	2: preload("res://asset model/PowerUp_Satellite.fbx"),  # UYDU
+	4: preload("res://asset model/PowerUp_Flashbang.fbx"),  # FLAŞ BOMBASI
+}
 
 ## Yeni güç tipleri (PowerupManager.Type ile aynı index)
 const TYPE_INVIS := 7
@@ -54,129 +62,135 @@ func _ready() -> void:
 	_visual.position.y = 0.9
 	add_child(_visual)
 	var core := MeshInstance3D.new()
-	match item_type:
-		0:  # bomba — küre
-			var s := SphereMesh.new()
-			s.radius = 0.28
-			s.height = 0.56
-			core.mesh = s
-		1:  # sağlık — artı
-			var b := BoxMesh.new()
-			b.size = Vector3(0.55, 0.18, 0.18)
-			core.mesh = b
-			var b2 := MeshInstance3D.new()
-			var bm := BoxMesh.new()
-			bm.size = Vector3(0.18, 0.55, 0.18)
-			b2.mesh = bm
-			b2.material_override = glow
-			_visual.add_child(b2)
-		2:  # uydu — elmas
-			var pm := PrismMesh.new()
-			pm.size = Vector3(0.45, 0.45, 0.45)
-			core.mesh = pm
-		4:  # flaş bombası — kısa silindir (sis/flaş el bombası)
-			var c := CylinderMesh.new()
-			c.top_radius = 0.14
-			c.bottom_radius = 0.14
-			c.height = 0.5
-			core.mesh = c
-		5:  # sis bombası — kapsül (duman kutusu)
-			var cap := CapsuleMesh.new()
-			cap.radius = 0.15
-			cap.height = 0.55
-			core.mesh = cap
-		6:  # tuzak — katlanmış/paketlenmiş hali (yassı disk + çarpı şeklinde iki çene)
-			var disk := CylinderMesh.new()
-			disk.top_radius = 0.3
-			disk.bottom_radius = 0.3
-			disk.height = 0.08
-			core.mesh = disk
-			for ang in [45.0, -45.0]:
-				var cross := MeshInstance3D.new()
-				var cb := BoxMesh.new()
-				cb.size = Vector3(0.5, 0.06, 0.1)
-				cross.mesh = cb
-				cross.rotation.y = deg_to_rad(ang)
-				cross.material_override = glow
-				_visual.add_child(cross)
-		TYPE_INVIS:  # görünmezlik — pahlı (düşük segmentli), hafif uzun, yarı saydam kristal küre
-			var crystal := SphereMesh.new()
-			crystal.radius = 0.30
-			crystal.height = 0.60
-			crystal.radial_segments = 6
-			crystal.rings = 3
-			core.mesh = crystal
-			core.scale.y = 1.25
-			# Oyuncunun giydiği titreşimin AYNISI (InvisibilityShimmer): yerdeki nesne = giyilen efekt bağı.
-			# Tarama bandı küçük kristale sığsın diye sweep_period kısaltılır.
-			_shimmer_mat = ShaderMaterial.new()
-			_shimmer_mat.shader = SHIMMER_SHADER
-			_shimmer_mat.set_shader_parameter("intensity", 1.0)
-			_shimmer_mat.set_shader_parameter("sweep_period", 0.9)
-			core.material_override = _shimmer_mat
-		TYPE_SPECIAL_GUN:  # özel silah — uzun yatay kasa + kabza + uçta parlak kırmızı nokta
-			var gun := Node3D.new()
-			gun.rotation.z = deg_to_rad(8.0)  # hafif yukarı eğik
-			_visual.add_child(gun)
-			var gun_mat := StandardMaterial3D.new()
-			gun_mat.albedo_color = GUNMETAL
-			gun_mat.metallic = 0.6
-			gun_mat.roughness = 0.45
-			gun_mat.emission_enabled = true
-			gun_mat.emission = color
-			gun_mat.emission_energy_multiplier = 0.6  # karanlıkta siluet okunsun
-			core.mesh = _box(Vector3(0.95, 0.07, 0.10))
-			core.material_override = gun_mat
-			gun.add_child(core)
-			var grip := MeshInstance3D.new()
-			grip.mesh = _box(Vector3(0.2, 0.05, 0.14))
-			grip.material_override = gun_mat
-			grip.position = Vector3(-0.37, -0.055, 0.0)
-			gun.add_child(grip)
-			# Lazer ucu: sahnenin en parlak noktası (≤3.5)
-			var dot_mat := glow.duplicate() as StandardMaterial3D
-			dot_mat.emission_energy_multiplier = 3.5
-			var red_dot := MeshInstance3D.new()
-			var dot_mesh := SphereMesh.new()
-			dot_mesh.radius = 0.05
-			dot_mesh.height = 0.10
-			dot_mesh.radial_segments = 8
-			dot_mesh.rings = 4
-			red_dot.mesh = dot_mesh
-			red_dot.material_override = dot_mat
-			red_dot.position = Vector3(0.5, 0.0, 0.0)
-			gun.add_child(red_dot)
-		TYPE_TRAP_BREAKER:  # tuzak çözücü — dikey duran AÇIK makas (tuzağın yassı diskinden siluetle ayrışır)
-			# Her yarım: pivot'ta kesişen bıçak + alt ucunda sap halkası; ±22° → X biçimli açık makas
-			for sgn in [1.0, -1.0]:
-				var half := Node3D.new()
-				half.rotation.z = deg_to_rad(22.0) * sgn
-				_visual.add_child(half)
-				var blade := MeshInstance3D.new()
-				blade.mesh = _box(Vector3(0.05, 0.55, 0.09))
-				blade.material_override = glow
-				blade.position.y = 0.095  # bıçak -0.18 (sap tarafı) .. +0.37 (uç)
-				half.add_child(blade)
-				var handle := MeshInstance3D.new()
-				var hm := TorusMesh.new()
-				hm.inner_radius = 0.04
-				hm.outer_radius = 0.075
-				handle.mesh = hm
-				handle.rotation.x = deg_to_rad(90.0)  # halka XY düzleminde (kameraya yarı dönük)
-				handle.material_override = glow
-				handle.position.y = -0.255
-				half.add_child(handle)
-		_:  # takım uydusu — halka
-			var t := TorusMesh.new()
-			t.inner_radius = 0.18
-			t.outer_radius = 0.32
-			core.mesh = t
-	# Mesh'siz çekirdek (tuzak çözücü: parçalar match içinde eklendi) sahneye girmez; kendi malzemesi olan tip (görünmezlik, özel silah) ezilmez
+	var model_scene: PackedScene = MODEL_SCENES.get(item_type)
+	if model_scene != null and _add_fbx_model(model_scene):
+		pass  # 0 bomba, 1 sağlık, 2 uydu, 4 flaş — hazır FBX modeli eklendi
+	else:
+		match item_type:
+			0:  # bomba — küre (yedek)
+				var s := SphereMesh.new()
+				s.radius = 0.28
+				s.height = 0.56
+				core.mesh = s
+			1:  # sağlık — artı (yedek)
+				var b := BoxMesh.new()
+				b.size = Vector3(0.55, 0.18, 0.18)
+				core.mesh = b
+				var b2 := MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = Vector3(0.18, 0.55, 0.18)
+				b2.mesh = bm
+				b2.material_override = glow
+				_visual.add_child(b2)
+			2:  # uydu — elmas (yedek)
+				var pm := PrismMesh.new()
+				pm.size = Vector3(0.45, 0.45, 0.45)
+				core.mesh = pm
+			4:  # flaş bombası — kısa silindir (yedek)
+				var c := CylinderMesh.new()
+				c.top_radius = 0.14
+				c.bottom_radius = 0.14
+				c.height = 0.5
+				core.mesh = c
+			5:  # sis bombası — kapsül (duman kutusu)
+				var cap := CapsuleMesh.new()
+				cap.radius = 0.15
+				cap.height = 0.55
+				core.mesh = cap
+			6:  # tuzak — katlanmış/paketlenmiş hali (yassı disk + çarpı şeklinde iki çene)
+				var disk := CylinderMesh.new()
+				disk.top_radius = 0.3
+				disk.bottom_radius = 0.3
+				disk.height = 0.08
+				core.mesh = disk
+				for ang in [45.0, -45.0]:
+					var cross := MeshInstance3D.new()
+					var cb := BoxMesh.new()
+					cb.size = Vector3(0.5, 0.06, 0.1)
+					cross.mesh = cb
+					cross.rotation.y = deg_to_rad(ang)
+					cross.material_override = glow
+					_visual.add_child(cross)
+			TYPE_INVIS:  # görünmezlik — pahlı (düşük segmentli), hafif uzun, yarı saydam kristal küre
+				var crystal := SphereMesh.new()
+				crystal.radius = 0.30
+				crystal.height = 0.60
+				crystal.radial_segments = 6
+				crystal.rings = 3
+				core.mesh = crystal
+				core.scale.y = 1.25
+				# Oyuncunun giydiği titreşimin AYNISI (InvisibilityShimmer): yerdeki nesne = giyilen efekt bağı.
+				# Tarama bandı küçük kristale sığsın diye sweep_period kısaltılır.
+				_shimmer_mat = ShaderMaterial.new()
+				_shimmer_mat.shader = SHIMMER_SHADER
+				_shimmer_mat.set_shader_parameter("intensity", 1.0)
+				_shimmer_mat.set_shader_parameter("sweep_period", 0.9)
+				core.material_override = _shimmer_mat
+			TYPE_SPECIAL_GUN:  # özel silah — uzun yatay kasa + kabza + uçta parlak kırmızı nokta
+				var gun := Node3D.new()
+				gun.rotation.z = deg_to_rad(8.0)  # hafif yukarı eğik
+				_visual.add_child(gun)
+				var gun_mat := StandardMaterial3D.new()
+				gun_mat.albedo_color = GUNMETAL
+				gun_mat.metallic = 0.6
+				gun_mat.roughness = 0.45
+				gun_mat.emission_enabled = true
+				gun_mat.emission = color
+				gun_mat.emission_energy_multiplier = 0.6  # karanlıkta siluet okunsun
+				core.mesh = _box(Vector3(0.95, 0.07, 0.10))
+				core.material_override = gun_mat
+				gun.add_child(core)
+				var grip := MeshInstance3D.new()
+				grip.mesh = _box(Vector3(0.2, 0.05, 0.14))
+				grip.material_override = gun_mat
+				grip.position = Vector3(-0.37, -0.055, 0.0)
+				gun.add_child(grip)
+				# Lazer ucu: sahnenin en parlak noktası (≤3.5)
+				var dot_mat := glow.duplicate() as StandardMaterial3D
+				dot_mat.emission_energy_multiplier = 3.5
+				var red_dot := MeshInstance3D.new()
+				var dot_mesh := SphereMesh.new()
+				dot_mesh.radius = 0.05
+				dot_mesh.height = 0.10
+				dot_mesh.radial_segments = 8
+				dot_mesh.rings = 4
+				red_dot.mesh = dot_mesh
+				red_dot.material_override = dot_mat
+				red_dot.position = Vector3(0.5, 0.0, 0.0)
+				gun.add_child(red_dot)
+			TYPE_TRAP_BREAKER:  # tuzak çözücü — dikey duran AÇIK makas (tuzağın yassı diskinden siluetle ayrışır)
+				# Her yarım: pivot'ta kesişen bıçak + alt ucunda sap halkası; ±22° → X biçimli açık makas
+				for sgn in [1.0, -1.0]:
+					var half := Node3D.new()
+					half.rotation.z = deg_to_rad(22.0) * sgn
+					_visual.add_child(half)
+					var blade := MeshInstance3D.new()
+					blade.mesh = _box(Vector3(0.05, 0.55, 0.09))
+					blade.material_override = glow
+					blade.position.y = 0.095  # bıçak -0.18 (sap tarafı) .. +0.37 (uç)
+					half.add_child(blade)
+					var handle := MeshInstance3D.new()
+					var hm := TorusMesh.new()
+					hm.inner_radius = 0.04
+					hm.outer_radius = 0.075
+					handle.mesh = hm
+					handle.rotation.x = deg_to_rad(90.0)  # halka XY düzleminde (kameraya yarı dönük)
+					handle.material_override = glow
+					handle.position.y = -0.255
+					half.add_child(handle)
+			_:  # takım uydusu — halka
+				var t := TorusMesh.new()
+				t.inner_radius = 0.18
+				t.outer_radius = 0.32
+				core.mesh = t
+	# Mesh'siz çekirdek (FBX / tuzak çözücü) sahneye girmez; kendi malzemesi olan tip (görünmezlik, özel silah) ezilmez
 	if core.mesh != null:
 		if core.material_override == null:
 			core.material_override = glow
 		if core.get_parent() == null:
 			_visual.add_child(core)
+	else:
+		core.free()
 
 	var ring := MeshInstance3D.new()
 	var rm := TorusMesh.new()
@@ -233,6 +247,40 @@ func _process(delta: float) -> void:
 	if time_left < 2.0:
 		_visual.visible = fmod(_t * 6.0, 1.0) > 0.35
 	_try_pickup(delta)
+
+
+func _add_fbx_model(scene: PackedScene) -> bool:
+	var model := scene.instantiate() as Node3D
+	if model == null:
+		return false
+	var wrapper := Node3D.new()
+	wrapper.add_child(model)
+	_visual.add_child(wrapper)
+	var has_bounds := false
+	var bounds := AABB()
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var local_aabb := _relative_transform(mi, wrapper) * mi.get_aabb()
+		bounds = bounds.merge(local_aabb) if has_bounds else local_aabb
+		has_bounds = true
+	if has_bounds:
+		model.position -= bounds.get_center()
+		var max_extent := maxf(bounds.size.x, maxf(bounds.size.y, bounds.size.z))
+		if max_extent > 0.0001:
+			wrapper.scale = Vector3.ONE * (MODEL_TARGET_SIZE / max_extent)
+	return true
+
+
+static func _relative_transform(node: Node3D, ancestor: Node3D) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var cur: Node = node
+	while cur != null and cur != ancestor:
+		if cur is Node3D:
+			xf = (cur as Node3D).transform * xf
+		cur = cur.get_parent()
+	return xf
 
 
 static func _box(size: Vector3) -> BoxMesh:

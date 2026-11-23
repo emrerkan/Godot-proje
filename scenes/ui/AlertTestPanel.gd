@@ -76,6 +76,22 @@ func _ready() -> void:
 	_btn(list, "Öldürdün", func() -> void: hud.debug_kill("BOT 5"))
 	_btn(list, "Öldürdün · uzun ad", func() -> void: hud.debug_kill("KeskinNisanciAhmet_42"))
 
+	_section(list, "ÖLDÜRME AKIŞI (sağ üst · silah görseli)")
+	_btn(list, "Tüm silahları göster (5 silah)", func() -> void:
+		for ch: String in CHARS:
+			hud.debug_kill_feed("bullet", ch)
+	)
+	for ch: String in CHARS:
+		_btn(list, tr("Kill feed · %s silahı") % tr(ch), func() -> void: hud.debug_kill_feed("bullet", ch))
+	_btn(list, "Kill feed · bıçak", func() -> void: hud.debug_kill_feed("knife"))
+	_btn(list, "Kill feed · özel silah", func() -> void: hud.debug_kill_feed("special"))
+	_btn(list, "Kill feed · bomba", func() -> void: hud.debug_kill_feed("bomb"))
+	_btn(list, "Kill feed · tuzak", func() -> void: hud.debug_kill_feed("trap"))
+
+	_section(list, "MAÇ SONU XP EKRANI (efektli)")
+	_btn(list, "Zafer + Seviye atlama", func() -> void: hud.debug_end_screen(true, true))
+	_btn(list, "Yenilgi + XP dökümü", func() -> void: hud.debug_end_screen(false, false))
+
 	_section(list, "UYARI BANDI · MAÇ / KART")
 	_banner(list, "MAÇ BAŞLADI", UITheme.SUCCESS)
 	_banner(list, "MAÇ BAŞLADI", UITheme.SUCCESS, "Kazanmak için öldür")

@@ -44,13 +44,13 @@ const INFO := {
 }
 ## ENEMY_SAT artık doğmaz (tek uydu kararı — INTEL_SAT tüm takımların oyuncularını gösterir); index sabit kaldığı için enum'da duruyor
 const WEIGHTS := {Type.BOMB: 22, Type.HEAL: 22, Type.FLASH: 18, Type.SMOKE: 16, Type.INTEL_SAT: 16, Type.TRAP: 14,
-	Type.INVIS: 10, Type.TRAP_BREAKER: 10, Type.SPECIAL_GUN: 5}
+	Type.INVIS: 13, Type.TRAP_BREAKER: 13, Type.SPECIAL_GUN: 8}
 
 ## Zamanlama (sn)
-const FIRST_SPAWN_DELAY := 12.0
-const SPAWN_INTERVAL := Vector2(8.0, 15.0)
-const LIFETIME := Vector2(5.0, 10.0)
-const MAX_ACTIVE := 3
+const FIRST_SPAWN_DELAY := 8.0
+const SPAWN_INTERVAL := Vector2(5.0, 10.0)
+const LIFETIME := Vector2(8.0, 14.0)
+const MAX_ACTIVE := 5
 
 ## Etkiler — yükseltilebilen değerler (iyileştirme, yarıçap, fitil, atış, süre, tuzak...) burada DEĞİL:
 ## PowerTrees.BASE + kullananın güç ağacı → `_m(peer)` (her peer players listesinden aynı sonucu hesaplar).

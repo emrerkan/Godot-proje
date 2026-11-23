@@ -1,0 +1,12 @@
+TacticalDark - Map1_Elcilik_Baskini_3v3v3v3_v3 PBR Textures
+CC0 Photogrammetry Textures from Poly Haven & ambientCG (shared with Map3_Col_v3, Map4_Orman_v3 & Map5_Hastane_v3):
+- chipped_concrete_2k, concrete_moss_2k, concrete_road_barrier, portable_generator, Barrel_01_explosive
+- wooden_military_crate, steel_frame_shelves_01, power_box_01, sandbag_burlap, hospital_brushed_steel_1k
+- rusty_metal_2k, dark_wooden_planks_2k, gravel_ground_01_2k, rock_face_01, boulder_01
+- hero_radar_metal, industrial_light_lens, decal_oil_spill, decal_scorch_crater, decal_tire_tracks,
+  decal_moss_patch, decal_leaf_litter, grass_forest_fern, decal_blood_trail, decal_chemical_puddle
+- Custom procedural baked 2K/1K embassy PBR textures (0 emission, flashlight-reactive normal & roughness):
+  embassy_checker_marble_2k, embassy_herringbone_parquet_2k, embassy_courtyard_cobble_2k,
+  embassy_neoclassical_stone_2k, embassy_boxwood_hedge_2k, hero_limo_armored_2k,
+  embassy_brass_ornate_1k, decal_red_carpet_runner, decal_shattered_chandelier,
+  decal_classified_documents.

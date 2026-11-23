@@ -127,7 +127,7 @@ func _place_knife(sk: Skeleton3D) -> void:
 const WEAPON_MODELS := {
 	"Medic": {"path": "res://asset model/silahlar/medic_silah.glb", "fwd": Vector3(0, 0.007, 1),
 		"grip": Vector3(0, -0.046, -0.225), "tip": Vector3(0.001, 0.097, 0.491), "tb": 0.986, "length": 0.92, "eject_fwd": 0.10},   # Medic gövdesinin kolu uzun
-	"Runner": {"path": "res://asset model/silahlar/mp5.glb", "fwd": Vector3(0, 0.342, 0.940),
+	"Runner": {"path": "res://asset model/silahlar/mp5.glb", "fwd": Vector3(0, 0.259, 0.966),
 		"grip": Vector3(0, -0.126, -0.172), "tip": Vector3(0.002, 0.191, 0.493), "tb": 1.022, "length": 0.80, "eject_fwd": 0.09},   # gerçeği ~0.7; tüfek animasyonunda sol el boşta kalıyordu
 	"Sniper": {"path": "res://asset model/silahlar/sniper_tufek.glb", "fwd": Vector3(-0.331, 0.666, 0.965),
 		"grip": Vector3(0.061, -0.184, -0.218), "tip": Vector3(-0.179, 0.380, 0.483), "tb": 1.218, "length": 1.15, "eject_fwd": 0.12},

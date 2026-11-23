@@ -31,34 +31,33 @@ const MATCH_MINUTES_DEFAULT := 10
 ## glb: ImportedMap.tscn'in yüklediği harita modeli (asset model/haritalar, rehber: HARITALAR_TEKNIK_REHBERI_AI.md).
 const IMPORTED_MAP_SCENE := "res://scenes/world/ImportedMap.tscn"
 const MAPS: Array[Dictionary] = [
-	{"id": "maze", "name": "Labirent", "scene": "res://scenes/world/Map.tscn", "max_team": 5},
-	{"id": "embassy", "name": "Elçilik Kompleksi", "scene": IMPORTED_MAP_SCENE, "max_team": 3,
-		"glb": "res://asset model/haritalar/Map1_Elcilik_Kompleksi_3v3v3v3.glb"},
-	# emission_scale: haritanın parlayan malzemeleri (neon/plazma) çarpanı · lamp_scale: otomatik duvar lambası yoğunluğu
-	{"id": "quantum", "name": "Yeraltı Kuantum Labirenti", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
-		"glb": "res://asset model/haritalar/Map2_Yeralti_Kuantum_Labirenti_5v5v5v5.glb",
-		"emission_scale": 0.18, "lamp_scale": 0.2, "lamp_energy": 0.6,   # kullanıcı: "fenere ihtiyaç yok gibi" → iki kez kısıldı
-		# Oyun alanı sekizgen güverte (kare duvar köşeleri açık bırakıyordu); güverte altındaki havuzun köşeleri dışarı taşıyordu
-		"play_octagon": "Lab_Main_Titanium_Deck", "hide_meshes": ["Subterranean_Coolant_Pool"]},
-	{"id": "desert", "name": "Çöl Kargo Uçağı Enkazı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
-		"glb": "res://asset model/haritalar/Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5.glb"},
+	{"id": "maze_v3", "name": "Labirent v3", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
+		"glb": "res://asset model/haritalar/Map0_Labirent_v3/Map0_Klasik_Labirent_5v5v5v5_v3.gltf",
+		"convex_props": true, "outer_world": true},
+	{"id": "embassy_v3", "name": "Elçilik Kompleksi v3", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
+		"glb": "res://asset model/haritalar/Map1_Elcilik_v3/Map1_Elcilik_Kompleksi_4v4v4v4_v3.gltf",
+		"convex_props": true, "outer_world": true},
+	{"id": "quantum_v3", "name": "Yeraltı Kuantum Labirenti v3", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
+		"glb": "res://asset model/haritalar/Map2_Kuantum_v3/Map2_Yeralti_Kuantum_Labirenti_5v5v5v5_v3.gltf",
+		"convex_props": true, "outer_world": true},
 	{"id": "desert_v3", "name": "Çöl Kargo Uçağı Enkazı v3", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
 		"glb": "res://asset model/haritalar/Map3_Col_v3/Map3_Col_Kargo_Ucagi_Enkazi_5v5v5v5_v3.gltf",
 		"convex_props": true, "outer_world": true},
-	{"id": "forest", "name": "Gece Orman Radar Üssü", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
-		"glb": "res://asset model/haritalar/Map4_Gece_Orman_Radar_Ussu_4v4v4v4.glb"},
 	{"id": "forest_v3", "name": "Gece Orman Radar Üssü v3", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
 		"glb": "res://asset model/haritalar/Map4_Orman_v3/Map4_Gece_Orman_Radar_Ussu_4v4v4v4_v3.gltf",
 		"convex_props": true, "outer_world": true},
-	{"id": "hospital", "name": "Karantina Hastanesi", "scene": IMPORTED_MAP_SCENE, "max_team": 2,
-		"glb": "res://asset model/haritalar/Map5_Karantina_Hastanesi_2v2v2v2.glb"},
-	{"id": "subway", "name": "Yeraltı Metro İstasyonu", "scene": IMPORTED_MAP_SCENE, "max_team": 3,
-		"glb": "res://asset model/haritalar/Map6_Yeralti_Metro_Istasyonu_3v3v3v3.glb"},   # ray çukuru 0.85 m: zıplayarak çıkılır
-	{"id": "warehouse", "name": "Lojistik Depo Labirenti", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
-		"glb": "res://asset model/haritalar/Map7_Lojistik_Depo_Labirenti_4v4v4v4.glb"},
-	{"id": "port", "name": "Gece Konteyner Limanı", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
-		"glb": "res://asset model/haritalar/Map8_Gece_Konteyner_Limani_5v5v5v5.glb", "water_emission": 0.15,
-		"water_floor": true},   # suya sızan düşmez, rıhtıma (0.94 m) zıplayarak çıkar
+	{"id": "hospital_v3", "name": "Karantina Hastanesi v3", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
+		"glb": "res://asset model/haritalar/Map5_Hastane_v3/Map5_Karantina_Hastanesi_3v3v3v3_v3.gltf",
+		"convex_props": true, "outer_world": true},
+	{"id": "subway_v3", "name": "Yeraltı Metro İstasyonu v3", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
+		"glb": "res://asset model/haritalar/Map6_Metro_v3/Map6_Yeralti_Metro_Istasyonu_4v4v4v4_v3.gltf",
+		"convex_props": true, "outer_world": true},
+	{"id": "warehouse_v3", "name": "Lojistik Depo Labirenti v3", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
+		"glb": "res://asset model/haritalar/Map7_Depo_v3/Map7_Lojistik_Depo_Labirenti_4v4v4v4_v3.gltf",
+		"convex_props": true, "outer_world": true},
+	{"id": "port_v3", "name": "Gece Konteyner Limanı v3", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
+		"glb": "res://asset model/haritalar/Map8_Liman_v3/Map8_Gece_Konteyner_Limani_5v5v5v5_v3.gltf",
+		"convex_props": true, "water_floor": true},
 ]
 
 ## Oda ayarları — host değiştirir, _sync_room_settings ile herkese gider (yeni katılana da)

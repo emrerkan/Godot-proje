@@ -19,14 +19,24 @@ const FOG_DENSITY := 0.0019                        # kamera ~39 m (FOV 40) → o
 
 ## Harita bazlı ince gece atmosfer tonları (karanlık gerilimini koruyarak her haritaya kimlik verir)
 const MAP_THEMES := {
-	"desert":    {"ambient": Color(0.13, 0.115, 0.15), "fog": Color(0.055, 0.045, 0.065), "fog_density": 0.0022},
-	"desert_v3": {"ambient": Color(0.13, 0.115, 0.15), "fog": Color(0.055, 0.045, 0.065), "fog_density": 0.0022},
-	"forest":    {"ambient": Color(0.085, 0.135, 0.14), "fog": Color(0.025, 0.055, 0.055), "fog_density": 0.0024},
-	"forest_v3": {"ambient": Color(0.085, 0.135, 0.14), "fog": Color(0.025, 0.055, 0.055), "fog_density": 0.0024},
-	"quantum":   {"ambient": Color(0.075, 0.13, 0.19), "fog": Color(0.02, 0.05, 0.085), "fog_density": 0.0017},
-	"hospital":  {"ambient": Color(0.09, 0.13, 0.135), "fog": Color(0.03, 0.05, 0.052), "fog_density": 0.0020},
-	"subway":    {"ambient": Color(0.095, 0.115, 0.16), "fog": Color(0.03, 0.04, 0.065), "fog_density": 0.0021},
-	"port":      {"ambient": Color(0.085, 0.12, 0.21), "fog": Color(0.025, 0.045, 0.095), "fog_density": 0.0022},
+	"maze":        {"ambient": Color(0.08, 0.105, 0.18), "fog": Color(0.025, 0.038, 0.075), "fog_density": 0.0023},
+	"maze_v3":     {"ambient": Color(0.078, 0.105, 0.175), "fog": Color(0.024, 0.036, 0.072), "fog_density": 0.0024},
+	"embassy":     {"ambient": Color(0.095, 0.115, 0.19), "fog": Color(0.032, 0.042, 0.082), "fog_density": 0.0019},
+	"embassy_v3":  {"ambient": Color(0.095, 0.115, 0.19), "fog": Color(0.032, 0.042, 0.082), "fog_density": 0.0019},
+	"desert":      {"ambient": Color(0.13, 0.115, 0.15), "fog": Color(0.055, 0.045, 0.065), "fog_density": 0.0022},
+	"desert_v3":   {"ambient": Color(0.13, 0.115, 0.15), "fog": Color(0.055, 0.045, 0.065), "fog_density": 0.0022},
+	"forest":      {"ambient": Color(0.085, 0.135, 0.14), "fog": Color(0.025, 0.055, 0.055), "fog_density": 0.0024},
+	"forest_v3":   {"ambient": Color(0.085, 0.135, 0.14), "fog": Color(0.025, 0.055, 0.055), "fog_density": 0.0024},
+	"quantum":     {"ambient": Color(0.075, 0.13, 0.19), "fog": Color(0.02, 0.05, 0.085), "fog_density": 0.0017},
+	"quantum_v3":  {"ambient": Color(0.075, 0.13, 0.19), "fog": Color(0.02, 0.05, 0.085), "fog_density": 0.0020},
+	"hospital":    {"ambient": Color(0.085, 0.13, 0.14), "fog": Color(0.025, 0.048, 0.055), "fog_density": 0.0021},
+	"hospital_v3": {"ambient": Color(0.085, 0.13, 0.14), "fog": Color(0.025, 0.048, 0.055), "fog_density": 0.0021},
+	"subway":      {"ambient": Color(0.095, 0.115, 0.16), "fog": Color(0.03, 0.04, 0.065), "fog_density": 0.0021},
+	"subway_v3":   {"ambient": Color(0.095, 0.115, 0.16), "fog": Color(0.03, 0.04, 0.065), "fog_density": 0.0021},
+	"warehouse":   {"ambient": Color(0.11, 0.11, 0.145), "fog": Color(0.04, 0.04, 0.058), "fog_density": 0.0021},
+	"warehouse_v3":{"ambient": Color(0.11, 0.11, 0.145), "fog": Color(0.04, 0.04, 0.058), "fog_density": 0.0021},
+	"port":        {"ambient": Color(0.085, 0.12, 0.21), "fog": Color(0.025, 0.045, 0.095), "fog_density": 0.0022},
+	"port_v3":     {"ambient": Color(0.085, 0.12, 0.21), "fog": Color(0.025, 0.045, 0.095), "fog_density": 0.0022},
 }
 
 

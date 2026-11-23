@@ -20,6 +20,12 @@ func _ready() -> void:
 	preload("res://scenes/world/SceneLighting.gd").apply_node(self)
 	_build_maze_collision()
 	_register_spawn_points()
+	var lamp_nodes: Array = []
+	var wl := get_node_or_null("WallLamps")
+	if wl:
+		lamp_nodes = wl.get_children()
+	var bounds := AABB(Vector3(NAV_MIN.x, 0.0, NAV_MIN.y), Vector3(NAV_MAX.x - NAV_MIN.x, 4.0, NAV_MAX.y - NAV_MIN.y))
+	preload("res://scenes/fx/MapEnvFx.gd").setup(self, "maze", bounds, lamp_nodes)
 	_prewarm_fx()
 
 
@@ -41,6 +47,7 @@ func _prewarm_fx() -> void:
 	preload("res://scenes/fx/SlashFx.gd").prewarm(rig)
 	preload("res://scenes/fx/ImpactFx.gd").prewarm(rig)
 	preload("res://scenes/fx/ExplosionFx.gd").prewarm(rig)
+	preload("res://scenes/fx/MapEnvFx.gd").prewarm(rig)
 	for _i in 4:
 		await get_tree().process_frame
 		if not is_instance_valid(self):

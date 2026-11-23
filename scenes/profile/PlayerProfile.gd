@@ -98,10 +98,26 @@ static func get_xp() -> int:
 	return xp
 
 
+static func get_total_xp() -> int:
+	_ensure_loaded()
+	return total_xp
+
+
+## Belirli toplam XP'nin karşılık geldiği profil seviyesi
+static func level_for_xp(txp: int) -> int:
+	return int(floor(sqrt(maxf(float(txp), 0.0) / 250.0))) + 1
+
+
+## Belirli seviyenin başlangıç toplam XP eşiği (Sv 1 = 0, Sv 2 = 250, Sv 3 = 1000...)
+static func xp_for_level(lv: int) -> int:
+	var n := maxi(lv - 1, 0)
+	return 250 * n * n
+
+
 ## Profil seviyesi (gösterim): her seviye bir öncekinden biraz daha fazla XP ister
 static func profile_level() -> int:
 	_ensure_loaded()
-	return int(floor(sqrt(total_xp / 250.0))) + 1
+	return level_for_xp(total_xp)
 
 
 # ─────────────────────────────────────────────

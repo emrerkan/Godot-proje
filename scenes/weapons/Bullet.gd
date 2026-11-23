@@ -11,6 +11,10 @@ var shooter_team_id: int = -1
 
 var max_distance: float = 60.0
 var _travel_distance: float = 0.0
+## Görsel namlu hizası: mermi fiziği 1.8 m kapsülü aşmamak için daha alçakta doğabilir;
+## tracer modeli ilk VISUAL_CONVERGE_DIST m boyunca tam namlu ağzından fizik çizgisine iner.
+const VISUAL_CONVERGE_DIST := 6.0
+var _visual_offset_world: Vector3 = Vector3.ZERO
 ## Sniper: duvarlardan geçer (Weapon.pierce_walls). Diğerleri duvarda durur.
 var pierce_walls := false
 var _done := false   # ışın taraması + Area sinyali aynı karede iki kez işlemesin (çift hasar)
@@ -62,6 +66,22 @@ func initialize(
 	_disable_shadows(self)
 
 
+## Görsel tracer'ı ilk karede tam silah namlu ağzına taşır; uçuşun ilk birkaç metresinde fizik çizgisine kavuşur.
+func set_visual_offset(world_offset: Vector3) -> void:
+	_visual_offset_world = world_offset
+	_apply_visual_offset(1.0)
+
+
+func _apply_visual_offset(weight: float) -> void:
+	var local_off: Vector3 = global_basis.inverse() * (_visual_offset_world * weight)
+	var model := get_node_or_null("Model") as Node3D
+	if model != null:
+		model.position = local_off
+	var special_tracer := get_node_or_null("SpecialTracer") as Node3D
+	if special_tracer != null:
+		special_tracer.position = local_off
+
+
 ## El feneri mermiden gölge atmasın (koridorda kayan dev gölge)
 func _disable_shadows(node: Node) -> void:
 	for c in node.get_children():
@@ -108,6 +128,11 @@ func _physics_process(delta: float) -> void:
 		return
 	global_position = to
 	_travel_distance += move.length()
+	if _visual_offset_world != Vector3.ZERO:
+		var w: float = maxf(1.0 - _travel_distance / VISUAL_CONVERGE_DIST, 0.0)
+		_apply_visual_offset(w)
+		if w <= 0.0:
+			_visual_offset_world = Vector3.ZERO
 	if _travel_distance >= max_distance:
 		queue_free()
 
@@ -133,6 +158,12 @@ func _on_body_entered(body: Node) -> void:
 		# Çömelmiş hedef: mermi üstünden geçer (yok olmaz, hasar yok). Host take_damage'de de kontrol eder.
 		# Özel mermi çömelmeyi umursamaz.
 		if not is_special and body.has_method("is_crouching") and body.is_crouching():
+			return
+
+		# Doğma koruması (2.5 sn vurulamaz): mermi durur ama kan / hasar yok (host take_damage de engeller)
+		if body.has_method("is_spawn_protected") and body.is_spawn_protected():
+			_done = true
+			queue_free()
 			return
 
 		# Vuruş geri bildirimi: kan (YEREL görsel, her peer kendi mermisinde çizer — ağ yok). Isınmada / ölüde yok.

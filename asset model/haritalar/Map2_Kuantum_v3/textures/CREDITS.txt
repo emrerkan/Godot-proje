@@ -1,0 +1,12 @@
+TacticalDark - Map2_Yeralti_Kuantum_Labirenti_5v5v5v5_v3 PBR Textures
+CC0 Photogrammetry Textures from Poly Haven & ambientCG (shared with Map3_Col_v3, Map4_Orman_v3 & Map5_Hastane_v3):
+- chipped_concrete_2k, concrete_moss_2k, concrete_road_barrier, portable_generator, Barrel_01_explosive
+- wooden_military_crate, steel_frame_shelves_01, power_box_01, sandbag_burlap, hospital_brushed_steel_1k
+- rusty_metal_2k, corrugated_iron_02_2k, dark_wooden_planks_2k, gravel_ground_01_2k, rock_face_01, boulder_01
+- hero_radar_metal, industrial_light_lens, decal_oil_spill, decal_scorch_crater, decal_tire_tracks,
+  decal_moss_patch, decal_blood_trail, decal_chemical_puddle
+- Custom procedural baked 2K/1K underground quantum research facility PBR textures (0 emission, dark tactical sci-fi palette, flashlight-reactive normal & roughness/metallic):
+  quantum_titanium_deck_2k, quantum_cleanroom_slate_2k, quantum_basalt_cavern_2k,
+  quantum_bulkhead_wall_2k, hero_tokamak_coil_2k, hero_quantum_server_2k,
+  hero_biopod_glass_1k, decal_blood_cryo_spill, decal_quantum_sector_stencil,
+  decal_circuit_glass_debris.
