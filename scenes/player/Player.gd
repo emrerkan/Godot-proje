@@ -140,6 +140,17 @@ var _jump_cooldown := 0.0
 var _airborne := false              # local: zıpladı ve henüz inmedi · uzak: AIR_FLAG
 var _air_anim_played := false
 
+## Fener kapatma (F tuşu, bas-aç/kapa): en fazla 2 sn kapalı kalır, boştan tama 10 sn'de dolar.
+## Tükenince otomatik açılır ve tam dolana kadar kilitlenir. Uzaklara _broadcast_state modunun FLASHLIGHT_OFF_FLAG bitiyle senkron.
+const FLASHLIGHT_KEY := KEY_F
+const FLASHLIGHT_OFF_TIME := 2.0      # tam dolu → kaç sn kapalı kalır
+const FLASHLIGHT_REGEN_TIME := 10.0   # boştan tama dolma süresi (sn)
+const FLASHLIGHT_OFF_FLAG := 16
+var flashlight_off := false
+var flashlight_stamina := 1.0         # 0..1 (sadece local oyuncuda işler, HUD okur)
+var flashlight_locked := false        # tükendi, tam dolana kadar kullanılamaz
+var _flashlight_was_down := false
+
 ## Sesler (Sfx.gd — CC0 kayıtlar). Adım: kat edilen yatay mesafe adım boyunu geçince (MOVE_ANIMS sırası: Run, Walk, Crouch)
 const SFX := preload("res://scenes/audio/Sfx.gd")
 const SFX_LISTENER := preload("res://scenes/audio/SfxListener.gd")
@@ -933,6 +944,8 @@ func _physics_process(delta: float) -> void:
 	_update_flip_timer(delta)
 	_stab_timer = maxf(_stab_timer - delta, 0.0)
 	if _input_driven:
+		if is_local:
+			_update_flashlight(delta)
 		if is_local or _bot_driven:
 			_handle_stab_input(delta)  # tuzaktayken de (_handle_local_input erken döner); bot: istek set_bot_input'tan
 		_handle_local_input(delta)    # bot: girdi set_bot_input'tan
@@ -986,7 +999,7 @@ func _end_invisibility(report_remaining: bool) -> void:
 		# Rakip gözüyle gizlenenleri geri aç (ölüyse ölüm akışı kendi görünürlüğünü yönetir)
 		if _char_mesh:
 			_char_mesh.visible = true
-		flashlight.visible = not is_dead
+		_update_flashlight_visible()
 		name_label.visible = _is_local_ally() and not is_dead
 		# Rakip de "mordan kendi rengine" geçişi görsün (kullanıcı isteği): gövde tam shimmer'la belirir,
 		# sonra kendisi/takımın gördüğü aynı sönme ile normale döner. Ölümde (report_remaining=false) geçiş yok.
@@ -1012,7 +1025,7 @@ func _apply_invis_visuals() -> void:
 		_vis_hidden = true
 		if _char_mesh:
 			_char_mesh.visible = false   # tüfek + bıçak + lazer Skeleton3D çocuğu → birlikte gizlenir
-		flashlight.visible = false
+		_update_flashlight_visible()
 		name_label.visible = false
 		card_indicator.visible = false
 		ammo_label.visible = false
@@ -1301,7 +1314,8 @@ func _handle_local_input(delta: float) -> void:
 		# "Node not found: ImportedMap/Player_…" / "Invalid packet received" hatası basıyordu (zararsız ama gürültü)
 		if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().size() > 0 \
 				and GameManager.state == GameManager.State.IN_GAME:
-			_broadcast_state.rpc(global_position, rotation.y, move_mode | (AIR_FLAG if _airborne else 0))
+			var mode_flags: int = move_mode | (AIR_FLAG if _airborne else 0) | (FLASHLIGHT_OFF_FLAG if flashlight_off else 0)
+			_broadcast_state.rpc(global_position, rotation.y, mode_flags)
 
 
 # ─────────────────────────────────────────────
@@ -1602,11 +1616,53 @@ func _update_move_mode(dir: Vector3, typing: bool, delta: float) -> void:
 			sprint_locked = false
 
 
+## Fener görünürlüğü: ölü, rakipten görünmez veya oyuncu feneri kapattıysa gizli (Halo çocuğu da birlikte kapanır)
+func _update_flashlight_visible() -> void:
+	if flashlight:
+		flashlight.visible = not is_dead and not _vis_hidden and not flashlight_off
+
+
+## Fener kapatma (F tuşu, sadece yerel oyuncu): basınca feneri kapatır (en fazla FLASHLIGHT_OFF_TIME = 2 sn),
+## tekrar basınca erken açar. Süre dolunca otomatik açılır ve tam dolana kadar (FLASHLIGHT_REGEN_TIME = 10 sn) kilitlenir.
+func _update_flashlight(delta: float) -> void:
+	var typing := ChatBox.is_typing
+	var down := not typing and not is_trapped and Input.is_physical_key_pressed(FLASHLIGHT_KEY)
+	var pressed := down and not _flashlight_was_down
+	_flashlight_was_down = down
+
+	var prev_off := flashlight_off
+	if pressed:
+		if flashlight_off:
+			flashlight_off = false
+		elif not flashlight_locked and flashlight_stamina > 0.0:
+			flashlight_off = true
+
+	if flashlight_off:
+		flashlight_stamina = maxf(flashlight_stamina - delta / FLASHLIGHT_OFF_TIME, 0.0)
+		if flashlight_stamina <= 0.0:
+			flashlight_off = false
+			flashlight_locked = true
+	else:
+		if flashlight_stamina < 1.0:
+			flashlight_stamina = minf(flashlight_stamina + delta / FLASHLIGHT_REGEN_TIME, 1.0)
+		if flashlight_locked and flashlight_stamina >= 1.0:
+			flashlight_locked = false
+
+	if flashlight_off != prev_off:
+		_update_flashlight_visible()
+		SFX.play_voice(_voice, "flashlight_toggle", -6.0, 0.05)
+		_sync_timer = SYNC_RATE
+
+
 func _reset_stamina() -> void:
 	sprint_stamina = 1.0
 	crouch_stamina = 1.0
 	sprint_locked = false
 	crouch_locked = false
+	flashlight_off = false
+	flashlight_stamina = 1.0
+	flashlight_locked = false
+	_flashlight_was_down = false
 	move_mode = MoveMode.WALK
 	_airborne = false
 	_jump_cooldown = 0.0
@@ -1716,7 +1772,13 @@ func _broadcast_state(pos: Vector3, aim_y: float, mode: int = MoveMode.WALK) -> 
 	_target_position = pos
 	_target_aim_y = aim_y
 	_airborne = (mode & AIR_FLAG) != 0
-	move_mode = clampi(mode & ~AIR_FLAG, MoveMode.RUN, MoveMode.CROUCH)
+	var new_fl_off := (mode & FLASHLIGHT_OFF_FLAG) != 0
+	if new_fl_off != flashlight_off:
+		flashlight_off = new_fl_off
+		_update_flashlight_visible()
+		if not _vis_hidden and not is_dead:
+			SFX.play_voice(_voice, "flashlight_toggle", -6.0, 0.05)
+	move_mode = clampi(mode & ~(AIR_FLAG | FLASHLIGHT_OFF_FLAG), MoveMode.RUN, MoveMode.CROUCH)
 
 
 # ─────────────────────────────────────────────
@@ -1824,7 +1886,8 @@ func _apply_death() -> void:
 			_hide_corpse_later(_death_token, _anim_player.get_animation(death_clip).length / rate + 0.6)
 		else:
 			_char_mesh.visible = false
-	flashlight.visible = false
+	flashlight_off = false
+	_update_flashlight_visible()
 	body_light.visible = false
 	collision_shape.set_deferred("disabled", true)
 	if current_weapon:
@@ -1876,7 +1939,7 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 	if _upper:
 		_upper.set_enabled_smooth(true)
 	collision_shape.disabled = false
-	flashlight.visible = true
+	_update_flashlight_visible()
 	body_light.visible = is_local
 	card_indicator.visible = false
 	name_label.visible = _is_local_ally()

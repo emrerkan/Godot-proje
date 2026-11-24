@@ -283,10 +283,9 @@ func _build_controls(col: VBoxContainer) -> void:
 		func(v: float) -> String: return "%d%%" % int(v))
 
 	_section(col, "TUŞLAR")
-	for k: Array in [["W A S D", "Hareket"], ["Shift", "Koş"], ["Space", "Zıpla (koşu dayanıklılığından yer)"],
-			["Ctrl", "Çömel (3 sn, mermiler üstünden geçer)"],
-			["Ctrl + Space", "Takla (hareket ederken — ileri / geri; çömelme dayanıklılığından yer)"],
-			["Sol tık", "Ateş"], ["V / Sağ tık", "Bıçakla (arkadan tek vuruş, önden 55 hasar)"],
+	for k: Array in [["W A S D", "Hareket"], ["Shift", "Koş"], ["Space", "Zıpla"],
+			["Ctrl", "Çömel"], ["Ctrl + Space", "Takla"], ["F", "Feneri kapat / aç"],
+			["Sol tık", "Ateş"], ["V / Sağ tık", "Bıçakla"],
 			["R", "Şarjör değiştir"], ["Q", "Özel gücü kullan"], ["Enter / T", "Sohbet / takım sohbeti"],
 			["TAB", "Skor tablosu"], ["ESC", "Menü"]]:
 		var row := HBoxContainer.new()

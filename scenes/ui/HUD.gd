@@ -130,6 +130,9 @@ var _sprint_cap: Label
 var _crouch_bar: ProgressBar
 var _crouch_fill: StyleBoxFlat
 var _crouch_cap: Label
+var _flashlight_bar: ProgressBar
+var _flashlight_fill: StyleBoxFlat
+var _flashlight_cap: Label
 
 # Güç envanteri
 var _powerups: Node = null
@@ -224,11 +227,12 @@ func _process(delta: float) -> void:
 	_update_trap_bar_position()
 	_update_power_status(delta)
 
-	# Koşu / çömelme dayanıklılığı
+	# Koşu / çömelme / fener dayanıklılığı
 	if _local_player and is_instance_valid(_local_player) and _sprint_bar:
 		var p := _local_player
 		_update_stamina_meter(_sprint_bar, _sprint_fill, _sprint_cap, p.sprint_stamina, p.sprint_locked, p.move_mode == 0, UITheme.SUCCESS)
 		_update_stamina_meter(_crouch_bar, _crouch_fill, _crouch_cap, p.crouch_stamina, p.crouch_locked, p.move_mode == 2, Color(0.45, 0.75, 1.0))
+		_update_stamina_meter(_flashlight_bar, _flashlight_fill, _flashlight_cap, p.flashlight_stamina, p.flashlight_locked, p.flashlight_off, Color.WHITE)
 
 	# Hasar flaşı + düşük can vinyeti
 	_hit_flash = maxf(_hit_flash - delta * 2.5, 0.0)
@@ -517,20 +521,25 @@ func _setup_player_card() -> void:
 	_knife_box.add_child(UITheme.label("BIÇAK", 50, UITheme.TEXT, UITheme.font_mono))
 	stats.add_child(_knife_box)
 
-	# Dayanıklılık: koşu (Shift) + çömelme (Ctrl) — _process'te yerel oyuncudan okunur
+	# Dayanıklılık: koşu (Shift) + çömelme (Ctrl) + fener (F) — _process'te yerel oyuncudan okunur
 	var stamina_row := HBoxContainer.new()
-	stamina_row.add_theme_constant_override("separation", 30)
+	stamina_row.add_theme_constant_override("separation", 18)
 	box.add_child(stamina_row)
 	var sprint := _make_stamina_meter("KOŞU  ·  ZIPLA", UITheme.SUCCESS)   # Shift koşu, Space zıplama — ikisi de bu dayanıklılıktan yer (uzun etiket kartı genişletip GÜÇ slotuna biniyordu)
 	stamina_row.add_child(sprint[0])
 	_sprint_bar = sprint[1]
 	_sprint_fill = sprint[2]
 	_sprint_cap = sprint[3]
-	var crouch := _make_stamina_meter("ÇÖMEL  ·  TAKLA",Color(0.45, 0.75, 1.0))
+	var crouch := _make_stamina_meter("ÇÖMEL  ·  TAKLA", Color(0.45, 0.75, 1.0))
 	stamina_row.add_child(crouch[0])
 	_crouch_bar = crouch[1]
 	_crouch_fill = crouch[2]
 	_crouch_cap = crouch[3]
+	var fl := _make_stamina_meter("FENER  ·  F", Color.WHITE)
+	stamina_row.add_child(fl[0])
+	_flashlight_bar = fl[1]
+	_flashlight_fill = fl[2]
+	_flashlight_cap = fl[3]
 
 	_ignore_mouse_recursive(card)
 

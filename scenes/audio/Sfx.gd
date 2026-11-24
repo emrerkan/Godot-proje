@@ -43,6 +43,7 @@ const FILES := {
 	"mag_out": ["mag_out.ogg"], "mag_in": ["mag_in.ogg"], "bolt": ["bolt.ogg"],
 	"stab": ["stab.ogg"], "throw": ["throw.ogg"],
 	"ui_click": ["fener-acma-kapama.mp3"],   # kullanıcı: menü tıkı = fener düğmesi
+	"flashlight_toggle": ["fener-acma-kapama.mp3"],  # oyun içi el feneri aç/kapa (3D ses)
 	# kullanıcı: eski Kenney hover sesi "baloncuk" gibiydi → OYUNDAKİ ATEŞ sesi (kısık smg); yükseltme satın alınca tüfek atışı
 	"ui_hover": ["shot_smg_1.wav", "shot_smg_2.wav", "shot_smg_3.wav"],
 	"upgrade_buy": ["shot_rifle_1.wav", "shot_rifle_2.wav", "shot_rifle_3.wav", "shot_rifle_4.wav"],

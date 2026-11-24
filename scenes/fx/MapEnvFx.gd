@@ -109,9 +109,9 @@ static func setup(map_root: Node3D, map_id: String, bounds: AABB, lamp_nodes: Ar
 	var safe_bounds := _sanitize_bounds(bounds)
 
 	match clean_id:
-		"desert", "desert_v3":
+		"desert", "desert_v3", "desert_v3_1":
 			_build_desert(root, safe_bounds)
-		"forest", "forest_v3":
+		"forest", "forest_v3", "forest_v3_1":
 			_build_forest(root, safe_bounds)
 		"hospital", "hospital_v3":
 			_build_hospital(root, safe_bounds, lamp_nodes)
