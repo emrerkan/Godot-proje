@@ -213,7 +213,8 @@ func _build_header(team_id: int) -> Control:
 	chip_row.add_theme_constant_override("separation", 13)
 	chip.add_child(chip_row)
 
-	chip_row.add_child(_make_label(tr("%s TAKIM") % UITheme.team_tag(team_id), 20, _team_color, _font_caps))
+	var chip_lbl_text := tr("DEATHMATCH · HERKES TEK") if NetworkManager.is_deathmatch() else (tr("%s TAKIM") % UITheme.team_tag(team_id))
+	chip_row.add_child(_make_label(chip_lbl_text, 20, UITheme.ACCENT if NetworkManager.is_deathmatch() else _team_color, _font_caps))
 
 	var chip_wrap := CenterContainer.new()
 	chip_wrap.add_child(chip)
@@ -646,8 +647,10 @@ func _refresh() -> void:
 	_update_card_visuals()
 
 
-## Takım içinde alınan karakterler: karakter adı → oyuncu adı
+## Takım içinde alınan karakterler: karakter adı → oyuncu adı (Deathmatch'te kilit yok)
 func _get_team_taken() -> Dictionary:
+	if NetworkManager.is_deathmatch():
+		return {}
 	var local_team: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
 	var taken: Dictionary = {}
 	for pid: int in NetworkManager.players:
@@ -663,6 +666,10 @@ func _get_team_taken() -> Dictionary:
 func _refresh_roster() -> void:
 	for child in _roster_row.get_children():
 		child.queue_free()
+	if NetworkManager.is_deathmatch():
+		_roster_row.visible = false
+		return
+	_roster_row.visible = true
 
 	var local_id := NetworkManager.get_local_id()
 	var local_team: int = NetworkManager.players.get(local_id, {}).get("team_id", -1)

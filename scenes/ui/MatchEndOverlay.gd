@@ -19,6 +19,8 @@ var _main_box: VBoxContainer
 var _title_lbl: Label
 var _sub_lbl: Label
 var _kd_lbl: Label
+var _mvp_wrap: VBoxContainer
+var _mvp_row: HBoxContainer
 
 var _xp_card: PanelContainer
 var _xp_total_lbl: Label
@@ -99,6 +101,20 @@ func _build_ui() -> void:
 	_kd_lbl = UITheme.label("", 20, UITheme.TEXT_DIM, UITheme.font_caps)
 	_kd_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_main_box.add_child(_kd_lbl)
+
+	# Deathmatch MVP kartları (takım modunda gizli)
+	_mvp_wrap = VBoxContainer.new()
+	_mvp_wrap.add_theme_constant_override("separation", 8)
+	_mvp_wrap.alignment = BoxContainer.ALIGNMENT_CENTER
+	_mvp_wrap.visible = false
+	_main_box.add_child(_mvp_wrap)
+	var mvp_cap := UITheme.label("MAÇIN MVP'LERİ", 16, UITheme.ACCENT, UITheme.font_caps)
+	mvp_cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mvp_wrap.add_child(mvp_cap)
+	_mvp_row = HBoxContainer.new()
+	_mvp_row.add_theme_constant_override("separation", 12)
+	_mvp_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_mvp_wrap.add_child(_mvp_row)
 
 	_main_box.add_child(_vspace(14))
 
@@ -196,7 +212,7 @@ func _build_ui() -> void:
 func present(winning_team: int, won: bool, team_color: Color, end_reason: String,
 		stats: Dictionary, match_xp: int, breakdown: Array,
 		start_xp: int, start_total_xp: int, delay_seconds: float,
-		debug_mode: bool = false) -> void:
+		debug_mode: bool = false, dm_mvps: Array = [], dm_my_rank: int = 0) -> void:
 	_seq_id += 1
 	var my_seq := _seq_id
 	_debug_mode = debug_mode
@@ -208,7 +224,72 @@ func present(winning_team: int, won: bool, team_color: Color, end_reason: String
 
 	# Başlık ve alt başlık
 	var accent_col := team_color if won else UITheme.DANGER
-	if winning_team < 0:
+	var is_dm := not dm_mvps.is_empty() or GameManager.is_deathmatch()
+	_mvp_wrap.visible = is_dm and not dm_mvps.is_empty()
+	for ch in _mvp_row.get_children():
+		ch.queue_free()
+	if is_dm:
+		accent_col = UITheme.ACCENT
+		if GameManager.is_deathmatch_cards():
+			_title_lbl.text = "ZAFER" if won else "OYUN BİTTİ"
+			_title_lbl.add_theme_color_override("font_color", UITheme.ACCENT if won else UITheme.TEXT)
+			if won:
+				_sub_lbl.text = tr("KAPIYI AÇTIN · MAÇIN MVP'Sİ") if end_reason == "card" else tr("MAÇIN MVP'Sİ")
+				_sub_lbl.add_theme_color_override("font_color", UITheme.ACCENT)
+			elif not dm_mvps.is_empty():
+				var wname: String = String(dm_mvps[0].get("name", "?")).to_upper()
+				_sub_lbl.text = (tr("%s KAPIYI AÇTI") % wname) if end_reason == "card" else (tr("%s KAZANDI") % wname)
+				_sub_lbl.add_theme_color_override("font_color", TeamManager.get_color(int(dm_mvps[0].get("team_id", 0))))
+			else:
+				_sub_lbl.text = "ÖLÜM MAÇI · KARTLI"
+				_sub_lbl.add_theme_color_override("font_color", UITheme.TEXT)
+		else:
+			_title_lbl.text = "OYUN BİTTİ"
+			_title_lbl.add_theme_color_override("font_color", UITheme.ACCENT)
+			if won and dm_my_rank > 0:
+				_sub_lbl.text = tr("SEN %d. SIRA · MVP SEÇİLDİN") % dm_my_rank
+				_sub_lbl.add_theme_color_override("font_color", UITheme.ACCENT)
+			elif dm_my_rank > 0:
+				_sub_lbl.text = tr("SEN %d. SIRA") % dm_my_rank
+				_sub_lbl.add_theme_color_override("font_color", UITheme.TEXT)
+			else:
+				_sub_lbl.text = "DEATHMATCH · HERKES TEK"
+				_sub_lbl.add_theme_color_override("font_color", UITheme.TEXT)
+		var local_id := NetworkManager.get_local_id()
+		var glyphs: Array = UITheme.TEAM_GLYPHS
+		for m: Dictionary in dm_mvps:
+			var tid := int(m.get("team_id", 0))
+			var tcol := TeamManager.get_color(tid)
+			var glyph: String = glyphs[tid] if tid >= 0 and tid < glyphs.size() else "○"
+			var is_me := int(m.get("peer_id", -1)) == local_id
+			var card := PanelContainer.new()
+			card.custom_minimum_size = Vector2(185, 0)
+			card.add_theme_stylebox_override("panel", UITheme.style(
+				Color(UITheme.ACCENT, 0.14) if is_me else Color(UITheme.BG, 0.72),
+				6, UITheme.ACCENT if is_me else Color(1, 1, 1, 0.18), 1, 14, 10))
+			var cv := VBoxContainer.new()
+			cv.add_theme_constant_override("separation", 4)
+			card.add_child(cv)
+			var top_r := HBoxContainer.new()
+			cv.add_child(top_r)
+			var b_lbl := UITheme.label(tr("%d. MVP") % int(m.get("rank", 1)), 14, UITheme.ACCENT, UITheme.font_caps)
+			b_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			top_r.add_child(b_lbl)
+			var x_lbl := UITheme.label("+%d XP" % int(m.get("xp", 0)), 14, UITheme.SUCCESS, UITheme.font_mono)
+			top_r.add_child(x_lbl)
+			var nm_lbl := UITheme.label("%s %s" % [glyph, String(m.get("name", "?"))], 17, tcol, UITheme.font_bold)
+			nm_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+			nm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			nm_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			cv.add_child(nm_lbl)
+			var ch_lbl := UITheme.label(String(m.get("character", "")), 14, UITheme.TEXT_DIM)
+			ch_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cv.add_child(ch_lbl)
+			var kd_m := UITheme.label("%dK / %dÖ" % [int(m.get("kills", 0)), int(m.get("deaths", 0))], 15, UITheme.TEXT, UITheme.font_mono)
+			kd_m.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cv.add_child(kd_m)
+			_mvp_row.add_child(card)
+	elif winning_team < 0:
 		accent_col = UITheme.ACCENT
 		_title_lbl.text = "BERABERLİK"
 		_title_lbl.add_theme_color_override("font_color", UITheme.TEXT)

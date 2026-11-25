@@ -53,9 +53,11 @@ class Probe extends Node:
 		process_mode = Node.PROCESS_MODE_ALWAYS
 		set_process(kind == "end")
 	func _process(_d: float) -> void:
-		bench.call("_probe_process_end")
+		if is_instance_valid(bench):
+			bench.call("_probe_process_end")
 	func _physics_process(_d: float) -> void:
-		bench.call("_probe_physics", kind)
+		if is_instance_valid(bench):
+			bench.call("_probe_physics", kind)
 
 
 var _map_id := DEFAULT_MAP
@@ -107,13 +109,21 @@ var _next_switch := 0.0
 var _next_event := 0.0
 var _event_i := 0
 
+var launched_from_ui := false
+var _probes: Array[Node] = []
+var _saved_settings: Dictionary = {}
+var _saved_win_mode: int = DisplayServer.WINDOW_MODE_WINDOWED
+var _saved_win_size: Vector2i = Vector2i.ZERO
+var _cancelled := false
+
 # Arayüz
 var _layer: CanvasLayer
+var _status_bar: HBoxContainer
 var _status: Label
 var _result_panel: PanelContainer
 
 
-static var _ran := false   # test bitince return_to_menu → Main.tscn yeniden açılır; ikinci kez başlamasın
+static var _ran := false   # CLI --sysbench bitince return_to_menu → Main.tscn yeniden açılır; ikinci kez başlamasın
 
 
 static func requested() -> bool:
@@ -125,8 +135,20 @@ static func requested() -> bool:
 	return false
 
 
+## Oyun içi Ayarlar menüsünden başlatma (tekrar çalıştırılabilir; aynı anda tek örnek)
+static func start_in_game(tree: SceneTree) -> Node:
+	if tree == null or tree.root.get_node_or_null("Benchmark") != null:
+		return null
+	var bench: Node = (load("res://scenes/benchmark/Benchmark.gd") as GDScript).new()
+	bench.name = "Benchmark"
+	bench.set("launched_from_ui", true)
+	tree.root.add_child.call_deferred(bench)
+	return bench
+
+
 func _ready() -> void:
-	_ran = true
+	if not launched_from_ui:
+		_ran = true
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_priority = -1000000
 	process_physics_priority = -1000000
@@ -139,20 +161,76 @@ func _ready() -> void:
 		pb.bench = self
 		pb.kind = k
 		pb.name = "BenchProbe_" + k.replace(":", "_")
+		_probes.append(pb)
 		get_tree().root.add_child.call_deferred(pb)
 	get_tree().node_added.connect(_on_node_added)
 	_rng.seed = 7777   # her makinede aynı kamera/olay sırası
-	_parse_args()
+	if not launched_from_ui:
+		_parse_args()
 	NM = get_node("/root/NetworkManager")
 	GM = get_node("/root/GameManager")
+	GM.is_benchmark = true
+	_saved_settings = SETTINGS.get_all()
+	_saved_win_mode = DisplayServer.window_get_mode()
+	_saved_win_size = DisplayServer.window_get_size()
 	_build_ui()
 	if DisplayServer.get_name() == "headless":
 		print("SYSBENCH: headless modda ölçüm anlamsız (çizim yok) — pencereli çalıştırın.")
+		_cleanup_runtime()
 		get_tree().quit(1)
 		return
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_setup_window()
 	_set_phase("start")
+
+
+func _exit_tree() -> void:
+	_cleanup_runtime()
+	if GM != null and is_instance_valid(GM):
+		GM.is_benchmark = false
+
+
+func _input(event: InputEvent) -> void:
+	if _phase == "done":
+		return
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_cancel()
+
+
+func _cleanup_runtime() -> void:
+	var tree := get_tree()
+	if tree != null and tree.node_added.is_connected(_on_node_added):
+		tree.node_added.disconnect(_on_node_added)
+	for pb in _probes:
+		if is_instance_valid(pb):
+			pb.queue_free()
+	_probes.clear()
+	var vp := get_viewport()
+	if vp != null:
+		RenderingServer.viewport_set_measure_render_time(vp.get_viewport_rid(), false)
+
+
+func _restore_settings() -> void:
+	if not _saved_settings.is_empty():
+		SETTINGS.set_all(_saved_settings)
+	else:
+		SETTINGS.load_settings()
+	if SETTINGS._has_file:
+		SETTINGS._apply_window()
+	elif _saved_win_size.x > 0 and _saved_win_size.y > 0:
+		DisplayServer.window_set_mode(_saved_win_mode)
+		if _saved_win_mode == DisplayServer.WINDOW_MODE_WINDOWED:
+			DisplayServer.window_set_size(_saved_win_size)
+	SETTINGS.apply_all(get_tree())
+
+
+func _cancel() -> void:
+	if _phase == "done":
+		return
+	_cancelled = true
+	_notes.append("Kullanıcı tarafından iptal edildi")
+	_finish()
 
 
 func _parse_args() -> void:
@@ -562,29 +640,50 @@ func _machine() -> Dictionary:
 	}
 
 
+func _recommended_preset() -> String:
+	var best_fluid := ""
+	var best_playable := ""
+	for r: Dictionary in _results:
+		var v := String(r.get("verdict", ""))
+		var p := String(r.get("preset", ""))
+		if v == "AKICI":
+			best_fluid = p
+		elif v == "OYNANIR":
+			best_playable = p
+	if not best_fluid.is_empty():
+		return best_fluid
+	if not best_playable.is_empty():
+		return best_playable
+	return "Düşük" if not _results.is_empty() else ""
+
+
 func _finish() -> void:
 	if _phase == "done":
 		return
 	_set_phase("done")
+	_cleanup_runtime()
 	var m := _machine()
 	var stamp := Time.get_datetime_string_from_system().replace(":", "-")
 	var players: int = NM.players.size()
-	_write_csv(m, stamp, players)
 	var report := _report_text(m, players)
 	var txt_path := "user://benchmark_%s.txt" % stamp
-	var f := FileAccess.open(txt_path, FileAccess.WRITE)
-	if f != null:
-		f.store_string(report)
-		f.close()
-	print(report)
-	print("SYSBENCH dosyalar: %s , %s" % [ProjectSettings.globalize_path("user://benchmark.csv"), ProjectSettings.globalize_path(txt_path)])
+	if not _results.is_empty() or not _cancelled:
+		_write_csv(m, stamp, players)
+		var f := FileAccess.open(txt_path, FileAccess.WRITE)
+		if f != null:
+			f.store_string(report)
+			f.close()
+		print(report)
+		print("SYSBENCH dosyalar: %s , %s" % [ProjectSettings.globalize_path("user://benchmark.csv"), ProjectSettings.globalize_path(txt_path)])
 	# Oyuncunun kendi ayarlarına dön (bellekteki profil değişikliklerini at)
-	SETTINGS.load_settings()
-	SETTINGS.apply_all(get_tree())
+	_restore_settings()
 	if _quit_after:
 		get_tree().quit(0)
 		return
 	GM.return_to_menu()
+	if _cancelled and _results.is_empty():
+		queue_free()
+		return
 	_show_results(report, txt_path)
 
 
@@ -654,14 +753,23 @@ func _build_ui() -> void:
 	_layer = CanvasLayer.new()
 	_layer.layer = 125
 	add_child(_layer)
+	_status_bar = HBoxContainer.new()
+	_status_bar.position = Vector2(24, 24)
+	_status_bar.add_theme_constant_override("separation", 18)
+	_layer.add_child(_status_bar)
 	_status = Label.new()
 	_status.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	_status.position = Vector2(24, 24)
 	_status.add_theme_font_size_override("font_size", 22)
 	_status.add_theme_color_override("font_color", Color(1.0, 0.8, 0.35))
 	_status.add_theme_color_override("font_outline_color", Color.BLACK)
 	_status.add_theme_constant_override("outline_size", 6)
-	_layer.add_child(_status)
+	_status_bar.add_child(_status)
+	var cancel_btn := Button.new()
+	cancel_btn.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	cancel_btn.text = "İPTAL (ESC)"
+	cancel_btn.focus_mode = Control.FOCUS_NONE
+	cancel_btn.pressed.connect(_cancel)
+	_status_bar.add_child(cancel_btn)
 
 
 func _show(text: String) -> void:
@@ -669,7 +777,7 @@ func _show(text: String) -> void:
 
 
 func _show_results(report: String, txt_path: String) -> void:
-	_status.visible = false
+	_status_bar.visible = false
 	_result_panel = PanelContainer.new()
 	_result_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -696,6 +804,24 @@ func _show_results(report: String, txt_path: String) -> void:
 	row.alignment = BoxContainer.ALIGNMENT_END
 	row.add_theme_constant_override("separation", 12)
 	box.add_child(row)
+	var rec := _recommended_preset()
+	if not rec.is_empty() and SETTINGS.PRESETS.has(rec):
+		var apply_btn := Button.new()
+		apply_btn.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		apply_btn.text = "ÖNERİLENİ UYGULA (%s)" % rec
+		apply_btn.theme_type_variation = "PrimaryButton"
+		apply_btn.focus_mode = Control.FOCUS_NONE
+		apply_btn.pressed.connect(func() -> void:
+			var cur := SETTINGS.get_all()
+			var p: Dictionary = SETTINGS.PRESETS[rec]
+			for k: String in p:
+				cur[k] = p[k]
+			SETTINGS.set_all(cur)
+			SETTINGS.save()
+			SETTINGS.apply_all(get_tree())
+			apply_btn.text = "UYGULANDI (%s) ✓" % rec
+			apply_btn.disabled = true)
+		row.add_child(apply_btn)
 	var open_btn := Button.new()
 	open_btn.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	open_btn.text = "KLASÖRÜ AÇ"

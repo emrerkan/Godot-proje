@@ -138,8 +138,15 @@ func create_server(player_name: String, p_room_name: String = "", p_password: St
 		room_settings["map"] = get_map_info(String(p_settings["map"]))["id"]
 	if p_settings.has("team_size"):
 		room_settings["team_size"] = clampi(int(p_settings["team_size"]), TEAM_SIZE_MIN, get_map_max_team())
-	if p_settings.has("win_mode") and (String(p_settings["win_mode"]) == "cards" or String(p_settings["win_mode"]) == "timed"):
-		room_settings["win_mode"] = String(p_settings["win_mode"])
+	if p_settings.has("play_mode") and String(p_settings["play_mode"]) in ["team", "deathmatch"]:
+		room_settings["play_mode"] = String(p_settings["play_mode"])
+	if p_settings.has("win_mode"):
+		var wm := String(p_settings["win_mode"])
+		if wm == "deathmatch":
+			room_settings["play_mode"] = "deathmatch"
+			room_settings["win_mode"] = "timed"
+		elif wm in ["cards", "timed"]:
+			room_settings["win_mode"] = wm
 	if p_settings.has("card_count"):
 		room_settings["card_count"] = clampi(int(p_settings["card_count"]), CARD_COUNT_MIN, CARD_COUNT_MAX)
 	if p_settings.has("match_minutes"):
@@ -269,6 +276,8 @@ func _on_peer_disconnected(id: int) -> void:
 	# Oyun sırasında ayrılan oyuncunun node'unu temizle (host + client)
 	if GameManager.state == GameManager.State.IN_GAME:
 		GameManager.on_player_disconnected(id)
+	elif GameManager.state == GameManager.State.CHARACTER_SELECT and multiplayer.is_server():
+		GameManager.check_all_characters_selected()
 
 
 func _on_connected_to_server() -> void:
@@ -297,6 +306,14 @@ func _on_connection_failed() -> void:
 ## oyuncusu var. 1 veya daha az ise kimse geri bağlansa da tek-takım sonucu değişmez — migration sonrası
 ## 20 sn'lik yeniden-bağlanma penceresi beklemeden anında 'tek takım kaldı' kontrolü yapılabilir.
 func get_migration_remaining_team_count() -> int:
+	if is_deathmatch():
+		var count := 0
+		for pid in _migration_players:
+			if pid == 1:
+				continue
+			if int(_migration_players[pid].get("team_id", -1)) >= 0:
+				count += 1
+		return count
 	var teams: Dictionary = {}
 	for pid in _migration_players:
 		if pid == 1:
@@ -353,9 +370,14 @@ func _on_server_disconnected() -> void:
 	# bağlansa da sonuç değişmez), kazananı şimdiden işaretle — restore_from_migration haritayı
 	# yeniden yükleyip loading perdesi açmadan doğrudan zaferi ilan edebilsin.
 	if GameManager.state == GameManager.State.IN_GAME and get_migration_remaining_team_count() <= 1:
-		var winner := get_migration_winning_team()
-		if winner >= 0:
-			_pending_migration_state["instant_winner"] = winner
+		if is_deathmatch():
+			_pending_migration_state["instant_winner"] = -1
+			if get_win_mode() == "cards":
+				_pending_migration_state["instant_winner_peer"] = 1
+		else:
+			var winner := get_migration_winning_team()
+			if winner >= 0:
+				_pending_migration_state["instant_winner"] = winner
 	var saved_room := room_name
 	var saved_pw   := _pending_password  # Client sadece bunu bilir (password)
 	_migration_room = saved_room
@@ -590,6 +612,12 @@ func _set_ready_rpc(peer_id: int, is_ready: bool) -> void:
 
 
 func _are_teams_balanced() -> bool:
+	if is_deathmatch():
+		var active := 0
+		for p in players.values():
+			if int(p.get("team_id", -1)) >= 0:
+				active += 1
+		return active >= 2
 	var team_counts: Dictionary = {}
 	for p in players.values():
 		var tid: int = p.get("team_id", -1)
@@ -629,17 +657,20 @@ func _apply_character_selection(peer_id: int, char_name: String, levels: Diction
 	# Botların karakterini host assign_bot_characters ile atar — bu yoldan bot seçimi kabul edilmez
 	if is_bot(peer_id):
 		return
-	# Aynı takımda bu karakter alınmış mı kontrol et
-	var my_team: int = players[peer_id].get("team_id", -1)
-	for other_id: int in players:
-		if other_id == peer_id:
-			continue
-		# Botlar karakteri EN SONDA alır (assign_bot_characters) → çakışmada insan kazanır, bot yok sayılır
-		if is_bot(other_id):
-			continue
-		var other: Dictionary = players[other_id]
-		if other.get("team_id", -1) == my_team and other.get("character", "") == char_name:
-			return  # Takım arkadaşı zaten almış
+	if not PROFILE.CHARACTERS.has(char_name):
+		return
+	# Aynı takımda bu karakter alınmış mı kontrol et (Deathmatch'te kilit yok)
+	if not is_deathmatch():
+		var my_team: int = players[peer_id].get("team_id", -1)
+		for other_id: int in players:
+			if other_id == peer_id:
+				continue
+			# Botlar karakteri EN SONDA alır (assign_bot_characters) → çakışmada insan kazanır, bot yok sayılır
+			if is_bot(other_id):
+				continue
+			var other: Dictionary = players[other_id]
+			if other.get("team_id", -1) == my_team and other.get("character", "") == char_name:
+				return  # Takım arkadaşı zaten almış
 	players[peer_id]["character"] = char_name
 	players[peer_id]["upgrades"] = PROFILE.sanitize(levels)
 	players[peer_id]["powers"] = POWER_TREES.sanitize(powers)  # lobide profil değişmiş olabilir — maç başında tazele
@@ -734,21 +765,25 @@ func assign_bot_characters() -> void:
 			taken_by_team[t] = []
 		(taken_by_team[t] as Array).append(c)
 	for bid: int in bots:
-		var t := int(players[bid].get("team_id", -1))
-		if not taken_by_team.has(t):
-			taken_by_team[t] = []
-		var taken: Array = taken_by_team[t]
-		var free: Array[String] = []
-		for c: String in PROFILE.CHARACTERS:
-			if not taken.has(c):
-				free.append(c)
-		# Takım boyutu en fazla 5 = karakter sayısı → normalde boş karakter hep vardır; yine de tükenirse tekrar kullan
-		var pool: Array[String] = free if not free.is_empty() else PROFILE.CHARACTERS
-		var pick: String = pool[rng.randi_range(0, pool.size() - 1)]
+		var pick: String
+		if is_deathmatch():
+			pick = PROFILE.CHARACTERS[rng.randi_range(0, PROFILE.CHARACTERS.size() - 1)]
+		else:
+			var t := int(players[bid].get("team_id", -1))
+			if not taken_by_team.has(t):
+				taken_by_team[t] = []
+			var taken: Array = taken_by_team[t]
+			var free: Array[String] = []
+			for c: String in PROFILE.CHARACTERS:
+				if not taken.has(c):
+					free.append(c)
+			# Takım boyutu en fazla 5 = karakter sayısı → normalde boş karakter hep vardır; yine de tükenirse tekrar kullan
+			var pool: Array[String] = free if not free.is_empty() else PROFILE.CHARACTERS
+			pick = pool[rng.randi_range(0, pool.size() - 1)]
+			taken.append(pick)
 		players[bid]["character"] = pick
 		players[bid]["upgrades"] = {}  # botlar yükseltmesiz (taban istatistik)
 		players[bid]["powers"] = {}
-		taken.append(pick)
 	_broadcast_player_list()
 	emit_signal("player_list_updated")
 
@@ -832,7 +867,7 @@ func _chat_receive(msg: Dictionary) -> void:
 
 static func _default_settings() -> Dictionary:
 	return {"map": MAPS[0]["id"], "team_size": TEAM_SIZE_MAX, "has_password": false,
-		"win_mode": "cards", "card_count": 1, "match_minutes": MATCH_MINUTES_DEFAULT, "powers": true, "weapon_mode": "normal",
+		"play_mode": "team", "win_mode": "cards", "card_count": 1, "match_minutes": MATCH_MINUTES_DEFAULT, "powers": true, "weapon_mode": "normal",
 		"bot_difficulty": BOT_DIFFICULTY_DEFAULT}
 
 
@@ -854,12 +889,43 @@ func set_bot_difficulty(d: String) -> void:
 
 
 # Oda kuralları getter'ları — anahtar yoksa varsayılan (eski sürüm host'larla uyum)
+func get_play_mode() -> String:
+	var pm := String(room_settings.get("play_mode", ""))
+	if pm == "deathmatch" or String(room_settings.get("win_mode", "")) == "deathmatch":
+		return "deathmatch"
+	return "team"
+
+
+func set_play_mode(mode: String) -> void:
+	if not is_host() or is_game_running() or not (mode in ["team", "deathmatch"]):
+		return
+	room_settings["play_mode"] = mode
+	_push_settings()
+
+
 func get_win_mode() -> String:
 	var m := String(room_settings.get("win_mode", "cards"))
-	return m if m == "timed" else "cards"
+	return "timed" if (m == "timed" or m == "deathmatch") else "cards"
+
+
+func is_deathmatch() -> bool:
+	return get_play_mode() == "deathmatch"
+
+
+## İki oyuncu aynı tarafta (dost) mı? Deathmatch'te herkes tek: sadece kendisi dosttur.
+func are_allies(peer_a: int, peer_b: int) -> bool:
+	if peer_a == peer_b:
+		return true
+	if is_deathmatch():
+		return false
+	var ta := int(players.get(peer_a, {}).get("team_id", -1))
+	var tb := int(players.get(peer_b, {}).get("team_id", -1))
+	return ta >= 0 and ta == tb
 
 
 func get_card_count() -> int:
+	if is_deathmatch():
+		return 1  # Ölüm Maçı + Kartlı: her zaman tek kart
 	return clampi(int(room_settings.get("card_count", 1)), CARD_COUNT_MIN, CARD_COUNT_MAX)
 
 
@@ -886,9 +952,15 @@ func set_powers(enabled: bool) -> void:
 
 
 func set_win_mode(mode: String) -> void:
-	if not is_host() or is_game_running() or (mode != "cards" and mode != "timed"):
+	if not is_host() or is_game_running():
 		return
-	room_settings["win_mode"] = mode
+	if mode == "deathmatch":
+		room_settings["play_mode"] = "deathmatch"
+		room_settings["win_mode"] = "timed"
+	elif mode in ["cards", "timed"]:
+		room_settings["win_mode"] = mode
+	else:
+		return
 	_push_settings()
 
 
@@ -960,7 +1032,8 @@ func get_room_status() -> Dictionary:
 	return {
 		"team_size": get_team_size(), "max_players": get_max_players(),
 		"map_name": get_map_info()["name"], "state": "game" if is_game_running() else "lobby",
-		"powers": powers_enabled(), "weapon_mode": get_weapon_mode(), "win_mode": get_win_mode(),
+		"powers": powers_enabled(), "weapon_mode": get_weapon_mode(),
+		"play_mode": get_play_mode(), "win_mode": get_win_mode(),
 		"card_count": get_card_count(), "match_minutes": get_match_minutes(), "bot_difficulty": get_bot_difficulty(),
 	}
 

@@ -13,6 +13,8 @@ const A_RUN_MS := 25000           # A: maç başladıktan sonra izleme süresi
 const B_RUN_MS := 6000            # B: botsuz maç izleme süresi
 const MOVE_MIN := 3.0             # A: en az bir bot bu kadar metre yer değiştirmeli
 const K_RUN_MS := 25000           # K: bıçak modu izleme süresi
+const D_RUN_MS := 15000           # D: Deathmatch (Süreli FFA) izleme süresi
+const C_RUN_MS := 8000            # C: Kartlı Ölüm Maçı (kapı açma 3.5 sn + pay)
 
 
 ## Motor hata günlüğü (SCRIPT ERROR / push_error / C++ hata). Uyarılar sayılmaz.
@@ -60,6 +62,7 @@ var start_pos: Dictionary = {}    # bot_id → Vector3 (maç başı)
 var max_move: Dictionary = {}     # bot_id → float
 var stab_seen := false            # K: bir bot bıçak animasyon zamanlayıcısı > 0 oldu
 var knife_flags_ok := true        # K: botlar is_knife_mode() görüyor mu
+var dm_dmg_seen := false          # D: aynı lobi takımındaki botlar birbirine hasar verdi
 var results: Array[String] = []
 
 
@@ -68,7 +71,7 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var which := String(args[0]).to_upper() if args.size() > 0 else "AB"
 	for c in which:
-		if c == "A" or c == "B" or c == "K":
+		if c == "A" or c == "B" or c == "K" or c == "D" or c == "C":
 			queue.append(c)
 	_setup.call_deferred()
 
@@ -106,6 +109,7 @@ func _next_scenario() -> void:
 	max_move.clear()
 	stab_seen = false
 	knife_flags_ok = true
+	dm_dmg_seen = false
 	err_start = log.count()
 	_set_phase("lobby")
 
@@ -143,6 +147,14 @@ func _process(_delta: float) -> bool:
 				run_ms = K_RUN_MS
 				if stab_seen and elapsed > 3000:
 					run_ms = 0   # K: bıçak vuruşu görüldü → erken bitir
+			elif scenario == "D":
+				run_ms = D_RUN_MS
+				if dm_dmg_seen and elapsed > 3000:
+					run_ms = 0   # D: aynı lobi takımındaki botlar savaştı → erken bitir
+			elif scenario == "C":
+				run_ms = C_RUN_MS
+				if int(GM.state) == 4:   # State.ENDED — kapı açıldı
+					run_ms = 0
 			if elapsed > run_ms:
 				_evaluate()
 	return false
@@ -154,7 +166,26 @@ func _do_lobby() -> void:
 	NM.request_change_team(0)
 	_check(int(NM.players[1].get("team_id", -1)) == 0, "host takım 0'a geçemedi")
 	NM.set_weapon_mode("knife" if scenario == "K" else "normal")
-	if scenario == "K":
+	if scenario == "C":
+		NM.set_play_mode("deathmatch")
+		NM.set_win_mode("cards")
+		_check(NM.is_deathmatch() and GM.is_deathmatch_cards(), "C: Kartlı Ölüm Maçı aktif olmadı")
+		_check(NM.get_card_count() == 1, "C: Kartlı Ölüm Maçı kart sayısı 1 değil: %d" % NM.get_card_count())
+		var c1: int = NM.add_bot(0)
+		var c2: int = NM.add_bot(0)
+		_check(c1 > 0 and c2 > 0, "C: add_bot 0 döndü (%d,%d)" % [c1, c2])
+		_check(NM._are_teams_balanced(), "C: _are_teams_balanced() false")
+	elif scenario == "D":
+		NM.set_win_mode("deathmatch")
+		_check(NM.is_deathmatch(), "D: win_mode deathmatch olmadı: %s" % NM.get_win_mode())
+		# Herkes AYNI lobi takımında (Takım 0) — yine de denge kilidi açılmalı ve birbirine düşman olmalı
+		var d1: int = NM.add_bot(0)
+		var d2: int = NM.add_bot(0)
+		var d3: int = NM.add_bot(0)
+		_check(d1 > 0 and d2 > 0 and d3 > 0, "D: add_bot 0 döndü (%d,%d,%d)" % [d1, d2, d3])
+		_check(NM._are_teams_balanced(), "D: aynı takımda 4 oyuncuyla _are_teams_balanced() false")
+		_check(not GM.are_allies(1, d1), "D: are_allies(host, same_team_bot) true döndü")
+	elif scenario == "K":
 		# Host (takım 0) sabit durur; iki bot farklı takımlarda
 		var k1: int = NM.add_bot(1)
 		var k2: int = NM.add_bot(2)
@@ -197,7 +228,7 @@ func _do_lobby() -> void:
 func _on_live() -> void:
 	var ap: Dictionary = GM.active_players
 	_check(ap.has(1) and is_instance_valid(ap[1]), "host oyuncusu active_players'ta yok")
-	if scenario == "A" or scenario == "K":
+	if scenario == "A" or scenario == "K" or scenario == "D" or scenario == "C":
 		var team_chars: Dictionary = {}
 		for pid: int in NM.players:
 			var t := int(NM.players[pid].get("team_id", -1))
@@ -206,7 +237,8 @@ func _on_live() -> void:
 				_check(not c.is_empty(), "bot %d karakter atanmadı" % pid)
 			if not team_chars.has(t):
 				team_chars[t] = []
-			_check(not (team_chars[t] as Array).has(c), "takım %d'de karakter tekrarı: %s" % [t, c])
+			if scenario != "D" and scenario != "C":
+				_check(not (team_chars[t] as Array).has(c), "takım %d'de karakter tekrarı: %s" % [t, c])
 			(team_chars[t] as Array).append(c)
 		for bid: int in NM.get_bot_ids():
 			var ok: bool = ap.has(bid) and is_instance_valid(ap[bid])
@@ -230,7 +262,41 @@ func _on_live() -> void:
 				_check(has_brain, "bot %d BotBrain çocuğu yok" % bid)
 		notes.append("nav=%s" % ("var" if GM.get("_bot_nav") != null else "yok"))
 		notes.append("chars=%s" % [team_chars])
-		if scenario == "K":
+		if scenario == "C":
+			_check(GM.cards.size() == 1, "C: Kartlı Ölüm Maçı'nda 1 kart doğmadı: %d" % GM.cards.size())
+			_check(GM.door_instance != null, "C: Kartlı Ölüm Maçı'nda kapı doğmadı")
+			_check(float(GM.match_time_left) < 0.0, "C: Kartlı Ölüm Maçı'nda süre aktif oldu")
+			_check(is_equal_approx(float(GM.get_door_unlock_time()), 3.5), "C: kapı kilit süresi 3.5 değil")
+			# Host kartın yanına gidip kartı alır, sonra kapının çemberine ışınlanır → 3.5 sn sonra tek kazanan / tek MVP olarak bitmeli
+			if not GM.cards.is_empty() and GM.door_instance != null and ap.has(1):
+				var cid: int = GM.cards.keys()[0]
+				var card_node: Node3D = GM.cards[cid]
+				(ap[1] as Node3D).global_position = card_node.global_position
+				GM.handle_card_pickup(1, cid)
+				_check(GM.is_card_carrier(1), "C: host kartı alamadı")
+				(ap[1] as Node3D).global_position = (GM.door_instance as Node3D).global_position
+		elif scenario == "D":
+			_check(GM.cards.is_empty(), "D: Deathmatch'te kart doğdu")
+			_check(GM.door_instance == null, "D: Deathmatch'te kapı doğdu")
+			_check(float(GM.match_time_left) > 0.0, "D: match_time_left <= 0")
+			var pm := get_root().get_tree().current_scene.get_node_or_null("PowerupManager")
+			_check(pm == null or (pm.inventory as Dictionary).is_empty(), "D: başlangıç gücü verildi")
+			var ids_d: Array = NM.get_bot_ids()
+			for bid: int in ids_d:
+				if ap.has(bid):
+					var nl: Variant = ap[bid].get("name_label")
+					_check(nl == null or not bool(nl.visible), "D: bot %d isim etiketi görünür!" % bid)
+			# Aynı lobi takımındaki 2 botu 4 m arayla görüş hattına koy → birbirine ateş edip hasar vermeli
+			if ids_d.size() >= 2 and ap.has(ids_d[0]) and ap.has(ids_d[1]):
+				var da: Node3D = ap[ids_d[0]]
+				var db: Node3D = ap[ids_d[1]]
+				db.global_position = da.global_position + Vector3(4.0, 0.0, 0.0)
+				start_pos[ids_d[1]] = db.global_position
+			var dm_rank: Array = GM.get_deathmatch_ranking()
+			var dm_mvps: Array = GM.get_deathmatch_mvps()
+			_check(dm_rank.size() == 4, "D: ranking 4 değil: %d" % dm_rank.size())
+			_check(dm_mvps.size() == 4, "D: 4'lü tam eşitlikte 4 MVP beklenirdi: %d" % dm_mvps.size())
+		elif scenario == "K":
 			# İki botu 2.5 m arayla yan yana koy (farklı takımlar) → bıçakla karşılaşsınlar
 			var ids: Array = NM.get_bot_ids()
 			if ids.size() >= 2 and ap.has(ids[0]) and ap.has(ids[1]):
@@ -260,6 +326,8 @@ func _track() -> void:
 			max_move[bid] = maxf(float(max_move[bid]), d)
 			if scenario == "K" and float(p.get("_stab_timer")) > 0.0:
 				stab_seen = true
+			if scenario == "D" and (float(p.get("health")) < float(p.get("max_health")) or bool(p.get("is_dead"))):
+				dm_dmg_seen = true
 
 
 func _evaluate() -> void:
@@ -272,6 +340,12 @@ func _evaluate() -> void:
 		notes.append("state=%d" % int(GM.state))
 	elif scenario == "K":
 		_check(stab_seen, "K: sadece bıçak modunda hiçbir bot %d sn içinde bıçak vurmadı" % (K_RUN_MS / 1000))
+	elif scenario == "D":
+		_check(dm_dmg_seen, "D: Deathmatch'te aynı lobi takımındaki botlar %d sn içinde birbirine hasar vermedi" % (D_RUN_MS / 1000))
+	elif scenario == "C":
+		_check(int(GM.state) == 4, "C: Kartlı Ölüm Maçı kapı açılarak bitmedi (state=%d)" % int(GM.state))
+		_check(int(GM.winning_peer_id) == 1, "C: winning_peer_id host (1) değil: %d" % int(GM.winning_peer_id))
+		_check(String(GM.end_reason) == "card", "C: end_reason 'card' değil: %s" % String(GM.end_reason))
 	_end_scenario()
 
 

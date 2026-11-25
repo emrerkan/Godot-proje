@@ -1,0 +1,6 @@
+{
+  "name": "godot-studio-agents",
+  "displayName": "Godot Studio Agents",
+  "version": "1.0.0",
+  "description": "Godot 4 game development specialist subagents, skills, and rules mirrored from .claude/."
+}

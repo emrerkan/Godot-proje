@@ -1104,10 +1104,12 @@ func _setup_pause_menu() -> void:
 	var leave := _menu_button("ANA MENÜYE DÖN", "")
 	leave.pressed.connect(_on_leave_pressed)
 	box.add_child(leave)
-	var quit := _menu_button("OYUNU KAPAT", "GhostButton")
+	var quit := _menu_button("OYUNDAN ÇIK", "GhostButton")
 	quit.add_theme_color_override("font_color", UITheme.DANGER)
 	quit.add_theme_color_override("font_hover_color", UITheme.DANGER.lightened(0.2))
-	quit.pressed.connect(get_tree().quit)
+	quit.pressed.connect(func() -> void:
+		NetworkManager.disconnect_all()
+		get_tree().quit())
 	box.add_child(quit)
 
 
@@ -1188,7 +1190,7 @@ func _on_local_player_spawned(player: Node) -> void:
 	var team_id: int = player.team_id
 	_char_lbl.text = String(player.character_type).to_upper()
 	_char_lbl.add_theme_color_override("font_color", TeamManager.get_color(team_id))
-	_team_chip_lbl.text = tr("%s TAKIM") % UITheme.team_tag(team_id)
+	_team_chip_lbl.text = tr("DEATHMATCH · HERKES TEK") if GameManager.is_deathmatch() else (tr("%s TAKIM") % UITheme.team_tag(team_id))
 	_update_objective()
 
 	# Bıçak modu: mermi/şarjör gizli, yerine "BIÇAK" etiketi
@@ -1306,6 +1308,13 @@ func _refresh_scoreboard() -> void:
 	# Dil değişmiş olabilir → çizgi başlık genişliğini izlesin
 	_sb_underline.custom_minimum_size.x = _sb_title.get_minimum_size().x + 48.0
 
+	if GameManager.is_deathmatch():
+		_scoreboard_content.columns = 1
+		_build_deathmatch_scoreboard(local_id)
+		_ignore_mouse_recursive(_scoreboard_content)
+		return
+	_scoreboard_content.columns = 4
+
 	# Oyuncuları takımlara göre grupla
 	var teams: Dictionary = {}  # team_id -> Array[int]
 	for pid in NetworkManager.players:
@@ -1393,6 +1402,120 @@ func _refresh_scoreboard() -> void:
 			row_panel.add_child(score_row)
 			group.add_child(row_panel)
 	_ignore_mouse_recursive(_scoreboard_content)
+
+
+## Deathmatch bireysel TAB skor tablosu: yukarıdan aşağıya tek liste, lobi takım rengi + karakter + K/Ö + MVP
+func _build_deathmatch_scoreboard(local_id: int) -> void:
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 3)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scoreboard_content.add_child(list)
+
+	# Sütun başlıkları
+	var hdr := PanelContainer.new()
+	var hs := UITheme.style(Color(UITheme.ACCENT, 0.12), 6, Color.TRANSPARENT, 0, 14, 5)
+	hs.border_width_left = 4
+	hs.border_color = UITheme.ACCENT
+	hdr.add_theme_stylebox_override("panel", hs)
+	list.add_child(hdr)
+	var hrow := HBoxContainer.new()
+	hrow.add_theme_constant_override("separation", 10)
+	hdr.add_child(hrow)
+	var h_rank := UITheme.label("#", 14, UITheme.TEXT_DIM, _sb_caps_font)
+	h_rank.custom_minimum_size = Vector2(36, 0)
+	h_rank.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hrow.add_child(h_rank)
+	var h_player := UITheme.label("OYUNCU", 14, UITheme.TEXT_DIM, _sb_caps_font)
+	h_player.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hrow.add_child(h_player)
+	var h_char := UITheme.label("KARAKTER", 14, UITheme.TEXT_DIM, _sb_caps_font)
+	h_char.custom_minimum_size = Vector2(130, 0)
+	hrow.add_child(h_char)
+	for col_t: String in ["K", "Ö"]:
+		var cl := UITheme.label(col_t, 14, UITheme.TEXT_DIM, _sb_caps_font)
+		cl.custom_minimum_size = Vector2(40, 0)
+		cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hrow.add_child(cl)
+	var h_mvp := UITheme.label("DURUM", 14, UITheme.TEXT_DIM, _sb_caps_font)
+	h_mvp.custom_minimum_size = Vector2(82, 0)
+	h_mvp.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hrow.add_child(h_mvp)
+
+	var rows := GameManager.get_deathmatch_ranking()
+	var dm_cards := GameManager.is_deathmatch_cards()
+	var mvps := [] if dm_cards else GameManager.get_deathmatch_mvps()
+	var mvp_map: Dictionary = {}
+	for m: Dictionary in mvps:
+		mvp_map[int(m["peer_id"])] = int(m["rank"])
+
+	var glyphs: Array = UITheme.TEAM_GLYPHS
+	for r: Dictionary in rows:
+		var pid: int = int(r["peer_id"])
+		var tid: int = int(r["team_id"])
+		var rk: int = int(r["rank"])
+		var is_me: bool = pid == local_id
+		var tcol: Color = TeamManager.get_color(tid)
+		var glyph: String = glyphs[tid] if tid >= 0 and tid < glyphs.size() else "○"
+
+		var row_panel := PanelContainer.new()
+		var rs := UITheme.style(Color(UITheme.ACCENT, 0.12) if is_me else Color(1, 1, 1, 0.025), 5, Color.TRANSPARENT, 0, 14, 4)
+		if is_me:
+			rs.border_width_left = 3
+			rs.border_color = UITheme.ACCENT
+		row_panel.add_theme_stylebox_override("panel", rs)
+		list.add_child(row_panel)
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		row_panel.add_child(row)
+
+		var rk_lbl := UITheme.label("#%d" % rk, 16, UITheme.ACCENT if mvp_map.has(pid) else UITheme.TEXT_DIM, UITheme.font_mono)
+		rk_lbl.custom_minimum_size = Vector2(36, 0)
+		rk_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_child(rk_lbl)
+
+		var pname: String = String(r["name"])
+		if is_me:
+			pname = tr("%s  (Sen)") % pname
+		var name_lbl := UITheme.label("%s  %s" % [glyph, pname], 16, tcol, UITheme.font_bold if is_me else UITheme.font_regular)
+		name_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		row.add_child(name_lbl)
+
+		if NetworkManager.is_bot(pid):
+			var bot_tag := UITheme.label("BOT", 11, UITheme.TEXT_DIM, _sb_caps_font)
+			bot_tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(bot_tag)
+
+		var char_name: String = String(r["character"])
+		var char_lbl := UITheme.label(char_name if not char_name.is_empty() else "—", 15, Color(UITheme.TEXT, 0.8), UITheme.font_regular)
+		char_lbl.custom_minimum_size = Vector2(130, 0)
+		row.add_child(char_lbl)
+
+		var k_lbl := UITheme.label(str(int(r["kills"])), 16, UITheme.TEXT, UITheme.font_mono)
+		k_lbl.custom_minimum_size = Vector2(40, 0)
+		k_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_child(k_lbl)
+
+		var d_lbl := UITheme.label(str(int(r["deaths"])), 16, UITheme.TEXT_DIM, UITheme.font_mono)
+		d_lbl.custom_minimum_size = Vector2(40, 0)
+		d_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_child(d_lbl)
+
+		var mvp_text := "—"
+		var mvp_col := Color(UITheme.TEXT_DIM, 0.45)
+		if dm_cards:
+			if is_me and GameManager.is_card_carrier(pid):
+				mvp_text = tr("KART")
+				mvp_col = UITheme.SUCCESS
+		elif mvp_map.has(pid):
+			mvp_text = tr("%d. MVP") % int(mvp_map[pid])
+			mvp_col = UITheme.ACCENT
+		var mvp_lbl := UITheme.label(mvp_text, 13, mvp_col, _sb_caps_font)
+		mvp_lbl.custom_minimum_size = Vector2(82, 0)
+		mvp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(mvp_lbl)
 
 
 # ─────────────────────────────────────────────
@@ -1521,6 +1644,20 @@ func _update_objective() -> void:
 	if not GameManager.match_live:
 		text = _warmup_text if not _warmup_text.is_empty() else tr("ISINMA  ·  OYUNCULAR BEKLENİYOR")
 		col = UITheme.TEXT
+	elif GameManager.is_deathmatch() and _is_timed():
+		var dm_rows := GameManager.get_deathmatch_ranking()
+		if dm_rows.is_empty():
+			text = tr("DEATHMATCH · HERKES TEK")
+		else:
+			var leader: Dictionary = dm_rows[0]
+			var my_rk := dm_rows.size()
+			var my_k := 0
+			for r: Dictionary in dm_rows:
+				if int(r["peer_id"]) == local_id:
+					my_rk = int(r["rank"])
+					my_k = int(r["kills"])
+					break
+			text = tr("LİDER: %s (%d)  ·  SEN: #%d (%d)") % [String(leader["name"]), int(leader["kills"]), my_rk, my_k]
 	elif _is_timed():
 		text = tr("EN ÇOK ÖLDÜREN TAKIM KAZANIR")
 	elif GameManager.get_card_total() > 1:
@@ -1552,9 +1689,13 @@ func _update_objective() -> void:
 		tip = "Kapıya koş, çemberde kal"
 	else:
 		var carrier_peer: int = GameManager.get_card_carriers()[0]
-		var tid: int = NetworkManager.players.get(carrier_peer, {}).get("team_id", -1)
+		var cdata: Dictionary = NetworkManager.players.get(carrier_peer, {})
+		var tid: int = cdata.get("team_id", -1)
 		col = TeamManager.get_color(tid)
-		if tid == local_team:
+		if GameManager.is_deathmatch():
+			text = tr("KART %s OYUNCUSUNDA") % String(cdata.get("name", "?")).to_upper()
+			tip = "Taşıyıcıyı durdur"
+		elif tid == local_team:
 			text = tr("KART TAKIMINDA")
 			tip = "Taşıyıcıyı koru"
 		else:
@@ -1754,6 +1895,15 @@ func _show_banner(text: String, color: Color) -> void:
 
 func _on_card_picked_up(carrier_peer_id: int, _carrier_pos: Vector3, carrier_team_id: int) -> void:
 	_update_objective()
+	var local_id := NetworkManager.get_local_id()
+	if GameManager.is_deathmatch():
+		SFX.play_ui(get_tree(), "card_pickup" if carrier_peer_id == local_id else "card_alert", -2.0)
+		if carrier_peer_id == local_id:
+			_show_banner("KARTI ALDIN!", UITheme.SUCCESS)
+		else:
+			var cname: String = String(NetworkManager.players.get(carrier_peer_id, {}).get("name", "?")).to_upper()
+			_show_banner(tr("%s KARTI ALDI!") % cname, TeamManager.get_color(carrier_team_id))
+		return
 	var team_name := TeamManager.get_team_name(carrier_team_id).to_upper()
 	# Kendi takımın aldıysa yükselen çan, rakip aldıysa inen uyarı
 	SFX.play_ui(get_tree(), "card_pickup" if carrier_team_id == _get_local_team() else "card_alert", -2.0)
@@ -1817,8 +1967,8 @@ func _update_unlock_ticks(delta: float) -> void:
 	if _unlock_tick_t > 0.0:
 		return
 	_unlock_tick_t = lerpf(UNLOCK_TICK_SLOW, UNLOCK_TICK_FAST, _last_unlock)
-	var tid: int = _unlock_team
-	if tid == _get_local_team():
+	var is_mine_tick := (GameManager.get_unlocking_peer() == NetworkManager.get_local_id()) if GameManager.is_deathmatch() else (_unlock_team == _get_local_team())
+	if is_mine_tick:
 		SFX.play_ui(get_tree(), "unlock_tick", -6.0, 1.0 + _last_unlock * 0.5)
 	else:
 		SFX.play_ui(get_tree(), "unlock_tick_enemy", -6.0)
@@ -1835,7 +1985,8 @@ func _on_door_unlock_changed(ratio: float, unlock_team_id: int) -> void:
 		if ratio <= 0.0 and was > 0.0:
 			SFX.play_ui(get_tree(), "unlock_reset", -4.0)
 		# Taşıyıcı çemberden çıktıysa (hâlâ kart sendeyse) uyar
-		if ratio <= 0.0 and was > 0.0 and unlock_team_id == _get_local_team() and GameManager.is_card_carrier(NetworkManager.get_local_id()):
+		var reset_mine := GameManager.is_card_carrier(NetworkManager.get_local_id()) and (GameManager.is_deathmatch() or unlock_team_id == _get_local_team())
+		if ratio <= 0.0 and was > 0.0 and reset_mine:
 			_show_banner("KİLİT SIFIRLANDI", UITheme.DANGER)
 			_show_tip("Çemberde kal")
 		return
@@ -1843,7 +1994,19 @@ func _on_door_unlock_changed(ratio: float, unlock_team_id: int) -> void:
 	var col := UITheme.ACCENT
 	var text := ""
 	var tip := ""
-	if tid == _get_local_team() and GameManager.is_card_carrier(NetworkManager.get_local_id()):
+	if GameManager.is_deathmatch():
+		var upeer := GameManager.get_unlocking_peer()
+		if upeer == NetworkManager.get_local_id():
+			_carrier_bar_fill.value = ratio
+			_carrier_bar.visible = true
+			_unlock_panel.visible = false
+			_update_carrier_bar_position()
+			return
+		var uname: String = String(NetworkManager.players.get(upeer, {}).get("name", "?")).to_upper()
+		text = tr("%s KAPIYI AÇIYOR") % uname
+		col = UITheme.DANGER
+		tip = "Kapıya git, onu durdur"
+	elif tid == _get_local_team() and GameManager.is_card_carrier(NetworkManager.get_local_id()):
 		_carrier_bar_fill.value = ratio
 		_carrier_bar.visible = true
 		_unlock_panel.visible = false
@@ -1928,7 +2091,12 @@ func _on_trap_rescue_changed(trapped_peer: int, ratio: float, rescuer_peer: int)
 		_trap_bar_target = null
 		return
 	var tid: int = NetworkManager.players.get(trapped_peer, {}).get("team_id", -1)
-	if tid != _get_local_team():
+	if GameManager.is_deathmatch():
+		if trapped_peer != NetworkManager.get_local_id():
+			_trap_bar.visible = false
+			_trap_bar_target = null
+			return
+	elif tid != _get_local_team():
 		_trap_bar.visible = false
 		_trap_bar_target = null
 		return
@@ -1958,6 +2126,9 @@ func _on_trap_rescue_changed(trapped_peer: int, ratio: float, rescuer_peer: int)
 
 func _on_card_dropped(_drop_pos: Vector3, carrier_team_id: int) -> void:
 	_update_objective()
+	if GameManager.is_deathmatch():
+		_show_banner("KART DÜŞTÜ!", UITheme.ACCENT)
+		return
 	var team_name := TeamManager.get_team_name(carrier_team_id).to_upper()
 	var drop_text := tr("%s TAKIM KARTI DÜŞÜRDÜ!") % team_name
 	if GameManager.get_card_total() > 1:
@@ -1977,6 +2148,8 @@ func _on_kill_happened(killer_peer_id: int, victim_peer_id: int, method: int) ->
 	var vname: String = vd.get("name", "???")
 	var kcol: Color = TeamManager.get_color(kd.get("team_id", -1))
 	var vcol: Color = TeamManager.get_color(vd.get("team_id", -1))
+	if GameManager.is_deathmatch():
+		_update_objective()
 
 	# İkili skor (ölüm bandındaki "SEN – RAKİP")
 	if killer_peer_id != victim_peer_id:
@@ -2097,10 +2270,51 @@ func _on_game_ended(winning_team: int) -> void:
 	_scoreboard_panel.hide()
 	_scoreboard_visible = false
 	_death_overlay.hide()
+	var local_id := NetworkManager.get_local_id()
+	var stats: Dictionary = GameManager.player_stats.get(local_id, {"kills": 0, "deaths": 0})
+	if GameManager.is_deathmatch_cards():
+		var wpid: int = GameManager.winning_peer_id
+		var dm_mvps: Array[Dictionary] = []
+		if wpid >= 0 and NetworkManager.players.has(wpid):
+			var wp: Dictionary = NetworkManager.players[wpid]
+			var wst: Dictionary = GameManager.player_stats.get(wpid, {})
+			dm_mvps.append({
+				"peer_id": wpid, "name": String(wp.get("name", "?")),
+				"team_id": int(wp.get("team_id", 0)), "character": String(wp.get("character", "")),
+				"kills": int(wst.get("kills", 0)), "deaths": int(wst.get("deaths", 0)),
+				"rank": 1, "xp": GameManager.XP_DM_MVP_1,
+			})
+		var is_winner := wpid >= 0 and local_id == wpid
+		SFX.play_ui(get_tree(), "match_win" if is_winner else "match_lose", -2.0)
+		_end_overlay.present(
+			-1, is_winner, UITheme.ACCENT, str(GameManager.get("end_reason")),
+			stats, GameManager.match_xp, GameManager.match_xp_breakdown,
+			GameManager.match_start_xp, GameManager.match_start_total_xp,
+			GameManager.RETURN_TO_LOBBY_DELAY, false, dm_mvps, 1 if is_winner else 0)
+		return
+	if GameManager.is_deathmatch():
+		var dm_mvps := GameManager.get_deathmatch_mvps()
+		var dm_rows := GameManager.get_deathmatch_ranking()
+		var my_rank := dm_rows.size()
+		for r: Dictionary in dm_rows:
+			if int(r["peer_id"]) == local_id:
+				my_rank = int(r["rank"])
+				break
+		var is_mvp := false
+		for m: Dictionary in dm_mvps:
+			if int(m["peer_id"]) == local_id:
+				is_mvp = true
+				break
+		SFX.play_ui(get_tree(), "match_win" if is_mvp else "match_lose", -2.0)
+		_end_overlay.present(
+			-1, is_mvp, UITheme.ACCENT, str(GameManager.get("end_reason")),
+			stats, GameManager.match_xp, GameManager.match_xp_breakdown,
+			GameManager.match_start_xp, GameManager.match_start_total_xp,
+			GameManager.RETURN_TO_LOBBY_DELAY, false, dm_mvps, my_rank)
+		return
 	var won := winning_team == _get_local_team()
 	SFX.play_ui(get_tree(), "match_win" if won else "match_lose", -2.0)
 	var team_color := TeamManager.get_color(winning_team)
-	var stats: Dictionary = GameManager.player_stats.get(NetworkManager.get_local_id(), {"kills": 0, "deaths": 0})
 	_end_overlay.present(
 		winning_team, won, team_color, str(GameManager.get("end_reason")),
 		stats, GameManager.match_xp, GameManager.match_xp_breakdown,

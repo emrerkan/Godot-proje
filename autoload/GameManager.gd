@@ -20,13 +20,16 @@ signal warmup_status(loaded: int, total: int, seconds_left: int, countdown: int)
 ## Kart taşıyıcısı kapının çevresindeki çemberde (DOOR_UNLOCK_RADIUS) DOOR_UNLOCK_TIME sn kalırsa kazanır.
 ## Çıkar / ölür / kartı düşürürse ilerleme SIFIRLANIR. Host hesaplar (_update_door_unlock), _door_unlock_rpc ile yayar.
 const DOOR_UNLOCK_TIME := 5.0
+const DOOR_UNLOCK_TIME_DM := 3.5
 const DOOR_UNLOCK_RADIUS := 3.0
 const DOOR_SYNC_INTERVAL := 0.1
 const TIMER_SYNC_INTERVAL := 5.0
 var match_time_left: float = -1.0      # tüm peer'larda: süreli maçta kalan sn, değilse -1 (HUD okur)
-var end_reason: String = ""            # "time" = süre doldu, "" = diğer (game_ended'dan önce set edilir)
+var end_reason: String = ""            # "time" = süre doldu, "card" = kapı açıldı, "" = diğer
+var winning_peer_id: int = -1          # Kartlı Ölüm Maçı'nda kapıyı açarak (veya tek kalarak) kazanan peer
 var _timer_sync_left := 0.0            # host
 var door_unlock := 0.0                # 0..1 (tüm peer'larda, host'tan gelir)
+var _unlock_peer := -1                # Ölüm Maçı + Kartlı: kilidi açan oyuncu (-1 yok)
 var _door_sync_timer := 0.0
 
 ## ─── XP (kalıcı profil — PlayerProfile) ───
@@ -54,6 +57,9 @@ const XP_POWERUP := 25                # yerden güç aldı (PowerupManager)
 const XP_TRAP_RESCUE := 75            # tuzaktaki takım arkadaşını kurtardı (PowerupManager)
 const XP_MATCH := 100                 # maçı bitirdi
 const XP_WIN := 300                   # kazanan takım
+const XP_DM_MVP_1 := 300              # Deathmatch 1. MVP
+const XP_DM_MVP_2 := 200              # Deathmatch 2. MVP
+const XP_DM_MVP_3 := 150              # Deathmatch 3. MVP (ve eşitlikteki MVP'ler)
 const RETURN_TO_LOBBY_DELAY := 9.0    # maç bitince lobiye otomatik dönüş (HUD oyun sonu XP animasyonu + bekleme)
 ## ─── Yükleme bekleme + ISINMA (CS tarzı) ───
 ## Herkes haritayı yükleyip kendi oyuncusunu doğurunca host'a bildirir (_peer_loaded) ve perdesi kalkar: yüklenen oyuncu
@@ -66,6 +72,7 @@ const LOAD_STATUS_INTERVAL := 0.5
 const MATCH_COUNTDOWN := 10.0
 var _countdown_left := -1.0           # host: < 0 = geri sayım başlamadı
 var match_live := false               # tüm peer'larda: maç gerçekten başladı mı (Player/PowerupManager okur)
+var is_benchmark := false             # Benchmark.gd: true iken XP ve profil istatistiği (terk dahil) kaydedilmez
 var menu_notice := ""                 # ana menüde gösterilecek tek seferlik mesaj (yükleme süresi aşımıyla atılma)
 var _local_loaded := false
 var _expected_loaders: Array = []     # host: maç başında odadaki peer'lar
@@ -318,8 +325,9 @@ func _match_go_rpc() -> void:
 	# Isınmadan maça: herkes KENDİ oyuncusunu spawn'ına ışınlar (_apply_respawn call_local — can/mermi/dayanıklılık dolar)
 	var me: Variant = active_players.get(NetworkManager.get_local_id())
 	if me != null and is_instance_valid(me):
-		var team_id: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", 0)
-		var pos := TeamManager.get_spawn_position(team_id)
+		var my_id := NetworkManager.get_local_id()
+		var team_id: int = NetworkManager.players.get(my_id, {}).get("team_id", 0)
+		var pos := get_spawn_position(my_id, team_id)
 		if multiplayer.get_peers().is_empty():
 			me._apply_respawn(pos)
 		else:
@@ -333,14 +341,14 @@ func _match_go_rpc() -> void:
 			if bot == null or not is_instance_valid(bot):
 				continue
 			var bteam: int = NetworkManager.players.get(bid, {}).get("team_id", 0)
-			var bpos := TeamManager.get_spawn_position(bteam)
+			var bpos := get_spawn_position(bid, bteam)
 			if multiplayer.get_peers().is_empty():
 				bot._apply_respawn(bpos)
 			else:
 				bot._apply_respawn.rpc(bpos)
-	# Maç başı karaktere özel tek seferlik güç — HER PEER kendi hesaplar (RPC yok). Migration/respawn'da verilmez.
+	# Maç başı karaktere özel tek seferlik güç — Deathmatch'te başlangıç gücü verilmez
 	var powerups := get_tree().current_scene.get_node_or_null("PowerupManager")
-	if powerups and powerups.has_method("grant_starting_items"):
+	if not is_deathmatch() and powerups and powerups.has_method("grant_starting_items"):
 		powerups.grant_starting_items()
 	if is_timed_match():
 		match_time_left = float(NetworkManager.get_match_minutes()) * 60.0
@@ -374,7 +382,7 @@ func _spawn_local_player() -> void:
 	var local_id := NetworkManager.get_local_id()
 	var player_data: Dictionary = NetworkManager.players.get(local_id, {})
 	var team_id: int = player_data.get("team_id", 0)
-	var spawn_pos: Vector3 = TeamManager.get_spawn_position(team_id)
+	var spawn_pos: Vector3 = get_spawn_position(local_id, team_id)
 	# Host migration sonrası: kaldığın yerden devam (konum isimle saklanır — peer id'ler değişir)
 	var my_name: String = player_data.get("name", "")
 	if _pending_positions.has(my_name):
@@ -458,7 +466,7 @@ func _spawn_bots() -> void:
 		var character: String = data.get("character", "")
 		if character.is_empty():
 			character = "Visioner"  # _notify_player_spawned ile aynı yedek
-		var pos: Vector3 = TeamManager.get_spawn_position(team_id)
+		var pos: Vector3 = get_spawn_position(bot_id, team_id)
 		var player: CharacterBody3D = player_scene.instantiate()
 		player.name = "Player_%d" % bot_id
 		player.set_multiplayer_authority(1)
@@ -760,11 +768,14 @@ func request_card_delivery(_carrier_peer_id: int) -> void:
 	pass
 
 
-func handle_card_delivered(team_id: int) -> void:
+func handle_card_delivered(team_id: int, winner_peer: int = -1) -> void:
 	if not NetworkManager.is_host() or state != State.IN_GAME:
 		return
 	state = State.ENDED
-	_end_game_rpc.rpc(team_id)
+	if multiplayer.get_peers().size() > 0:
+		_end_game_rpc.rpc(team_id, "card", winner_peer)
+	else:
+		_end_game_rpc(team_id, "card", winner_peer)
 
 
 # ─────────────────────────────────────────────
@@ -776,7 +787,7 @@ func handle_player_death(dead_peer_id: int, killer_peer_id: int, method: int = 0
 		return
 	var killer_data: Dictionary = NetworkManager.players.get(killer_peer_id, {})
 	var killing_team: int = killer_data.get("team_id", -1)
-	if killing_team >= 0 and killer_peer_id != dead_peer_id:  # kendi tuzağına basan skora yazılmaz
+	if not is_deathmatch() and killing_team >= 0 and killer_peer_id != dead_peer_id:  # kendi tuzağına basan skora yazılmaz
 		TeamManager.add_kill(killing_team)
 
 	_announce_kill_rpc.rpc(killer_peer_id, dead_peer_id, method)
@@ -813,12 +824,14 @@ func _announce_kill_rpc(killer_peer_id: int, victim_peer_id: int, method: int) -
 
 func _schedule_respawn(dead_peer_id: int) -> void:
 	await get_tree().create_timer(3.0).timeout
+	if state != State.IN_GAME:
+		return
 	var player: Node = active_players.get(dead_peer_id)
 	if not is_instance_valid(player):
 		return
 	var player_data: Dictionary = NetworkManager.players.get(dead_peer_id, {})
 	var team_id: int = player_data.get("team_id", 0)
-	var spawn_pos: Vector3 = TeamManager.get_spawn_position(team_id)
+	var spawn_pos: Vector3 = get_spawn_position(dead_peer_id, team_id)
 	if NetworkManager.is_bot(dead_peer_id) and multiplayer.get_peers().is_empty():
 		player._apply_respawn(spawn_pos)  # host botlarla tek başına: RPC'siz (call_local ile aynı sonuç)
 	else:
@@ -839,9 +852,40 @@ func _on_team_won(team_id: int) -> void:
 ## XP/state/sinyal mantığı — _end_game_rpc (normal maç sonu) ve restore_from_migration'daki
 ## instant_winner dalı (migration sonrası kesinleşmiş zafer) ortak kullanır. RPC DEĞİL: her peer
 ## kendi yerel kopyasını zaten elindeki bilgiyle (winning_team) çağırır, broadcast'e gerek yok.
-func _apply_end_game(winning_team: int, reason: String = "") -> void:
+func _apply_end_game(winning_team: int, reason: String = "", winner_peer: int = -1) -> void:
 	end_reason = reason
+	winning_peer_id = winner_peer
 	# Maç sonu XP'si game_ended'dan ÖNCE (HUD oyun sonu ekranı match_xp'yi gösterir)
+	if is_deathmatch_cards():
+		var local_id := NetworkManager.get_local_id()
+		var won_dm := winner_peer >= 0 and local_id == winner_peer
+		if not _match_xp_closed:
+			_match_xp_closed = true
+			gain_xp(XP_MATCH, "Maç tamamlandı")
+			if won_dm:
+				gain_xp(XP_DM_MVP_1, "1. MVP")
+		_record_match_stats("win" if won_dm else "loss")
+		state = State.ENDED
+		emit_signal("game_ended", -1)
+		return
+	if is_deathmatch():
+		var local_id := NetworkManager.get_local_id()
+		var mvps := get_deathmatch_mvps()
+		var my_mvp: Dictionary = {}
+		for m: Dictionary in mvps:
+			if int(m.get("peer_id", -1)) == local_id:
+				my_mvp = m
+				break
+		if not _match_xp_closed:
+			_match_xp_closed = true
+			gain_xp(XP_MATCH, "Maç tamamlandı")
+			if not my_mvp.is_empty():
+				gain_xp(int(my_mvp["xp"]), "%d. MVP" % int(my_mvp["rank"]))
+		# Profil istatistiği: MVP olanlar galibiyet ("win") sayılır
+		_record_match_stats("win" if not my_mvp.is_empty() else "loss")
+		state = State.ENDED
+		emit_signal("game_ended", -1)
+		return
 	if not _match_xp_closed:
 		_match_xp_closed = true
 		gain_xp(XP_MATCH, "Maç tamamlandı")
@@ -863,7 +907,7 @@ func _apply_end_game(winning_team: int, reason: String = "") -> void:
 ## Yerel oyuncunun bu maçını MatchStats'a yazar (maç başına bir kez). Gerçek maç başlamadıysa (yükleme/ısınma),
 ## karakter ya da takım yoksa (izleyici) kaydetmez.
 func _record_match_stats(result: String) -> void:
-	if _match_stats_recorded or not match_live:
+	if is_benchmark or _match_stats_recorded or not match_live:
 		return
 	var me: Dictionary = NetworkManager.players.get(NetworkManager.get_local_id(), {})
 	var character: String = me.get("character", "")
@@ -875,8 +919,8 @@ func _record_match_stats(result: String) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _end_game_rpc(winning_team: int, reason: String = "") -> void:
-	_apply_end_game(winning_team, reason)
+func _end_game_rpc(winning_team: int, reason: String = "", winner_peer: int = -1) -> void:
+	_apply_end_game(winning_team, reason, winner_peer)
 	if NetworkManager.is_host():
 		await get_tree().create_timer(RETURN_TO_LOBBY_DELAY).timeout
 		_return_to_lobby_rpc.rpc()
@@ -914,39 +958,57 @@ func _update_door_unlock(delta: float) -> void:
 	var inside := false
 	var total := get_card_total()
 	var team_now := -1
+	var peer_now := -1
+	var unlock_time := get_door_unlock_time()
 	if total > 0 and door_instance and is_instance_valid(door_instance):
 		var dp: Vector3 = (door_instance as Node3D).global_position
-		for tid: int in _teams_with_cards():
-			if get_team_cards(tid) != total:
-				continue
-			# T'nin kart taşıyan HER oyuncusu canlı ve çıkış bölgesinde olmalı
-			var all_in := true
+		if is_deathmatch():
 			for pid: int in get_card_carriers():
-				if int(NetworkManager.players.get(pid, {}).get("team_id", -1)) != tid:
+				if get_cards_held(pid) < total:
 					continue
 				var carrier: Variant = active_players.get(pid)
 				if carrier == null or not is_instance_valid(carrier) or carrier.is_dead:
-					all_in = false
-					break
+					continue
 				var cp: Vector3 = (carrier as Node3D).global_position
-				if Vector2(cp.x - dp.x, cp.z - dp.z).length() > DOOR_UNLOCK_RADIUS:
-					all_in = false
+				if Vector2(cp.x - dp.x, cp.z - dp.z).length() <= DOOR_UNLOCK_RADIUS:
+					inside = true
+					peer_now = pid
+					team_now = int(NetworkManager.players.get(pid, {}).get("team_id", -1))
 					break
-			if all_in:
-				inside = true
-				team_now = tid
-			break  # N kartın hepsini tutan en fazla bir takım olabilir
-	if team_now != _unlock_team and _unlock_team != -1 and door_unlock > 0.0:
-		door_unlock = 0.0  # takım değişti: sıfırdan
+		else:
+			for tid: int in _teams_with_cards():
+				if get_team_cards(tid) != total:
+					continue
+				# T'nin kart taşıyan HER oyuncusu canlı ve çıkış bölgesinde olmalı
+				var all_in := true
+				for pid: int in get_card_carriers():
+					if int(NetworkManager.players.get(pid, {}).get("team_id", -1)) != tid:
+						continue
+					var carrier: Variant = active_players.get(pid)
+					if carrier == null or not is_instance_valid(carrier) or carrier.is_dead:
+						all_in = false
+						break
+					var cp: Vector3 = (carrier as Node3D).global_position
+					if Vector2(cp.x - dp.x, cp.z - dp.z).length() > DOOR_UNLOCK_RADIUS:
+						all_in = false
+						break
+				if all_in:
+					inside = true
+					team_now = tid
+				break  # N kartın hepsini tutan en fazla bir takım olabilir
+	var owner_changed := (peer_now != _unlock_peer and _unlock_peer != -1) if is_deathmatch() else (team_now != _unlock_team and _unlock_team != -1)
+	if owner_changed and door_unlock > 0.0:
+		door_unlock = 0.0  # taşıyıcı/takım değişti: sıfırdan
 		_door_sync_timer = 0.0
 		_send_door_unlock(0.0)
 	var prev := door_unlock
-	door_unlock = minf(door_unlock + delta / DOOR_UNLOCK_TIME, 1.0) if inside else 0.0
+	door_unlock = minf(door_unlock + delta / unlock_time, 1.0) if inside else 0.0
 	if inside:
 		_unlock_team = team_now
+		_unlock_peer = peer_now
 	if door_unlock >= 1.0:
 		_send_door_unlock(1.0)
-		handle_card_delivered(_unlock_team)
+		handle_card_delivered(_unlock_team, _unlock_peer)
 		return
 	if door_unlock == prev:
 		return
@@ -959,16 +1021,18 @@ func _update_door_unlock(delta: float) -> void:
 
 func _send_door_unlock(ratio: float) -> void:
 	var tid := _unlock_team if ratio > 0.0 else -1
+	var pid := _unlock_peer if ratio > 0.0 else -1
 	if multiplayer.get_peers().size() > 0:
-		_door_unlock_rpc.rpc(ratio, tid)
+		_door_unlock_rpc.rpc(ratio, tid, pid)
 	else:
-		_door_unlock_rpc(ratio, tid)
+		_door_unlock_rpc(ratio, tid, pid)
 
 
 @rpc("authority", "call_local", "reliable")
-func _door_unlock_rpc(ratio: float, team_id: int) -> void:
+func _door_unlock_rpc(ratio: float, team_id: int, peer_id: int = -1) -> void:
 	door_unlock = ratio
 	_unlock_team = team_id if ratio > 0.0 else -1
+	_unlock_peer = peer_id if ratio > 0.0 else -1
 	door_unlock_changed.emit(ratio, team_id)
 
 
@@ -1052,7 +1116,7 @@ func _reset_match_xp(take_snapshot: bool) -> void:
 ## Yerel oyuncuya XP ver (profil kaydedilir). Oyun içinde HUD'da gösterilmez; oyun sonu ekranında
 ## kalem kalem efektlerle sunulur. PowerupManager de çağırır (güç alma, Medic iyileştirme).
 func gain_xp(amount: int, reason: String) -> void:
-	if amount <= 0:
+	if is_benchmark or amount <= 0:
 		return
 	if not _match_xp_snapshot_taken:
 		match_start_xp = PROFILE.get_xp()
@@ -1143,8 +1207,137 @@ func on_player_disconnected(peer_id: int) -> void:
 	_check_all_loaded()  # yüklerken ayrılan beklenmesin
 
 
+func is_deathmatch() -> bool:
+	return NetworkManager.is_deathmatch()
+
+
 func is_timed_match() -> bool:
 	return NetworkManager.get_win_mode() == "timed"
+
+
+func is_deathmatch_cards() -> bool:
+	return is_deathmatch() and not is_timed_match()
+
+
+func get_door_unlock_time() -> float:
+	return DOOR_UNLOCK_TIME_DM if is_deathmatch() else DOOR_UNLOCK_TIME
+
+
+func get_unlocking_peer() -> int:
+	return _unlock_peer if door_unlock > 0.0 else -1
+
+
+func are_allies(peer_a: int, peer_b: int) -> bool:
+	return NetworkManager.are_allies(peer_a, peer_b)
+
+
+## Doğma konumu: takım modlarında takım köşesi; Deathmatch'te haritanın herhangi bir geçerli noktasından
+## canlı oyunculara en uzak güvenli nokta seçilir.
+func get_spawn_position(peer_id: int, team_id: int) -> Vector3:
+	if not is_deathmatch():
+		return TeamManager.get_spawn_position(team_id)
+	var candidates: Array[Vector3] = []
+	for tid: int in TeamManager.spawn_points:
+		for pt: Vector3 in TeamManager.spawn_points[tid]:
+			candidates.append(pt)
+	var scene := get_tree().current_scene
+	if scene:
+		var pp := scene.get_node_or_null("PowerupPoints")
+		if pp:
+			for c in pp.get_children():
+				if c is Node3D:
+					candidates.append((c as Node3D).global_position)
+		if not is_deathmatch_cards():
+			var cp := scene.find_child("CardPoints", true, false)
+			if cp:
+				for c in cp.get_children():
+					if c is Node3D:
+						candidates.append((c as Node3D).global_position)
+	if candidates.is_empty():
+		return TeamManager.get_spawn_position(team_id)
+	var others: Array[Vector3] = []
+	for pid: int in active_players:
+		if pid == peer_id:
+			continue
+		var p: Variant = active_players[pid]
+		if p != null and is_instance_valid(p) and not p.is_dead:
+			others.append((p as Node3D).global_position)
+	if is_deathmatch_cards():
+		if door_instance and is_instance_valid(door_instance):
+			others.append((door_instance as Node3D).global_position)
+		for cn: Variant in cards.values():
+			if cn != null and is_instance_valid(cn) and int(cn.carrier_peer) == -1:
+				others.append((cn as Node3D).global_position)
+	if others.is_empty():
+		return candidates[randi() % candidates.size()]
+	var scored: Array[Dictionary] = []
+	for cpos: Vector3 in candidates:
+		var min_d := INF
+		for opos: Vector3 in others:
+			var dx := cpos.x - opos.x
+			var dz := cpos.z - opos.z
+			var d := dx * dx + dz * dz
+			if d < min_d:
+				min_d = d
+		scored.append({"pos": cpos, "dist": min_d})
+	scored.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["dist"]) > float(b["dist"]))
+	var top_n := maxi(1, int(ceil(float(scored.size()) * 0.25)))
+	return scored[randi() % top_n]["pos"]
+
+
+## Deathmatch bireysel sıralama: önce en fazla öldürme (K), eşitlikte en az ölüm (Ö).
+## Aynı (K, Ö) değerine sahip oyuncular aynı `rank` numarasını paylaşır.
+func get_deathmatch_ranking() -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	var seen: Dictionary = {}
+	for pid in NetworkManager.players:
+		var pdata: Dictionary = NetworkManager.players[pid]
+		if int(pdata.get("team_id", -1)) < 0:
+			continue
+		seen[int(pid)] = true
+		var st: Dictionary = player_stats.get(int(pid), {})
+		rows.append({
+			"peer_id": int(pid),
+			"name": String(pdata.get("name", "?")),
+			"team_id": int(pdata.get("team_id", 0)),
+			"character": String(pdata.get("character", "")),
+			"kills": int(st.get("kills", 0)),
+			"deaths": int(st.get("deaths", 0)),
+		})
+	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if int(a["kills"]) != int(b["kills"]):
+			return int(a["kills"]) > int(b["kills"])
+		if int(a["deaths"]) != int(b["deaths"]):
+			return int(a["deaths"]) < int(b["deaths"])
+		return int(a["peer_id"]) < int(b["peer_id"])
+	)
+	for i in rows.size():
+		if i > 0 and int(rows[i]["kills"]) == int(rows[i - 1]["kills"]) and int(rows[i]["deaths"]) == int(rows[i - 1]["deaths"]):
+			rows[i]["rank"] = int(rows[i - 1]["rank"])
+		else:
+			rows[i]["rank"] = i + 1
+	return rows
+
+
+## Deathmatch MVP listesi: ilk 3 kişi + 3. sırayla (veya tam eşitlikle) aynı (K, Ö) değerine sahip 4. ve 5. kişi.
+## Kademeli XP: rank 1 → XP_DM_MVP_1 (300), rank 2 → XP_DM_MVP_2 (200), rank >= 3 → XP_DM_MVP_3 (150).
+func get_deathmatch_mvps() -> Array[Dictionary]:
+	var rows := get_deathmatch_ranking()
+	var out: Array[Dictionary] = []
+	if rows.is_empty():
+		return out
+	var cutoff_k := int(rows[mini(2, rows.size() - 1)]["kills"])
+	var cutoff_d := int(rows[mini(2, rows.size() - 1)]["deaths"])
+	for i in mini(rows.size(), 5):
+		var r: Dictionary = rows[i]
+		var qualifies := (i < 3) or (int(r["kills"]) == cutoff_k and int(r["deaths"]) == cutoff_d)
+		if not qualifies:
+			break
+		var entry := r.duplicate()
+		var rk := int(entry["rank"])
+		entry["xp"] = XP_DM_MVP_1 if rk == 1 else (XP_DM_MVP_2 if rk == 2 else XP_DM_MVP_3)
+		out.append(entry)
+	return out
 
 
 func _send_match_timer() -> void:
@@ -1159,9 +1352,16 @@ func _match_timer_rpc(seconds_left: float) -> void:
 		match_time_left = maxf(seconds_left, 0.0)
 
 
-## Host: süre doldu — en çok öldüren takım kazanır, eşitlikte beraberlik (-1)
+## Host: süre doldu — takım modunda en çok öldüren takım kazanır; Deathmatch'te oyun biter (MVP hesaplanır)
 func _on_time_up() -> void:
 	if not NetworkManager.is_host() or state != State.IN_GAME:
+		return
+	if is_deathmatch():
+		state = State.ENDED
+		if multiplayer.get_peers().size() > 0:
+			_end_game_rpc.rpc(-1, "time")
+		else:
+			_end_game_rpc(-1, "time")
 		return
 	var best := -1
 	var best_score := -1
@@ -1192,6 +1392,19 @@ func _check_last_team_standing() -> void:
 		return
 	if state != State.IN_GAME:
 		return
+	if is_deathmatch():
+		var active_peers: Array[int] = []
+		for pid in NetworkManager.players:
+			if int(NetworkManager.players[pid].get("team_id", -1)) >= 0:
+				active_peers.append(int(pid))
+		if active_peers.size() <= 1:
+			state = State.ENDED
+			var last_pid: int = active_peers[0] if active_peers.size() == 1 else -1
+			if multiplayer.get_peers().size() > 0:
+				_end_game_rpc.rpc(-1, "last_standing", last_pid)
+			else:
+				_end_game_rpc(-1, "last_standing", last_pid)
+		return
 	var active_teams: Dictionary = {}
 	for pid in NetworkManager.players:
 		var tid: int = NetworkManager.players[pid].get("team_id", -1)
@@ -1199,7 +1412,10 @@ func _check_last_team_standing() -> void:
 			active_teams[tid] = true
 	if active_teams.size() == 1:
 		state = State.ENDED
-		_end_game_rpc.rpc(active_teams.keys()[0])
+		if multiplayer.get_peers().size() > 0:
+			_end_game_rpc.rpc(active_teams.keys()[0])
+		else:
+			_end_game_rpc(active_teams.keys()[0])
 
 
 # ─────────────────────────────────────────────
@@ -1263,12 +1479,14 @@ func restore_from_migration(mig: Dictionary) -> void:
 	# da sonuç değişmez) haritayı YENİDEN YÜKLEMEDEN doğrudan zaferi ilan et — client ekranında
 	# gereksiz 'YÜKLENİYOR' perdesi hiç görünmesin (HUD zaten canlı, game_ended sinyaline bağlı).
 	if mig.has("instant_winner"):
-		_apply_end_game(int(mig["instant_winner"]), "")
+		_apply_end_game(int(mig["instant_winner"]), "", int(mig.get("instant_winner_peer", -1)))
 		if NetworkManager.is_host():
 			await get_tree().create_timer(RETURN_TO_LOBBY_DELAY).timeout
 			_return_to_lobby_rpc.rpc()
 		return
 	door_unlock = 0.0  # kilit ilerlemesi host değişince sıfırdan
+	_unlock_peer = -1
+	winning_peer_id = -1
 	end_reason = ""
 	_timer_sync_left = TIMER_SYNC_INTERVAL
 	if is_timed_match():
@@ -1327,10 +1545,17 @@ func restore_from_migration(mig: Dictionary) -> void:
 		_check_last_team_standing()
 
 
-## Host: migration penceresinde yeniden bağlanan oyuncunun istatistiğini yeni peer id'sine taşı
+## Host: migration penceresinde yeniden bağlanan oyuncunun istatistiğini yeni peer id'sine taşı ve clientlara yay
 func adopt_migrated_stats(peer_id: int, player_name: String) -> void:
 	if _migrated_stats.has(player_name):
 		player_stats[peer_id] = (_migrated_stats[player_name] as Dictionary).duplicate()
+	if NetworkManager.is_host() and multiplayer.get_peers().size() > 0:
+		_sync_player_stats_rpc.rpc(player_stats)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _sync_player_stats_rpc(stats: Dictionary) -> void:
+	player_stats = stats.duplicate(true)
 
 
 func _restore_stats_by_name(by_name: Dictionary) -> void:
@@ -1358,6 +1583,7 @@ func return_to_menu() -> void:
 	_match_stats_recorded = false
 	state = State.MENU
 	match_live = false
+	is_benchmark = false
 	_local_loaded = false
 	NetworkManager.disconnect_all()
 	get_tree().change_scene_to_file("res://scenes/main/Main.tscn")

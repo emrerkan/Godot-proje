@@ -107,6 +107,8 @@ var _powers_pref := true                  # kullanıcının özel güç tercihi 
 var _powers_toggle: Button        # ODA KUR: özel güç aç/kapa (settings.cfg [room] powers)
 var _players_lbl: Label             # "12 OYUNCU"
 var _team_size := 0
+var _play_mode := "team"                 # ODA KUR: "team" / "deathmatch"
+var _play_mode_buttons: Array[Button] = []
 var _win_mode := "cards"                 # ODA KUR: "cards" / "timed"
 var _match_minutes := 10
 var _mode_buttons: Array[Button] = []
@@ -227,6 +229,27 @@ func _build_ui() -> void:
 	columns.add_child(_build_brand_column())
 	_play_menu = _build_play_menu()
 	play_sec.add_child(_play_menu)
+	# Sağ alt köşe (operatör/profil kartıyla aynı alt ve kenar hizasında): kırmızı genel cam buton
+	var quit_btn := Button.new()
+	quit_btn.text = "OYUNDAN ÇIK"
+	quit_btn.focus_mode = Control.FOCUS_NONE
+	quit_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	quit_btn.custom_minimum_size = Vector2(220, 62)
+	quit_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	quit_btn.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	quit_btn.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	quit_btn.offset_right = -93.0
+	quit_btn.offset_bottom = -60.0
+	quit_btn.add_theme_stylebox_override("normal", UITheme.style(Color(UITheme.DANGER, 0.08), UITheme.RADIUS, Color(UITheme.DANGER, 0.85), 2, 27, 15))
+	quit_btn.add_theme_stylebox_override("hover", UITheme.style(Color(UITheme.DANGER, 0.22), UITheme.RADIUS, UITheme.DANGER, 2, 27, 15))
+	quit_btn.add_theme_stylebox_override("pressed", UITheme.style(Color(UITheme.DANGER, 0.35), UITheme.RADIUS, UITheme.DANGER, 2, 27, 15))
+	quit_btn.add_theme_color_override("font_color", UITheme.DANGER)
+	quit_btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	quit_btn.add_theme_color_override("font_pressed_color", Color.WHITE)
+	quit_btn.pressed.connect(func() -> void:
+		NetworkManager.disconnect_all()
+		get_tree().quit())
+	play_sec.add_child(quit_btn)
 	_sections["play"] = play_sec
 
 	# 2) PROFİL bölümü: modal değil, doğrudan ana ekran üzerinde UpgradePage
@@ -680,7 +703,11 @@ func _build_play_item(key: String, text: String) -> Control:
 		row.add_child(_rooms_badge)
 
 	_play_items[key] = {"button": b, "beam": mat, "marker": marker}
-	b.mouse_entered.connect(_set_item_lit.bind(key, true))
+	b.mouse_entered.connect(func() -> void:
+		if not b.has_focus():
+			b.grab_focus()
+		else:
+			_set_item_lit(key, true))
 	b.mouse_exited.connect(_set_item_lit.bind(key, false))
 	b.focus_entered.connect(_set_item_lit.bind(key, true))
 	b.focus_exited.connect(_set_item_lit.bind(key, false))
@@ -694,8 +721,12 @@ func _set_item_lit(key: String, lit: bool) -> void:
 	# Fare hâlâ üstündeyse odak kaybı söndürmesin (ve tersi)
 	if not lit and (b.has_focus() or b.is_hovered()):
 		return
+	var prev_tw: Tween = item.get("tween")
+	if prev_tw and prev_tw.is_valid():
+		prev_tw.kill()
 	var mat: ShaderMaterial = item["beam"]
 	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	item["tween"] = tw
 	# Parametre hiç atanmadıysa get_shader_parameter null döner → son değer sözlükte tutulur
 	tw.tween_method(func(v: float) -> void:
 		item["level"] = v
@@ -962,21 +993,44 @@ func _build_create_page() -> Control:
 	_players_lbl = UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps)
 	page.add_child(_caption_field("FORMAT", _players_lbl, seg))
 
-	# Oyun modu: KARTLI / KARTSIZ (süreli) + süre
+	# Oyun modu: TAKIMLI / ÖLÜM MAÇI
+	var pm_row := HBoxContainer.new()
+	pm_row.add_theme_constant_override("separation", 10)
+	var pm_group := ButtonGroup.new()
+	var pm_defs: Array[Array] = [["team", "TAKIMLI"], ["deathmatch", "ÖLÜM MAÇI"]]
+	for pi in pm_defs.size():
+		var pb := Button.new()
+		pb.text = pm_defs[pi][1]
+		pb.toggle_mode = true
+		pb.button_group = pm_group
+		pb.focus_mode = Control.FOCUS_NONE
+		pb.custom_minimum_size.y = 67
+		pb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var pm_id: String = pm_defs[pi][0]
+		pb.toggled.connect(func(on: bool) -> void:
+			if on:
+				_select_play_mode(pm_id))
+		pm_row.add_child(pb)
+		_play_mode_buttons.append(pb)
+	page.add_child(_caption_field("OYUN MODU", UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps), pm_row))
+
+	# Oyun türü: KARTLI / SÜRELİ + süre/kart
 	var mode_row := HBoxContainer.new()
 	mode_row.add_theme_constant_override("separation", 10)
 	var mode_group := ButtonGroup.new()
-	for mi in 2:
+	var mode_defs: Array[Array] = [["cards", "KARTLI"], ["timed", "SÜRELİ"]]
+	for mi in mode_defs.size():
 		var mb := Button.new()
-		mb.text = "KARTSIZ" if mi == 1 else "KARTLI"
+		mb.text = mode_defs[mi][1]
 		mb.toggle_mode = true
 		mb.button_group = mode_group
 		mb.focus_mode = Control.FOCUS_NONE
 		mb.custom_minimum_size.y = 67
 		mb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var mode_id: String = mode_defs[mi][0]
 		mb.toggled.connect(func(on: bool) -> void:
 			if on:
-				_select_mode("timed" if mi == 1 else "cards"))
+				_select_mode(mode_id))
 		mode_row.add_child(mb)
 		_mode_buttons.append(mb)
 	_minutes_spin = NUMBER_STEPPER.new()
@@ -996,7 +1050,7 @@ func _build_create_page() -> Control:
 	_cards_spin.control_height = 67.0
 	_cards_spin.value_changed.connect(func(v: int) -> void: _card_count = v)
 	mode_row.add_child(_cards_spin)
-	page.add_child(_caption_field("OYUN MODU", UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps), mode_row))
+	page.add_child(_caption_field("OYUN TÜRÜ", UITheme.label("", 18, UITheme.TEXT_DIM, UITheme.font_caps), mode_row))
 
 	# Özel güç anahtarı (Lobby ODA AYARLARI ile aynı; oda kurulduktan sonra da ⚙ ile değişir)
 	# Tek satır, iki sütun: SOL silah modu (bölümlü düğme), SAĞ özel güç anahtarı
@@ -1222,8 +1276,15 @@ func _build_room_row(code: String, room: Dictionary) -> Control:
 		chips.add_child(_room_chip("SADECE BIÇAK", UITheme.ACCENT))
 	if not bool(room.get("powers", true)):   # eski host'larda alan yok → açık say
 		chips.add_child(_room_chip("ÖZEL GÜÇ KAPALI", UITheme.TEXT_DIM))
-	if str(room.get("win_mode", "cards")) == "timed":
-		chips.add_child(_room_chip(tr("KARTSIZ · %d DK") % int(room.get("match_minutes", 10)), UITheme.TEXT_DIM))
+	var pm_chip := str(room.get("play_mode", "team"))
+	var wm_chip := str(room.get("win_mode", "cards"))
+	if pm_chip == "deathmatch" or wm_chip == "deathmatch":
+		var dm_timed := wm_chip in ["timed", "deathmatch"]
+		chips.add_child(_room_chip(
+			(tr("ÖLÜM MAÇI · %d DK") % int(room.get("match_minutes", 10))) if dm_timed else tr("ÖLÜM MAÇI · KARTLI"),
+			UITheme.ACCENT))
+	elif wm_chip == "timed":
+		chips.add_child(_room_chip(tr("SÜRELİ · %d DK") % int(room.get("match_minutes", 10)), UITheme.TEXT_DIM))
 	elif int(room.get("card_count", 1)) > 1:
 		chips.add_child(_room_chip(tr("%d KART") % int(room.get("card_count", 1)), UITheme.ACCENT))
 
@@ -1312,14 +1373,29 @@ func _caption_field(caption: String, info: Label, control: Control) -> Control:
 	return box
 
 
+func _select_play_mode(mode: String) -> void:
+	_play_mode = "deathmatch" if mode == "deathmatch" else "team"
+	var idx := 1 if _play_mode == "deathmatch" else 0
+	for i in _play_mode_buttons.size():
+		_play_mode_buttons[i].set_pressed_no_signal(i == idx)
+	_sync_cards_spin()
+
+
 func _select_mode(mode: String) -> void:
-	_win_mode = mode
-	var idx := 1 if mode == "timed" else 0
-	# set_pressed_no_signal ButtonGroup'taki diğer düğmeyi BIRAKMAZ → ikisi de basılı görünüyordu; ikisini açıkça ayarla
+	_win_mode = "timed" if mode == "timed" else "cards"
+	var idx := 1 if _win_mode == "timed" else 0
+	# set_pressed_no_signal ButtonGroup'taki diğer düğmeyi BIRAKMAZ → tümünü açıkça ayarla
 	for i in _mode_buttons.size():
 		_mode_buttons[i].set_pressed_no_signal(i == idx)
-	_minutes_spin.visible = mode == "timed"
-	_cards_spin.visible = mode != "timed"
+	_minutes_spin.visible = _win_mode == "timed"
+	_sync_cards_spin()
+
+
+func _sync_cards_spin() -> void:
+	_cards_spin.visible = _win_mode == "cards"
+	var locked_dm := _play_mode == "deathmatch"
+	_cards_spin.set_disabled(locked_dm)
+	_cards_spin.set_value_no_signal(1 if locked_dm else _card_count)
 
 
 ## Silah modu: "normal" / "knife". Özel güç her iki modda da seçilebilir (bıçakta özel silah doğmaz)
@@ -1364,14 +1440,20 @@ func _load_room_prefs() -> void:
 		NetworkManager.TEAM_SIZE_MIN, NetworkManager.TEAM_SIZE_MAX)
 	_powers_pref = bool(cfg.get_value("room", "powers", true))
 	_select_weapon(str(cfg.get_value("room", "weapon_mode", "normal")))
+	var pm: String = str(cfg.get_value("room", "play_mode", "team"))
 	var wm: String = str(cfg.get_value("room", "win_mode", "cards"))
-	_win_mode = wm if wm == "timed" else "cards"
+	if wm == "deathmatch":
+		pm = "deathmatch"
+		wm = "timed"
+	_play_mode = "deathmatch" if pm == "deathmatch" else "team"
+	_win_mode = "timed" if wm == "timed" else "cards"
 	_match_minutes = clampi(int(cfg.get_value("room", "match_minutes", NetworkManager.MATCH_MINUTES_DEFAULT)),
 		NetworkManager.MATCH_MINUTES_MIN, NetworkManager.MATCH_MINUTES_MAX)
 	_card_count = clampi(int(cfg.get_value("room", "card_count", 1)), NetworkManager.CARD_COUNT_MIN, NetworkManager.CARD_COUNT_MAX)
+	_select_play_mode(_play_mode)
 	_select_mode(_win_mode)
 	_minutes_spin.set_value_no_signal(_match_minutes)
-	_cards_spin.set_value_no_signal(_card_count)
+	_sync_cards_spin()
 	_update_size_options()
 
 
@@ -1382,6 +1464,7 @@ func _save_room_prefs(map_id: String, size: int) -> void:
 	cfg.set_value("room", "team_size", size)
 	cfg.set_value("room", "powers", _powers_pref)
 	cfg.set_value("room", "weapon_mode", _weapon_mode)
+	cfg.set_value("room", "play_mode", _play_mode)
 	cfg.set_value("room", "win_mode", _win_mode)
 	cfg.set_value("room", "match_minutes", _match_minutes)
 	cfg.set_value("room", "card_count", _card_count)
@@ -1585,7 +1668,8 @@ func _room_matches_filters(room: Dictionary) -> bool:
 	var f_cards: Array = _room_filters.get("cards", [])
 	if not f_time.is_empty() or not f_cards.is_empty():
 		var ok := false
-		if str(room.get("win_mode", "cards")) == "timed":
+		var wm_f := str(room.get("win_mode", "cards"))
+		if wm_f == "timed" or wm_f == "deathmatch":
 			var mins := int(room.get("match_minutes", 10))
 			for idx in f_time:
 				var r: Array = TIME_RANGES[int(idx)]
@@ -1777,7 +1861,7 @@ func _on_host_pressed() -> void:
 	_set_busy(true)
 	_set_status("Sunucu oluşturuluyor...", "busy")
 	NetworkManager.create_server(player_name, r_name, _password_input.text, {"map": map_id, "team_size": size, "powers": _powers_pref, "weapon_mode": _weapon_mode,
-		"win_mode": _win_mode, "match_minutes": _match_minutes, "card_count": _card_count})
+		"play_mode": _play_mode, "win_mode": _win_mode, "match_minutes": _match_minutes, "card_count": _card_count})
 
 
 func _on_code_text_changed(new_text: String) -> void:

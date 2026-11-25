@@ -11,6 +11,12 @@ var shooter_team_id: int = -1
 
 var max_distance: float = 60.0
 var _travel_distance: float = 0.0
+var _spawn_pos: Vector3 = Vector3.ZERO
+## Mesafe bazlı hasar (Sniper): one_shot_radius içinde tek atış, dışında falloff_end'e kadar min_damage_ratio'ya düşer
+var one_shot_radius: float = 0.0
+var one_shot_damage: float = 999.0
+var falloff_end: float = 0.0
+var min_damage_ratio: float = 1.0
 ## Görsel namlu hizası: mermi fiziği 1.8 m kapsülü aşmamak için daha alçakta doğabilir;
 ## tracer modeli ilk VISUAL_CONVERGE_DIST m boyunca tam namlu ağzından fizik çizgisine iner.
 const VISUAL_CONVERGE_DIST := 6.0
@@ -60,10 +66,36 @@ func initialize(
 	shooter_peer_id = peer_id
 	shooter_team_id = team_id
 	max_distance = p_max_distance
+	_spawn_pos = global_position
 	# Model (Mermi_OyunIci_Tracer_Scale.glb) ucu -Z'ye bakar → uçuş yönüne çevir
 	if direction.length_squared() > 0.0001:
 		global_basis = Basis.looking_at(direction, Vector3.UP)
 	_disable_shadows(self)
+
+
+## Mesafe bazlı hasar eğrisi (Sniper): p_one_shot_radius içinde tek atış, dışında p_falloff_end'e kadar düşer
+func configure_falloff(
+	p_one_shot_radius: float,
+	p_one_shot_damage: float,
+	p_falloff_end: float,
+	p_min_damage_ratio: float
+) -> void:
+	one_shot_radius = p_one_shot_radius
+	one_shot_damage = p_one_shot_damage
+	falloff_end = p_falloff_end
+	min_damage_ratio = p_min_damage_ratio
+
+
+## Yatay uçuş mesafesine göre uygulanacak hasar (çember içi tek atış, çember dışı mesafeyle azalan)
+func compute_damage_at(dist: float) -> float:
+	if is_special or one_shot_radius <= 0.0:
+		return damage
+	if dist <= one_shot_radius:
+		return maxf(one_shot_damage, damage)
+	if falloff_end <= one_shot_radius:
+		return damage
+	var t := clampf((dist - one_shot_radius) / (falloff_end - one_shot_radius), 0.0, 1.0)
+	return lerpf(damage, damage * min_damage_ratio, t)
 
 
 ## Görsel tracer'ı ilk karede tam silah namlu ağzına taşır; uçuşun ilk birkaç metresinde fizik çizgisine kavuşur.
@@ -110,7 +142,7 @@ func _physics_process(delta: float) -> void:
 			# Atanın kendisi / çömelmiş hedef: içinden geç, taramaya devam
 			# Özel mermi: çömelmiş hedefi GEÇMEZ (vurur), takım arkadaşının içinden geçer
 			var crouch_skip: bool = not is_special and col.has_method("is_crouching") and col.is_crouching()
-			var ally_skip: bool = is_special and col.get("team_id") == shooter_team_id
+			var ally_skip: bool = is_special and not GameManager.is_deathmatch() and col.get("team_id") == shooter_team_id
 			if col.get("peer_id") == shooter_peer_id or crouch_skip or ally_skip:
 				exclude.append((col as CollisionObject3D).get_rid())
 				continue
@@ -147,8 +179,8 @@ func _on_body_entered(body: Node) -> void:
 		if body.get("peer_id") == shooter_peer_id:
 			return
 
-		# Takım dostu ateş: mermiyi yok et, hasar verme (özel mermi: takım arkadaşından geçer, yok olmaz)
-		if body.get("team_id") == shooter_team_id:
+		# Takım dostu ateş: mermiyi yok et, hasar verme (Deathmatch'te herkes tek — dost ateşi engeli yok)
+		if not GameManager.is_deathmatch() and body.get("team_id") == shooter_team_id:
 			if is_special:
 				return
 			_done = true
@@ -179,10 +211,12 @@ func _on_body_entered(body: Node) -> void:
 			reporter = true
 		if reporter:
 			var source: int = DAMAGE_SPECIAL if is_special else 0   # 0 = Player.DAMAGE_BULLET
+			var hit_dist := Vector2(global_position.x - _spawn_pos.x, global_position.z - _spawn_pos.z).length()
+			var final_damage := compute_damage_at(hit_dist)
 			if NetworkManager.is_host():
-				body.take_damage(damage, shooter_peer_id, source)
+				body.take_damage(final_damage, shooter_peer_id, source)
 			else:
-				body.take_damage.rpc_id(1, damage, shooter_peer_id, source)
+				body.take_damage.rpc_id(1, final_damage, shooter_peer_id, source)
 
 	_done = true
 	queue_free()

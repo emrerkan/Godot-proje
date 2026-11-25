@@ -9,6 +9,7 @@ signal closed
 signal applied
 
 const SETTINGS := preload("res://scenes/settings/GameSettings.gd")
+const BENCHMARK := preload("res://scenes/benchmark/Benchmark.gd")
 const CARD_SIZE := Vector2(1367, 983)   # UITheme taban 1920×1080'e sığar
 
 ## true ise ana menüde sekme içeriği olarak gömülür (bulanık modal/çerçeve/✕ yok)
@@ -269,6 +270,25 @@ func _build_graphics(col: VBoxContainer) -> void:
 		func() -> float: return roundf(float(_draft["ui_scale"]) * 100.0),
 		func(v: float) -> void: _draft["ui_scale"] = roundf(v) / 100.0,
 		func(v: float) -> String: return "%d%%" % int(roundf(v)))
+
+	# Sistem testi yalnızca ana menü ayarlarında görünür (oyun içi ESC menüsünde kapalı)
+	if embedded:
+		_section(col, "SİSTEM TESTİ")
+		var bench_btn := Button.new()
+		bench_btn.text = "TESTİ BAŞLAT"
+		bench_btn.focus_mode = Control.FOCUS_NONE
+		bench_btn.custom_minimum_size = Vector2(250, 56)
+		bench_btn.pressed.connect(func() -> void:
+			if GameManager.state != GameManager.State.MENU:
+				return
+			bench_btn.disabled = true
+			if BENCHMARK.start_in_game(get_tree()) == null:
+				bench_btn.disabled = false)
+		_refreshers.append(func() -> void:
+			var running := get_tree() != null and get_tree().root.get_node_or_null("Benchmark") != null
+			bench_btn.disabled = running or GameManager.state != GameManager.State.MENU)
+		_row(col, "Performans testi (Benchmark)",
+			"En ağır haritada 4 kalite profilini ölçer (~3 dk · ESC ile iptal)", bench_btn)
 
 
 func _build_controls(col: VBoxContainer) -> void:

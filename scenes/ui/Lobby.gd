@@ -9,6 +9,7 @@ extends Control
 # Oda ayarları paneli
 var _map_option: OptionButton
 var _size_option: OptionButton
+var _play_mode_option: OptionButton
 var _mode_option: OptionButton
 const NUMBER_STEPPER := preload("res://scenes/ui/NumberStepper.gd")
 const TOGGLE_SWITCH := preload("res://scenes/ui/ToggleSwitch.gd")
@@ -432,12 +433,19 @@ func _build_settings_panel() -> Control:
 	_size_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
 	box.add_child(_setting_row("FORMAT", _size_option))
 
-	# Oyun modu: kartlı / kartsız (süreli) + süre
+	# Oyun modu: takımlı / ölüm maçı
+	_play_mode_option = OptionButton.new()
+	_play_mode_option.add_item(tr("TAKIMLI"))
+	_play_mode_option.add_item(tr("ÖLÜM MAÇI"))
+	_play_mode_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
+	box.add_child(_setting_row("OYUN MODU", _play_mode_option))
+
+	# Oyun türü: kartlı / süreli + süre/kart
 	_mode_option = OptionButton.new()
 	_mode_option.add_item(tr("KARTLI"))
-	_mode_option.add_item(tr("KARTSIZ (SÜRELİ)"))
+	_mode_option.add_item(tr("SÜRELİ"))
 	_mode_option.item_selected.connect(func(_i: int) -> void: _update_draft_ui())
-	box.add_child(_setting_row("OYUN MODU", _mode_option))
+	box.add_child(_setting_row("OYUN TÜRÜ", _mode_option))
 	_minutes_spin = NUMBER_STEPPER.new()
 	_minutes_spin.min_value = NetworkManager.MATCH_MINUTES_MIN
 	_minutes_spin.max_value = NetworkManager.MATCH_MINUTES_MAX
@@ -580,6 +588,8 @@ func _load_draft() -> void:
 	_map_option.disabled = not is_host
 	_size_option.disabled = not is_host
 	_powers_toggle.disabled = not is_host
+	_play_mode_option.select(1 if NetworkManager.is_deathmatch() else 0)
+	_play_mode_option.disabled = not is_host
 	_mode_option.select(1 if NetworkManager.get_win_mode() == "timed" else 0)
 	_minutes_spin.set_value_no_signal(NetworkManager.get_match_minutes())
 	_mode_option.disabled = not is_host
@@ -616,19 +626,26 @@ func _update_draft_ui() -> void:
 			overflow += maxi(NetworkManager.get_team_count(tid) - new_size, 0)
 		if overflow > 0:
 			changes.append(tr("%d oyuncu takımından çıkar") % overflow)
+	var cur_pm: String = NetworkManager.get_play_mode()
+	var new_pm := "deathmatch" if _play_mode_option.selected == 1 else "team"
+	if new_pm != cur_pm:
+		changes.append(tr("mod → ölüm maçı") if new_pm == "deathmatch" else tr("mod → takımlı"))
 	var cur_mode: String = NetworkManager.get_win_mode()
 	var new_mode := "timed" if _mode_option.selected == 1 else "cards"
 	var new_minutes: int = _minutes_spin.get_value()
 	_minutes_row.visible = new_mode == "timed"
-	_cards_row.visible = new_mode != "timed"
+	_cards_row.visible = new_mode == "cards"
+	_cards_option.set_disabled((not NetworkManager.is_host()) or new_pm == "deathmatch")
+	if new_pm == "deathmatch":
+		_cards_option.set_value_no_signal(1)
 	var new_cards: int = _cards_option.get_value()
-	if new_mode == "cards" and new_cards != NetworkManager.get_card_count():
+	if new_mode == "cards" and new_pm != "deathmatch" and new_cards != NetworkManager.get_card_count():
 		changes.append(tr("kart sayısı → %d") % new_cards)
 	if new_mode != cur_mode:
 		if new_mode == "timed":
-			changes.append(tr("mod → kartsız, %d dk") % new_minutes)
+			changes.append(tr("tür → süreli, %d dk") % new_minutes)
 		else:
-			changes.append(tr("mod → kartlı"))
+			changes.append(tr("tür → kartlı"))
 	elif new_mode == "timed" and new_minutes != NetworkManager.get_match_minutes():
 		changes.append(tr("süre → %d dk") % new_minutes)
 	var new_weapon := "knife" if _weapon_option.selected == 1 else "normal"
@@ -667,6 +684,9 @@ func _on_save_settings() -> void:
 	var new_size := NetworkManager.TEAM_SIZE_MIN + _size_option.selected
 	if new_size != NetworkManager.get_team_size():
 		NetworkManager.set_team_size(new_size)
+	var new_pm := "deathmatch" if _play_mode_option.selected == 1 else "team"
+	if new_pm != NetworkManager.get_play_mode():
+		NetworkManager.set_play_mode(new_pm)
 	var new_mode := "timed" if _mode_option.selected == 1 else "cards"
 	if new_mode != NetworkManager.get_win_mode():
 		NetworkManager.set_win_mode(new_mode)
@@ -674,7 +694,7 @@ func _on_save_settings() -> void:
 	if new_mode == "timed" and new_minutes != NetworkManager.get_match_minutes():
 		NetworkManager.set_match_minutes(new_minutes)
 	var new_cards: int = _cards_option.get_value()
-	if new_mode == "cards" and new_cards != NetworkManager.get_card_count():
+	if new_mode == "cards" and new_pm != "deathmatch" and new_cards != NetworkManager.get_card_count():
 		NetworkManager.set_card_count(new_cards)
 	var new_weapon := "knife" if _weapon_option.selected == 1 else "normal"
 	if new_weapon != NetworkManager.get_weapon_mode():
@@ -709,8 +729,14 @@ func _refresh_settings() -> void:
 		("  ·  " + tr("🔒 ŞİFRELİ")) if has_pw else "",
 		("  ·  " + tr("SADECE BIÇAK")) if NetworkManager.get_weapon_mode() == "knife" else "",
 		("  ·  " + tr("ÖZEL GÜÇ KAPALI")) if not _current_powers() else ""]
-	if NetworkManager.get_win_mode() == "timed":
-		_settings_summary.text += "  ·  " + tr("KARTSIZ · %d DK") % NetworkManager.get_match_minutes()
+	var wm_sum := NetworkManager.get_win_mode()
+	if NetworkManager.is_deathmatch():
+		if wm_sum == "timed":
+			_settings_summary.text += "  ·  " + tr("ÖLÜM MAÇI · %d DK") % NetworkManager.get_match_minutes()
+		else:
+			_settings_summary.text += "  ·  " + tr("ÖLÜM MAÇI · KARTLI")
+	elif wm_sum == "timed":
+		_settings_summary.text += "  ·  " + tr("SÜRELİ · %d DK") % NetworkManager.get_match_minutes()
 	elif NetworkManager.get_card_count() > 1:
 		_settings_summary.text += "  ·  " + tr("%d KART") % NetworkManager.get_card_count()
 	if NetworkManager.get_bot_difficulty() != NetworkManager.BOT_DIFFICULTY_DEFAULT:
@@ -1012,7 +1038,10 @@ func _refresh_player_list() -> void:
 	# Kontrol listesi
 	var total := NetworkManager.players.size()
 	var balanced := NetworkManager._are_teams_balanced()
-	_set_check(_check_balance, balanced, "Takımlar dengeli", "En az 2 takımda eşit oyuncu gerekli")
+	if NetworkManager.is_deathmatch():
+		_set_check(_check_balance, balanced, "Oyuncu sayısı yeterli", "En az 2 oyuncu gerekli")
+	else:
+		_set_check(_check_balance, balanced, "Takımlar dengeli", "En az 2 takımda eşit oyuncu gerekli")
 	_set_check(_check_ready, ready_count == total and total > 0,
 		tr("Herkes hazır  (%d/%d)") % [ready_count, total], tr("Hazır olanlar  %d/%d") % [ready_count, total])
 	_player_count_lbl.text = "%d / %d" % [total, NetworkManager.get_max_players()]

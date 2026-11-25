@@ -186,7 +186,10 @@ func _update_traps(delta: float) -> void:
 				var pl: Variant = GameManager.active_players.get(pid)
 				if pl == null or not is_instance_valid(pl) or pl.is_dead or pl.is_trapped:
 					continue
-				if _team_of(pid) == trap.team_id:
+				if GameManager.is_deathmatch():
+					if pid == trap.owner_peer:
+						continue  # Deathmatch'te sadece koyan kişi tetiklemez
+				elif _team_of(pid) == trap.team_id:
 					continue  # kendi takımı tetikleyemez
 				if (pl as Node3D).global_position.distance_to(pos) <= trap.trigger_radius:
 					_trap_trigger_rpc.rpc(id, pid)
@@ -208,15 +211,16 @@ func _update_traps(delta: float) -> void:
 				rescuer = trap.trapped_peer
 				trap.rescue_ratio = minf(trap.rescue_ratio + delta / TRAP_SELF_RESCUE_TIME, 1.0)
 			else:
-				for pid: int in GameManager.active_players.keys():
-					if pid == trap.trapped_peer:
-						continue
-					var pl: Variant = GameManager.active_players.get(pid)
-					if pl == null or not is_instance_valid(pl) or pl.is_dead or _team_of(pid) != trapped_team:
-						continue
-					if (pl as Node3D).global_position.distance_to(pos) <= TRAP_RESCUE_RADIUS:
-						rescuer = pid
-						break
+				if not GameManager.is_deathmatch():
+					for pid: int in GameManager.active_players.keys():
+						if pid == trap.trapped_peer:
+							continue
+						var pl: Variant = GameManager.active_players.get(pid)
+						if pl == null or not is_instance_valid(pl) or pl.is_dead or _team_of(pid) != trapped_team:
+							continue
+						if (pl as Node3D).global_position.distance_to(pos) <= TRAP_RESCUE_RADIUS:
+							rescuer = pid
+							break
 				if rescuer != -1:
 					trap.rescue_ratio = minf(trap.rescue_ratio + delta / trap.rescue_time, 1.0)
 				else:
@@ -707,7 +711,7 @@ func _request_special_fired() -> void:
 ## "Grup Şifası" iyileştirilenin yakınındaki takım arkadaşlarına oranında verir.
 func _use_heal(peer: int, team: int, player: Node, aim: Vector3, m: Dictionary) -> void:
 	var target: Node = player
-	if player.character_type == "Medic":
+	if player.character_type == "Medic" and not GameManager.is_deathmatch():
 		target = _medic_heal_target(peer, team, player as Node3D, aim, m)
 	var amount: float = m["heal_amount"]
 	if target.health < target.max_health * HEAL_CRITICAL_RATIO:
@@ -715,7 +719,7 @@ func _use_heal(peer: int, team: int, player: Node, aim: Vector3, m: Dictionary) 
 	_heal(target, amount)
 	if float(m["heal_regen"]) > 0.0:
 		_heal_over_time(target, float(m["heal_regen"]))
-	if float(m["heal_group"]) > 0.0:
+	if float(m["heal_group"]) > 0.0 and not GameManager.is_deathmatch():
 		for pid: int in GameManager.active_players:
 			var pl: Variant = GameManager.active_players[pid]
 			if pl == null or not is_instance_valid(pl) or pl == target or pl.is_dead or _team_of(pid) != team:
@@ -821,7 +825,7 @@ func _detonate_later(peer: int, team: int, pos: Vector3) -> void:
 		var pl: Variant = GameManager.active_players.get(pid)
 		if pl == null or not is_instance_valid(pl) or pl.is_dead:
 			continue
-		if pid == peer or _team_of(pid) == team:
+		if pid == peer or (not GameManager.is_deathmatch() and _team_of(pid) == team):
 			continue  # dost ateşi / kendine hasar yok
 		var target_pos := (pl as Node3D).global_position + Vector3(0, 0.9, 0)
 		var d := center.distance_to(target_pos)
@@ -927,14 +931,21 @@ func _on_bomb_exploded(pos: Vector3, flash: bool, thrower: int, thrower_team: in
 	var facing := 1.0 if to_flash.length() < 0.5 else (Vector3(fwd.x, 0, fwd.z).normalized().dot(to_flash.normalized()) + 1.0) * 0.5
 	var strength := pow(1.0 - d / flash_radius, 0.6) * lerpf(0.35, 1.0, facing) * float(m["flash_strength"])
 	if NetworkManager.get_local_id() == thrower:
+		if GameManager.is_deathmatch():
+			return  # Deathmatch'te flaş atanı etkilemez
 		strength *= float(m["flash_self"])
-	elif _local_team() == thrower_team:
+	elif not GameManager.is_deathmatch() and _local_team() == thrower_team:
 		strength *= float(m["flash_team"])
 	flashed.emit(strength)  # "Derin Körlük" 1.0'ı aşabilir → HUD körlüğü daha uzun tutar
 
 
 @rpc("authority", "call_local", "reliable")
 func _reveal_rpc(team: int, kind: String, duration: float, user_peer: int) -> void:
+	if GameManager.is_deathmatch():
+		if user_peer == NetworkManager.get_local_id():
+			reveal_until[kind] = Time.get_ticks_msec() / 1000.0 + duration
+			reveal_started.emit(kind, duration, true)
+		return
 	var local_team := _local_team()
 	var user_name: String = NetworkManager.players.get(user_peer, {}).get("name", "?")
 	if team == local_team:
@@ -1009,11 +1020,14 @@ func _trap_trigger_rpc(id: int, trapped_peer: int) -> void:
 	if me == trapped_peer:
 		# Slotta Tuzak Çözücü varsa Q ipucu (inventory tüm peer'larda aynı — _set_item_rpc herkese)
 		notice.emit(tr("TUZAĞA YAKALANDIN!"), UITheme.DANGER)
-		tip.emit("Tuzak çözücüyü kullan" if get_item(me) == Type.TRAP_BREAKER else "Takım arkadaşın seni kurtarabilir")
-	elif _team_of(trapped_peer) == _local_team():
+		if get_item(me) == Type.TRAP_BREAKER:
+			tip.emit("Tuzak çözücüyü kullan")
+		elif not GameManager.is_deathmatch():
+			tip.emit("Takım arkadaşın seni kurtarabilir")
+	elif not GameManager.is_deathmatch() and _team_of(trapped_peer) == _local_team():
 		notice.emit(tr("%s TUZAĞA YAKALANDI!") % trapped_name, UITheme.DANGER)
 		tip.emit("Takım arkadaşını kurtar")
-	elif _team_of(me) == trap.team_id:
+	elif (GameManager.is_deathmatch() and me == trap.owner_peer) or (not GameManager.is_deathmatch() and _team_of(me) == trap.team_id):
 		notice.emit(tr("Tuzağınız %s oyuncusunu yakaladı!") % trapped_name, col)
 
 
@@ -1046,10 +1060,10 @@ func _trap_freed_rpc(id: int, rescuer_peer: int) -> void:
 		var breaker_col: Color = INFO[Type.TRAP_BREAKER]["color"]
 		if me == trapped_peer:
 			notice.emit(tr("TUZAKTAN KURTULDUN"), breaker_col)
-		elif _team_of(trapped_peer) == _local_team():
+		elif not GameManager.is_deathmatch() and _team_of(trapped_peer) == _local_team():
 			notice.emit(tr("%s tuzaktan kurtuldu") % trapped_name, breaker_col)
 	elif me == rescuer_peer:
 		GameManager.gain_xp(GameManager.XP_TRAP_RESCUE, "Takım arkadaşı kurtarıldı")
 		notice.emit(tr("%s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))
-	elif _team_of(trapped_peer) == _local_team():
+	elif not GameManager.is_deathmatch() and _team_of(trapped_peer) == _local_team():
 		notice.emit(tr("%s KURTARILDI") % trapped_name, Color(INFO[Type.TRAP]["color"]))

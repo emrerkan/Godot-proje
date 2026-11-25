@@ -8,8 +8,6 @@ extends SkeletonModifier3D
 const GRIP_BONE := "hand_r"
 const SUPPORT_BONE := "hand_l"
 const VALID_HAND_DIST := Vector2(0.12, 0.65)  # bu aralıktaysa iki elle tutuş geçerli
-## Kabzanın el kemiğine göre küçük ofseti (avuç içi), iskelet uzayında
-const GRIP_OFFSET := Vector3(0.0, -0.03, 0.0)
 
 var rifle: Node3D = null
 ## Nişan yönünü veren node (Player root, -Z = nişan). Atanırsa tüfeğin nişandan yatay sapması ölçülür.
@@ -20,6 +18,10 @@ var aim_error := 0.0
 var aim_valid := false   # bu kare iki elle geçerli tutuş + ölçüm var mı
 var _grip := -1
 var _support := -1
+var _mid1_r := -1
+var _mid2_r := -1
+var _mid1_l := -1
+var _mid2_l := -1
 var _rel_to_hand := Transform3D.IDENTITY   # son geçerli tutuşta tüfeğin sağ ele göre konumu
 var _has_rel := false
 
@@ -35,8 +37,23 @@ func _ready() -> void:
 	if sk:
 		_grip = sk.find_bone(GRIP_BONE)
 		_support = sk.find_bone(SUPPORT_BONE)
-		_middle = sk.find_bone("middle_01_r")
+		_mid1_r = sk.find_bone("middle_01_r")
+		_mid2_r = sk.find_bone("middle_02_r")
+		_mid1_l = sk.find_bone("middle_01_l")
+		_mid2_l = sk.find_bone("middle_02_l")
+		_middle = _mid1_r
 		_thumb = sk.find_bone("thumb_02_r")
+
+
+## Avuç içi merkezi: bilek (hand_*) yerine orta parmak köklerine kaydırarak tüfeği gerçek kavrama noktasına oturtur.
+func _palm_center(sk: Skeleton3D, hand_id: int, mid1_id: int, mid2_id: int) -> Vector3:
+	var h := sk.get_bone_global_pose(hand_id).origin
+	if mid1_id < 0:
+		return h
+	var palm := h.lerp(sk.get_bone_global_pose(mid1_id).origin, 0.55)
+	if mid2_id >= 0:
+		palm = palm.lerp(sk.get_bone_global_pose(mid2_id).origin, 0.35)
+	return palm
 
 
 ## Sadece bıçak modu: tüfek hep gizli, bıçak hep sağ elde; aim_error 0 (nişan düzeltmesi yok)
@@ -70,19 +87,24 @@ func _process_modification_with_delta(delta: float) -> void:
 			aim_valid = false
 			return
 	var hand := sk.get_bone_global_pose(_grip)
-	var support := sk.get_bone_global_pose(_support)
-	var grip_pos := hand.origin + GRIP_OFFSET
-	var to_support := support.origin - grip_pos
+	var grip_pos := _palm_center(sk, _grip, _mid1_r, _mid2_r)
+	var support_pos := _palm_center(sk, _support, _mid1_l, _mid2_l)
+	var to_support := support_pos - grip_pos
 	var d := to_support.length()
 	var xf: Transform3D
 	aim_valid = false
 	if d > VALID_HAND_DIST.x and d < VALID_HAND_DIST.y:
-		# -Z (namlu) sol ele doğru, yukarı iskelet +Y'ye yakın
-		var fwd := to_support / d
-		var up := Vector3.UP
-		if absf(fwd.dot(up)) > 0.95:
-			up = Vector3.FORWARD
-		xf = Transform3D(Basis.looking_at(fwd, up), grip_pos)
+		# Kabza (0, 0, 0) sağ avuçta, el kundağı (0, fg_y, -d*cos_a) tam sol avuç içinde olacak şekilde kapalı form hizalama
+		var dir := to_support / d
+		var up_hint := Vector3.UP if absf(dir.dot(Vector3.UP)) <= 0.95 else Vector3.FORWARD
+		var x_axis := dir.cross(up_hint).normalized()
+		var chord_up := x_axis.cross(dir)
+		var fg_y: float = float(rifle.get_meta("foregrip_y", 0.06))
+		var sin_a := clampf(fg_y / d, -0.75, 0.75)
+		var cos_a := sqrt(maxf(1.0 - sin_a * sin_a, 0.0))
+		var fwd := dir * cos_a - chord_up * sin_a
+		var y_axis := dir * sin_a + chord_up * cos_a
+		xf = Transform3D(Basis(x_axis, y_axis, -fwd), grip_pos)
 		_rel_to_hand = hand.affine_inverse() * xf
 		_has_rel = true
 		if aim_node:
@@ -126,15 +148,20 @@ func _place_knife(sk: Skeleton3D) -> void:
 ## Dokular içe aktarmada 1024'e sınırlı (4K geliyordu). Tripo GLB'lerde ORM: G=pürüzlülük, B=metal (glTF ile aynı) → importer bağlar.
 const WEAPON_MODELS := {
 	"Medic": {"path": "res://asset model/silahlar/medic_silah.glb", "fwd": Vector3(0, 0.007, 1),
-		"grip": Vector3(0, -0.046, -0.225), "tip": Vector3(0.001, 0.097, 0.491), "tb": 0.986, "length": 0.92, "eject_fwd": 0.10},   # Medic gövdesinin kolu uzun
+		"grip": Vector3(0, -0.046, -0.225), "tip": Vector3(0.001, 0.097, 0.491), "tb": 0.986, "length": 0.88,
+		"eject_fwd": 0.10, "foregrip_y": 0.090, "grip_shift": Vector3(0.0, -0.015, -0.045)},
 	"Runner": {"path": "res://asset model/silahlar/mp5.glb", "fwd": Vector3(0, 0.259, 0.966),
-		"grip": Vector3(0, -0.126, -0.172), "tip": Vector3(0.002, 0.191, 0.493), "tb": 1.022, "length": 0.80, "eject_fwd": 0.09},   # gerçeği ~0.7; tüfek animasyonunda sol el boşta kalıyordu
+		"grip": Vector3(0, -0.126, -0.172), "tip": Vector3(0.002, 0.191, 0.493), "tb": 1.022, "length": 0.78,
+		"eject_fwd": 0.09, "foregrip_y": 0.072, "grip_shift": Vector3(0.0, -0.010, -0.025)},
 	"Sniper": {"path": "res://asset model/silahlar/sniper_tufek.glb", "fwd": Vector3(-0.331, 0.666, 0.965),
-		"grip": Vector3(0.061, -0.184, -0.218), "tip": Vector3(-0.179, 0.380, 0.483), "tb": 1.218, "length": 1.15, "eject_fwd": 0.12},
+		"grip": Vector3(0.061, -0.184, -0.218), "tip": Vector3(-0.179, 0.380, 0.483), "tb": 1.218, "length": 1.00,
+		"eject_fwd": 0.12, "foregrip_y": 0.060, "grip_shift": Vector3(0.0, -0.025, -0.140)},
 	"Tank": {"path": "res://asset model/silahlar/tank_tufek.glb", "fwd": Vector3(0, 0, 1),
-		"grip": Vector3(0, 0.0, -0.179), "tip": Vector3(-0.001, 0.073, 0.494), "tb": 0.989, "length": 1.02, "eject_fwd": 0.10},
+		"grip": Vector3(0, 0.0, -0.179), "tip": Vector3(-0.001, 0.073, 0.494), "tb": 0.989, "length": 1.00,
+		"eject_fwd": 0.10, "foregrip_y": 0.050, "grip_shift": Vector3(0.0, -0.010, -0.020)},
 	"Visioner": {"path": "res://asset model/karakterler/Visioner/m4a1.fbx", "fwd": Vector3(0, 0.005, 1),
-		"grip": Vector3(0, -0.028, -0.149), "tip": Vector3(0, 0.077, 0.493), "tb": 0.987, "length": 0.86, "eject_fwd": 0.10,
+		"grip": Vector3(0, -0.028, -0.149), "tip": Vector3(0, 0.077, 0.493), "tb": 0.987, "length": 0.84,
+		"eject_fwd": 0.10, "foregrip_y": 0.068, "grip_shift": Vector3(0.0, -0.015, -0.030),
 		# FBX importer pürüzlülük/metal dokularını bağlamadı
 		"rough_tex": "res://asset model/karakterler/Visioner/m4a1_2.png", "metal_tex": "res://asset model/karakterler/Visioner/m4a1_3.png"},
 }
@@ -157,14 +184,16 @@ static func _build_from_model(spec: Dictionary, node_name: String) -> Node3D:
 	var model: Node3D = packed.instantiate()
 	var s: float = float(spec["length"]) / float(spec["tb"])
 	var b := Basis.looking_at((spec["fwd"] as Vector3).normalized(), Vector3.UP).inverse().scaled(Vector3.ONE * s)
-	model.transform = Transform3D(b, -(b * (spec["grip"] as Vector3)))
+	var shift: Vector3 = spec.get("grip_shift", Vector3.ZERO)
+	model.transform = Transform3D(b, -(b * (spec["grip"] as Vector3)) + shift)
 	root.add_child(model)
 	if spec.has("rough_tex"):
 		_bind_extra_textures(model, spec)
 	var tip := Marker3D.new()
 	tip.name = "Muzzle"
-	tip.position = b * ((spec["tip"] as Vector3) - (spec["grip"] as Vector3))
+	tip.position = b * ((spec["tip"] as Vector3) - (spec["grip"] as Vector3)) + shift
 	root.add_child(tip)
+	root.set_meta("foregrip_y", float(spec.get("foregrip_y", clampf(tip.position.y * 0.65, 0.03, 0.09))))
 	if spec.has("eject_fwd"):
 		root.add_child(_make_eject_marker(tip.position, float(spec["eject_fwd"])))
 	return root

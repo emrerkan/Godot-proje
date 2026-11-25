@@ -382,6 +382,7 @@ func _perceive(live: bool) -> void:
 	var facing := _flat(-_body.global_transform.basis.z, _aim_dir)
 	var cone_cos := _d_cone_cos
 	var my_team: int = int(_pl.team_id)
+	var is_dm: bool = GameManager.is_deathmatch()
 
 	var best = null
 	var best_score := INF
@@ -390,7 +391,7 @@ func _perceive(live: bool) -> void:
 		var other = GameManager.active_players[pid]
 		if other == null or not is_instance_valid(other) or other == _body:
 			continue
-		if int(other.team_id) == my_team or bool(other.is_dead) or bool(other.is_invisible):
+		if (not is_dm and int(other.team_id) == my_team) or bool(other.is_dead) or bool(other.is_invisible):
 			continue
 		var opos: Vector3 = (other as Node3D).global_position
 		var d := pos.distance_to(opos)
@@ -411,7 +412,7 @@ func _perceive(live: bool) -> void:
 			if col == other:
 				visible = true
 				clear = true
-			elif col is CharacterBody3D and "team_id" in col and int(col.get("team_id")) == my_team:
+			elif not is_dm and col is CharacterBody3D and "team_id" in col and int(col.get("team_id")) == my_team:
 				visible = true   # görüyor ama arada takım arkadaşı var → ateş yok
 		if not visible:
 			# Görüş yok ama yakın + çömelmiyor → adım sesi: o yöne dön
@@ -565,15 +566,16 @@ func _decide(live: bool) -> Vector3:
 	var total := GameManager.get_card_total()
 	var goal := Vector3.INF
 	if total > 0:
-		var team_cards := GameManager.get_team_cards(my_team)
+		var is_dm := GameManager.is_deathmatch()
+		var owned_cards := GameManager.get_cards_held(my_id) if is_dm else GameManager.get_team_cards(my_team)
 		var i_carry := GameManager.is_card_carrier(my_id)
 		var door: Variant = GameManager.door_instance
-		if team_cards >= total:
+		if owned_cards >= total:
 			if i_carry and door != null and is_instance_valid(door):
 				# Kapı konumunu bilmiyorsa KEŞFEDER (görüş menzili); ipucu varsa o bölgeye, yoksa dolaşarak arar
 				_state = BotState.CARRY
 				goal = _carry_goal(pos)
-			else:
+			elif not is_dm:
 				var carrier := _nearest_team_carrier(pos, my_team, my_id)
 				if carrier != null:
 					_state = BotState.ESCORT

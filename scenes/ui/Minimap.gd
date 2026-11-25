@@ -106,7 +106,7 @@ func _draw() -> void:
 		var data: Dictionary = NetworkManager.players.get(peer_id, {})
 		var team_id: int = data.get("team_id", -1)
 		var is_self := (peer_id == local_id)
-		var is_teammate := (team_id == local_team)
+		var is_teammate := (not GameManager.is_deathmatch()) and (team_id == local_team)
 
 		if not (is_self or is_teammate):
 			continue
@@ -187,7 +187,10 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			if _is_hidden(pl as Node):
 				continue  # görünmez rakip
 			var tid: int = NetworkManager.players.get(pid, {}).get("team_id", -1)
-			if tid == local_team:
+			if GameManager.is_deathmatch():
+				if pid == NetworkManager.get_local_id():
+					continue
+			elif tid == local_team:
 				continue
 			var ep := _w2m((pl as Node3D).global_position)
 			draw_circle(ep, 6.7, TeamManager.get_color(tid))
@@ -231,9 +234,13 @@ func _w2m(world_pos: Vector3) -> Vector2:
 
 func _on_card_picked_up(carrier_peer_id: int, carrier_pos: Vector3, carrier_team_id: int) -> void:
 	var local_id := NetworkManager.get_local_id()
-	var local_team: int = NetworkManager.players.get(local_id, {}).get("team_id", -1)
-	if carrier_team_id == local_team:
-		return
+	if GameManager.is_deathmatch():
+		if carrier_peer_id == local_id:
+			return
+	else:
+		var local_team: int = NetworkManager.players.get(local_id, {}).get("team_id", -1)
+		if carrier_team_id == local_team:
+			return
 	_alert_pos   = carrier_pos
 	_alert_color = TeamManager.get_color(carrier_team_id)
 	_alert_timer = 3.0

@@ -37,6 +37,9 @@ const HALO_ENERGY := 1.4
 const HALO_RANGE := 4.5
 const HALO_HEIGHT := 1.6
 const SELF_RIM_SHADER: Shader = preload("res://scenes/player/SelfVisibility.gdshader")
+const SNIPER_RANGE_SHADER: Shader = preload("res://scenes/player/spatial_player_sniper_range.gdshader")
+const SNIPER_RANGE_RING_UV_DIAMETER := 0.96   # spatial_player_sniper_range.gdshader RING_RADIUS=0.48 → 0.96
+var _sniper_range_ring: MeshInstance3D = null
 ## Uzak oyuncu ışık LOD'u (20 oyunculu maçta gölge atlası taşıyordu → ani FPS düşüşü). Işık HERKESE görünür kalır;
 ## sadece GÖLGE kırpılır. Yerel oyuncunun feneri + halesi hep gölgeli. Uzaklarda: motor tarafı mesafe sönümü
 ## (statik ayar) + `LIGHT_LOD_INTERVAL` aralıkla kameraya en yakın `REMOTE_SHADOW_SPOTS` uzak fener gölgeli.
@@ -64,7 +67,7 @@ const WEAPON_CONFIGS: Dictionary = {
 	"Tank":     {"damage": 22.0,  "fire_rate": 0.10, "max_ammo": 30, "reload_time": 2.0, "spread_degrees": 3.0, "bullet_speed": 32.0, "is_semi_auto": false, "max_distance": 45.0},
 	"Visioner": {"damage": 18.0,  "fire_rate": 0.09, "max_ammo": 28, "reload_time": 1.7, "spread_degrees": 2.5, "bullet_speed": 32.0, "is_semi_auto": false, "max_distance": 35.0},
 	"Runner":   {"damage": 11.0,  "fire_rate": 0.06, "max_ammo": 40, "reload_time": 1.2, "spread_degrees": 4.5, "bullet_speed": 30.0, "is_semi_auto": false, "max_distance": 25.0},
-	"Sniper":   {"damage": 120.0, "fire_rate": 1.3,  "max_ammo": 5,  "reload_time": 2.5, "spread_degrees": 0.0, "bullet_speed": 80.0, "is_semi_auto": true,  "max_distance": 400.0, "pierce_walls": true},  # fire_rate 1.3: sürgü — seri ateş yok
+	"Sniper":   {"damage": 120.0, "fire_rate": 1.3,  "max_ammo": 5,  "reload_time": 2.5, "spread_degrees": 0.0, "bullet_speed": 80.0, "is_semi_auto": true,  "max_distance": 400.0, "pierce_walls": true, "one_shot_radius": 18.0, "one_shot_damage": 999.0, "falloff_end": 80.0, "min_damage_ratio": 0.20},  # çember içi (18 m) tek atış, dışı 80 m'ye kadar %20 hasara düşer
 	"Medic":    {"damage": 45.0,  "fire_rate": 0.4,  "max_ammo": 7,  "reload_time": 2.0, "spread_degrees": 1.5, "bullet_speed": 35.0, "is_semi_auto": true,  "max_distance": 55.0},
 }
 
@@ -767,6 +770,7 @@ func _equip_default_weapon() -> void:
 	cfg["reload_time"] = float(cfg["reload_time"]) * float(_upgrade_mult["reload"])
 	cfg["fire_rate"] = float(cfg["fire_rate"]) * float(_upgrade_mult["fire_rate"])
 	current_weapon.configure(cfg)
+	_setup_sniper_range_ring(float(cfg.get("one_shot_radius", 0.0)))
 	_add_render_layer(current_weapon, BODY_LIGHT_LAYER_BIT)
 	_disable_shadow_casting(current_weapon)
 	# Üst gövde taban pozu: tüfek nişanda
@@ -774,6 +778,28 @@ func _equip_default_weapon() -> void:
 	var base_anim: StringName = ANIM_IDLE if is_knife_mode() else ANIM_AIM
 	if _upper and _anim_player and _anim_player.has_animation(base_anim):
 		_upper.set_base(_anim_player.get_animation(base_anim))
+
+
+## Yerel Sniper oyuncusu için tek-vuruş çemberini yerde ince bir halka olarak gösterir (rakipler görmez).
+func _setup_sniper_range_ring(radius: float) -> void:
+	if _sniper_range_ring != null and is_instance_valid(_sniper_range_ring):
+		_sniper_range_ring.queue_free()
+		_sniper_range_ring = null
+	if not is_local or radius <= 0.0 or is_knife_mode() or DisplayServer.get_name() == "headless":
+		return
+	var ring := MeshInstance3D.new()
+	ring.name = "SniperRangeRing"
+	var pm := PlaneMesh.new()
+	var d := radius * 2.0 / SNIPER_RANGE_RING_UV_DIAMETER
+	pm.size = Vector2(d, d)
+	ring.mesh = pm
+	ring.position.y = 0.06
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = SNIPER_RANGE_SHADER
+	ring.material_override = mat
+	add_child(ring)
+	_sniper_range_ring = ring
 
 
 # ─────────────────────────────────────────────
@@ -967,6 +993,8 @@ func set_trapped(v: bool) -> void:
 func is_hidden_from_local() -> bool:
 	if not is_invisible or is_local:
 		return false
+	if GameManager.is_deathmatch():
+		return true
 	var local_team: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
 	return local_team < 0 or local_team != team_id
 
@@ -1464,7 +1492,7 @@ func _find_stab_target() -> Node:
 	var best_d := INF
 	for pid: int in GameManager.active_players:
 		var other: Variant = GameManager.active_players[pid]
-		if pid == peer_id or other == null or not is_instance_valid(other) or other.is_dead or other.team_id == team_id:
+		if pid == peer_id or other == null or not is_instance_valid(other) or other.is_dead or GameManager.are_allies(peer_id, pid):
 			continue
 		var to: Vector3 = (other as Node3D).global_position - global_position
 		var d := Vector2(to.x, to.z).length()
@@ -1498,7 +1526,7 @@ func _request_stab(target_peer: int) -> void:
 	if (sender != 1 if is_bot else sender != peer_id) or is_dead:
 		return
 	var target: Variant = GameManager.active_players.get(target_peer)
-	if target == null or not is_instance_valid(target) or target.is_dead or target.team_id == team_id:
+	if target == null or not is_instance_valid(target) or target.is_dead or GameManager.are_allies(peer_id, target_peer):
 		return
 	var to: Vector3 = (target as Node3D).global_position - global_position
 	if Vector2(to.x, to.z).length() > STAB_RANGE + STAB_RANGE_TOLERANCE or _wall_between(target as Node3D):
@@ -1892,6 +1920,8 @@ func _apply_death() -> void:
 	collision_shape.set_deferred("disabled", true)
 	if current_weapon:
 		current_weapon.hide()
+	if _sniper_range_ring:
+		_sniper_range_ring.visible = false
 	card_indicator.visible = false
 	name_label.visible = false
 
@@ -1946,6 +1976,8 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 	if current_weapon:
 		current_weapon.show()
 		current_weapon.refill_ammo()
+	if _sniper_range_ring:
+		_sniper_range_ring.visible = true
 
 
 # ─────────────────────────────────────────────
@@ -1958,10 +1990,9 @@ func pick_up_card() -> void:
 		_card_base_text = card_indicator.text
 	# 2+ kartta "×n" eklenir
 	card_indicator.text = _card_base_text if cards_held < 2 else "%s ×%d" % [_card_base_text, cards_held]
-	# Sadece taşıyıcının kendi takımı (ve kendisi) görür; görünmezken gösterge de gizli
-	var local_id  := NetworkManager.get_local_id()
-	var local_team: int = NetworkManager.players.get(local_id, {}).get("team_id", -1)
-	card_indicator.visible = (local_team == team_id) and not is_hidden_from_local()
+	# Sadece taşıyıcının kendisi (ve takım modunda kendi takımı) görür; görünmezken gösterge de gizli
+	var local_id := NetworkManager.get_local_id()
+	card_indicator.visible = GameManager.are_allies(local_id, peer_id) and not is_hidden_from_local()
 
 
 func drop_card() -> void:
@@ -1977,7 +2008,7 @@ func drop_card() -> void:
 
 # Yerel oyuncunun takım arkadaşı mı (kendisi ve rakipler hariç)
 func _is_local_ally() -> bool:
-	if is_local:
+	if is_local or GameManager.is_deathmatch():
 		return false
 	var local_team: int = NetworkManager.players.get(NetworkManager.get_local_id(), {}).get("team_id", -1)
 	return local_team >= 0 and local_team == team_id

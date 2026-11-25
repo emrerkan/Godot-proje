@@ -17,6 +17,11 @@ signal fired
 @export var max_distance: float = 60.0
 ## true: mermi duvarlardan geçer (sadece Sniper — Player.WEAPON_CONFIGS "pierce_walls")
 var pierce_walls := false
+## Mesafe bazlı hasar (Sniper): one_shot_radius içinde tek atış, dışında falloff_end'e kadar min_damage_ratio'ya düşer
+var one_shot_radius: float = 0.0
+var one_shot_damage: float = 999.0
+var falloff_end: float = 0.0
+var min_damage_ratio: float = 1.0
 ## Özel silah (tek atış) sabitleri — PowerupManager güçü: 999 hasar, 1000 m, duvardan geçer
 const SPECIAL_SPEED := 160.0
 const SPECIAL_DAMAGE := 999.0
@@ -169,6 +174,8 @@ func _spawn_bullet(
 	bullet.global_position = spawn_pos
 	bullet.initialize(direction, bullet_speed, damage, shooter_peer_id, shooter_team_id, p_max_distance)
 	bullet.pierce_walls = pierce_walls
+	if one_shot_radius > 0.0 and bullet.has_method("configure_falloff"):
+		bullet.configure_falloff(one_shot_radius, one_shot_damage, falloff_end, min_damage_ratio)
 	var vis_off := _visual_muzzle_offset(spawn_pos)
 	if vis_off != Vector3.ZERO and bullet.has_method("set_visual_offset"):
 		bullet.set_visual_offset(vis_off)
@@ -229,8 +236,12 @@ func configure(config: Dictionary) -> void:
 	reload_time    = config.get("reload_time",    reload_time)
 	spread_degrees = config.get("spread_degrees", spread_degrees)
 	is_semi_auto   = config.get("is_semi_auto",   is_semi_auto)
-	max_distance   = config.get("max_distance",   max_distance)
-	pierce_walls   = config.get("pierce_walls",   false)
+	max_distance     = config.get("max_distance",     max_distance)
+	pierce_walls     = config.get("pierce_walls",     false)
+	one_shot_radius  = config.get("one_shot_radius",  0.0)
+	one_shot_damage  = config.get("one_shot_damage",  999.0)
+	falloff_end      = config.get("falloff_end",      0.0)
+	min_damage_ratio = config.get("min_damage_ratio", 1.0)
 	current_ammo   = max_ammo
 	fire_timer.wait_time   = fire_rate
 	reload_timer.wait_time = reload_time

@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DizzGames — TacticalDark | Çok Yakında</title>
+  <meta
+    name="description"
+    content="DizzGames resmi web sitesi. Karanlık bir labirentte 4 takımlı 3D top-down taktik nişancı oyunu TacticalDark çok yakında geliyor."
+  />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Ambient tactical grid + cursor flashlight layer -->
+  <div class="tactical-grid" aria-hidden="true"></div>
+  <div class="flashlight-cursor" id="flashlightCursor" aria-hidden="true"></div>
+
+  <!-- Navigation -->
+  <header class="navbar" id="navbar">
+    <div class="container nav-inner">
+      <a href="#top" class="brand" aria-label="DizzGames Ana Sayfa">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="2" width="32" height="32" rx="6" stroke="#FFBD52" stroke-width="1.6" fill="rgba(255,189,82,0.08)" />
+            <path d="M10 10H18.5C23.2 10 26.5 13.1 26.5 18C26.5 22.9 23.2 26 18.5 26H10V10Z" stroke="#F4F6FA" stroke-width="2" />
+            <path d="M14.5 14.5H18.2C20.4 14.5 22 15.9 22 18C22 20.1 20.4 21.5 18.2 21.5H14.5V14.5Z" fill="#FFBD52" />
+          </svg>
+        </span>
+        <span class="brand-text">DIZZ<span class="accent">GAMES</span></span>
+      </a>
+
+      <nav class="nav-links" id="navLinks" aria-label="Ana menü">
+        <a href="#oyunlar">Oyunlar</a>
+        <a href="#tacticaldark">TacticalDark</a>
+        <a href="#galeri">Görüntüler</a>
+        <a href="#operatorler">Operatörler</a>
+        <a href="#studyo">Stüdyo</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="#bildirim" class="btn btn-primary btn-sm">
+          <span class="pulse-dot" aria-hidden="true"></span>
+          Haberdar Ol
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Menüyü aç/kapat" aria-expanded="false">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="hero-media" aria-hidden="true">
+        <img
+          src="assets/real-gameplay-2.png"
+          alt="TacticalDark gerçek oyun içi karanlık labirent çatışma sahnesi"
+          class="hero-bg-img"
+        />
+        <div class="hero-vignette"></div>
+        <div class="hero-beam"></div>
+      </div>
+
+      <div class="container hero-content">
+        <div class="hero-eyebrow reveal">
+          <span class="status-pill">
+            <span class="pulse-dot" aria-hidden="true"></span>
+            ÇOK YAKINDA
+          </span>
+          <span class="mono-tag">DIZZGAMES · İLK OYUN</span>
+        </div>
+
+        <h1 class="hero-title reveal">
+          TACTICAL<span class="accent">DARK</span>
+        </h1>
+
+        <p class="hero-quote reveal">
+          “Görmek için ışık lazım. Işık seni görünür yapar.”
+        </p>
+
+        <p class="hero-desc reveal">
+          Karanlık bir labirentte, yalnızca el fenerinin aydınlattığı kadarını gören
+          <strong>dört takım</strong>. Saklı erişim kartını bul, taşıyıcıyı koru ve
+          çıkış kapısına ilk ulaşan sen ol.
+        </p>
+
+        <div class="hero-cta reveal">
+          <a href="#bildirim" class="btn btn-primary btn-lg">
+            <span>Çıkıştan Haberdar Ol</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M5 12h14M13 5l7 7-7 7" />
+            </svg>
+          </a>
+          <a href="#tacticaldark" class="btn btn-ghost btn-lg">
+            Oyunu İncele
+          </a>
+        </div>
+
+        <div class="telemetry-bar reveal">
+          <div class="telemetry-item">
+            <span class="telemetry-label">TAKIM YAPISI</span>
+            <span class="telemetry-value">4 Takım · 20 Oyuncuya Kadar</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-label">SINIFLAR</span>
+            <span class="telemetry-value">5 Benzersiz Operatör</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-label">TÜR</span>
+            <span class="telemetry-value">3D Top-Down Taktik Nişancı</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-label">DURUM</span>
+            <span class="telemetry-value accent">Geliştiriliyor · Çok Yakında</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DizzGames Games Catalog -->
+    <section class="section" id="oyunlar">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="section-kicker">DIZZGAMES KATALOĞU</span>
+          <h2 class="section-title">Yaklaşan Oyunlarımız</h2>
+          <p class="section-subtitle">
+            Gerilim, atmosfer ve yüksek taktiksel derinlik odağında geliştirdiğimiz projeler.
+          </p>
+        </div>
+
+        <div class="catalog-grid">
+          <!-- Featured Game: TacticalDark -->
+          <article class="game-card game-card--featured reveal">
+            <div class="game-card-media">
+              <img
+                src="assets/real-charselect.png"
+                alt="TacticalDark gerçek oyun içi karakter seçim ekranı"
+                loading="lazy"
+              />
+              <div class="game-card-overlay"></div>
+              <div class="game-card-badges">
+                <span class="status-pill">
+                  <span class="pulse-dot" aria-hidden="true"></span>
+                  ÇOK YAKINDA
+                </span>
+                <span class="tag">PC · WINDOWS</span>
+                <span class="tag">LAN / ONLINE</span>
+              </div>
+            </div>
+
+            <div class="game-card-body">
+              <div class="game-card-meta">
+                <span class="mono-tag">PROJE #01 · AMİRAL GEMİSİ</span>
+                <span class="mono-tag accent">4 TAKIMLI PVP</span>
+              </div>
+              <h3 class="game-card-title">TacticalDark</h3>
+              <p class="game-card-text">
+                Dinamik el feneri aydınlatması ve derin karanlık üzerine kurulu askeri gerilim
+                nişancısı. Her maç değişen kart ve kapı konumlarıyla her köşe yeni bir risk.
+              </p>
+
+              <div class="game-card-tags">
+                <span>Dinamik Işık & Gölge</span>
+                <span>2v2v2v2 – 5v5v5v5</span>
+                <span>Özel Güçler</span>
+                <span>Godot 4 · Forward+</span>
+              </div>
+
+              <div class="game-card-footer">
+                <a href="#tacticaldark" class="btn btn-primary">Detayları Gör</a>
+                <a href="#bildirim" class="btn btn-ghost">Erken Erişim Listesi</a>
+              </div>
+            </div>
+          </article>
+
+          <!-- Mystery Upcoming Studio Project -->
+          <article class="game-card game-card--teaser reveal">
+            <div class="teaser-inner">
+              <div class="teaser-icon" aria-hidden="true">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <rect x="4" y="11" width="16" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+              </div>
+              <span class="mono-tag">PROJE #02 · GİZLİ DOSYA</span>
+              <h3>Yeni DizzGames Projesi</h3>
+              <p>
+                TacticalDark çıkışının ardından duyurulacak yeni karanlık atmosferli
+                deneyim konsept aşamasında.
+              </p>
+              <span class="teaser-status">PLANLAMA AŞAMASINDA</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- TacticalDark Gameplay & Core Tension -->
+    <section class="section section--tinted" id="tacticaldark">
+      <div class="container">
+        <div class="split-layout">
+          <div class="split-visual reveal">
+            <div class="visual-frame visual-frame--patrol" id="mazeFrame">
+              <canvas id="patrolCanvas" aria-label="TacticalDark ana menü devriye gezen operatörler simülasyonu"></canvas>
+              <div class="visual-hud-top">
+                <span class="mono-tag">SECTOR 04 // TAKTİK DEVRİYE</span>
+                <span class="mono-tag accent">CANLI · 5 OPERATÖR</span>
+              </div>
+              <div class="visual-hud-bottom">
+                <span class="hud-hint">Fareyle feneri yönlendirin · Takım rengini aşağıdan değiştirin</span>
+              </div>
+            </div>
+
+            <!-- 4 Teams Legend + Live Spotlight Color Switcher -->
+            <div class="teams-strip">
+              <span class="teams-label">FENER RENGİ / 4 TAKIM:</span>
+              <div class="team-pills">
+                <button type="button" class="team-pill team-amber is-selected" data-spotlight-color="#FFBD52"><i aria-hidden="true"></i> Fener</button>
+                <button type="button" class="team-pill team-blue" data-spotlight-color="#3399FF"><i aria-hidden="true"></i> Mavi</button>
+                <button type="button" class="team-pill team-red" data-spotlight-color="#FF4D4D"><i aria-hidden="true"></i> Kırmızı</button>
+                <button type="button" class="team-pill team-green" data-spotlight-color="#4DE64D"><i aria-hidden="true"></i> Yeşil</button>
+                <button type="button" class="team-pill team-yellow" data-spotlight-color="#FFD91A"><i aria-hidden="true"></i> Sarı</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="split-content reveal">
+            <span class="section-kicker">TEMEL OYNANIŞ</span>
+            <h2 class="section-title">Arcade Değil, Askeri Gerilim</h2>
+            <p class="section-subtitle">
+              Öldürmek tek başına kazandırmaz; yalnızca araçtır. Haritada saklı bir
+              <strong>kart</strong> ve bir <strong>kapı</strong> bulunur. Yerleri her maç
+              değişir ve sadece yaklaşınca görünürler.
+            </p>
+
+            <ol class="loop-list">
+              <li>
+                <span class="loop-num">01</span>
+                <div>
+                  <h4>Karanlıkta Keşif</h4>
+                  <p>
+                    Yavaş ve kontrollü ilerle. Lamba altındaki kavşaklar tehlikeli,
+                    karanlık koridorlar ise sinsi pusularla dolu.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span class="loop-num">02</span>
+                <div>
+                  <h4>Kartı Ele Geçir</h4>
+                  <p>
+                    Erişim kartının üzerine yürüyerek onu al. Taşıyıcı vurulursa kart
+                    yere düşer ve mücadele yeniden başlar.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span class="loop-num">03</span>
+                <div>
+                  <h4>Taktiksel Hayatta Kalma</h4>
+                  <p>
+                    Dayanıklılığını kullanarak koş (Shift) ya da 3 saniyelik refleks
+                    çömelmesiyle (Ctrl) mermilerden sıyrıl.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span class="loop-num">04</span>
+                <div>
+                  <h4>5 Saniye Dayan &amp; Kazan</h4>
+                  <p>
+                    Kart taşıyıcısı çıkış kapısının kilit çemberinde 5 saniye kalırsa
+                    maç biter. Çıkarsa veya ölürse sayaç sıfırlanır.
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Power-ups Row -->
+        <div class="powerups-block reveal">
+          <div class="powerups-header">
+            <span class="mono-tag accent">Q TUŞU · TEK SLOT</span>
+            <h3>Labirent Köşelerinde Beliren Özel Güçler</h3>
+          </div>
+          <div class="powerups-grid">
+            <div class="powerup-card">
+              <div class="powerup-icon">💣</div>
+              <h4>Bomba</h4>
+              <p>Atılır ve alan hasarı verir. Köşede kamp yapan veya çömelmiş rakipleri çıkarmak için birebir.</p>
+            </div>
+            <div class="powerup-card">
+              <div class="powerup-icon">✚</div>
+              <h4>Sağlık Kiti</h4>
+              <p>Anında +60 can yeniler. Sert bir koridor çatışmasının ardından hayatta kalmanı sağlar.</p>
+            </div>
+            <div class="powerup-card">
+              <div class="powerup-icon">◈</div>
+              <h4>Uydu Taraması</h4>
+              <p>8 saniye boyunca minimapte tüm oyuncuları ve kart taşıyıcısını işaretler.</p>
+            </div>
+            <div class="powerup-card">
+              <div class="powerup-icon">◎</div>
+              <h4>Takım Uydusu</h4>
+              <p>6 saniye boyunca yalnızca düşman konumlarını takımına aktarır.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Official Unified In-Game Trailer Showcase -->
+    <section class="section" id="galeri">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="section-kicker">RESMİ TANITIM FRAGMANI · GERÇEK OYUN İÇİ</span>
+          <h2 class="section-title">TacticalDark Tanıtım Videosu</h2>
+          <p class="section-subtitle">
+            Tamamı doğrudan Godot 4 Forward+ oyun motorundan, 20 karakterli canlı çatışma
+            sahnesiyle tek parça olarak kaydedilmiş tanıtım fragmanı.
+          </p>
+        </div>
+
+        <div class="trailer-showcase reveal">
+          <div class="trailer-frame">
+            <video
+              id="officialTrailer"
+              src="assets/tacticaldark-trailer.mp4"
+              autoplay
+              loop
+              muted
+              playsinline
+              controls
+              preload="auto"
+            ></video>
+            <div class="trailer-topbar">
+              <span class="status-pill">
+                <span class="pulse-dot" aria-hidden="true"></span>
+                RESMİ FRAGMAN · 20 OYUNCU
+              </span>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                data-lightbox-video="assets/tacticaldark-trailer.mp4"
+                data-lightbox-caption="TacticalDark — Resmi Oyun İçi Tanıtım Fragmanı (ÇOK YAKINDA)"
+              >
+                Tam Ekran İzle
+              </button>
+            </div>
+          </div>
+
+          <div class="trailer-beats">
+            <div class="beat-pill"><span class="mono-tag accent">01</span> Fener Açılışı &amp; Ana Menü</div>
+            <div class="beat-pill"><span class="mono-tag accent">02</span> Sis Bombası &amp; Görünmezlik</div>
+            <div class="beat-pill"><span class="mono-tag accent">03</span> Flaş, El Bombası &amp; Takla</div>
+            <div class="beat-pill"><span class="mono-tag accent">04</span> 20 Kişilik Kaos &amp; Çok Yakında</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Operatives / Classes Section -->
+    <section class="section" id="operatorler">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="section-kicker">5 BENZERSİZ SINIF</span>
+          <h2 class="section-title">Operatörünü Seç</h2>
+          <p class="section-subtitle">
+            Her takımda bir sınıf yalnızca bir kez seçilebilir. Ekibini haritanın uzun
+            koridorlarına ve dar köşelerine göre dengeli kur.
+          </p>
+        </div>
+
+        <div class="operators-layout reveal">
+          <div class="operator-tabs" role="tablist" aria-label="Operatör Sınıfları">
+            <button class="operator-tab is-active" role="tab" aria-selected="true" data-op="tank">
+              <span class="op-code">01</span>
+              <span class="op-meta">
+                <strong>Tank</strong>
+                <small>Ön Hat · 150 Can</small>
+              </span>
+            </button>
+            <button class="operator-tab" role="tab" aria-selected="false" data-op="visioner">
+              <span class="op-code">02</span>
+              <span class="op-meta">
+                <strong>Visioner</strong>
+                <small>Keşif · 100 Can</small>
+              </span>
+            </button>
+            <button class="operator-tab" role="tab" aria-selected="false" data-op="runner">
+              <span class="op-code">03</span>
+              <span class="op-meta">
+                <strong>Runner</strong>
+                <small>Hızlı Sızma · 75 Can</small>
+              </span>
+            </button>
+            <button class="operator-tab" role="tab" aria-selected="false" data-op="sniper">
+              <span class="op-code">04</span>
+              <span class="op-meta">
+                <strong>Sniper</strong>
+                <small>Uzun Menzil · 80 Can</small>
+              </span>
+            </button>
+            <button class="operator-tab" role="tab" aria-selected="false" data-op="medic">
+              <span class="op-code">05</span>
+              <span class="op-meta">
+                <strong>Medic</strong>
+                <small>Destek · 110 Can</small>
+              </span>
+            </button>
+          </div>
+
+          <div class="operator-detail" id="operatorDetail" role="tabpanel">
+            <div class="operator-detail-head">
+              <div>
+                <span class="mono-tag accent" id="opRole">ÖN HAT · KART TAŞIYICI</span>
+                <h3 id="opName">TANK</h3>
+              </div>
+              <span class="op-hp-badge" id="opHpBadge">150 HP</span>
+            </div>
+
+            <p class="operator-desc" id="opDesc">
+              Ağır plaka taşıyıcı yeleğiyle önden giren, ateşi üstüne çeken ve kartı
+              güvenle kapıya taşıyan takımın duvarı.
+            </p>
+
+            <div class="operator-weapon-box">
+              <span class="mono-tag">SİLAH SİSTEMİ</span>
+              <strong id="opWeapon">Otomatik Tüfek · 30 Mermi · Orta Menzil</strong>
+            </div>
+
+            <div class="stat-bars">
+              <div class="stat-row">
+                <div class="stat-label"><span>DAYANIKLILIK</span><span id="statHpVal">150 / 150</span></div>
+                <div class="stat-track"><div class="stat-fill" id="statHpBar" style="width: 100%"></div></div>
+              </div>
+              <div class="stat-row">
+                <div class="stat-label"><span>HAREKET HIZI</span><span id="statSpeedVal">45%</span></div>
+                <div class="stat-track"><div class="stat-fill" id="statSpeedBar" style="width: 45%"></div></div>
+              </div>
+              <div class="stat-row">
+                <div class="stat-label"><span>ETKİLİ MENZİL</span><span id="statRangeVal">60%</span></div>
+                <div class="stat-track"><div class="stat-fill" id="statRangeBar" style="width: 60%"></div></div>
+              </div>
+              <div class="stat-row">
+                <div class="stat-label"><span>ATEŞ GÜCÜ</span><span id="statFireVal">75%</span></div>
+                <div class="stat-track"><div class="stat-fill" id="statFireBar" style="width: 75%"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Maps & Roadmap -->
+    <section class="section section--tinted" id="haritalar">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="section-kicker">OPERASYON BÖLGELERİ</span>
+          <h2 class="section-title">Haritalar &amp; Geliştirme Yol Haritası</h2>
+          <p class="section-subtitle">
+            Karanlık, haritalarımızın ana malzemesi. Her bölge uzun sniper koridorları,
+            dar sızma köşeleri ve stratejik lamba kavşaklarıyla tasarlanıyor.
+          </p>
+        </div>
+
+        <div class="maps-grid">
+          <article class="map-card map-card--active reveal">
+            <div class="map-card-top">
+              <span class="mono-tag accent">ÇIKIŞ HARİTASI</span>
+              <span class="map-status map-status--ready">AKTİF GELİŞTİRME</span>
+            </div>
+            <h3>Labirent</h3>
+            <p>
+              124 × 92 metrelik dar koridorlu beton labirent. Sabit sodyum lambaları,
+              titreyen floresanlar ve 4 köşede dengeli takım başlangıçları.
+            </p>
+            <div class="map-specs">
+              <span>32 Duvar Lambası</span>
+              <span>4 m Koridorlar</span>
+            </div>
+          </article>
+
+          <article class="map-card reveal">
+            <div class="map-card-top">
+              <span class="mono-tag">PLANLANAN #02</span>
+              <span class="map-status">YAKINDA</span>
+            </div>
+            <h3>Depo</h3>
+            <p>
+              Terk edilmiş lojistik deposu. Raflar arası dar geçitler ve merkezde
+              Sniper'lara açık yüksek riskli yükleme alanı.
+            </p>
+            <div class="map-specs">
+              <span>Raf Labirenti</span>
+              <span>Merkez Açıklık</span>
+            </div>
+          </article>
+
+          <article class="map-card reveal">
+            <div class="map-card-top">
+              <span class="mono-tag">PLANLANAN #03</span>
+              <span class="map-status">YAKINDA</span>
+            </div>
+            <h3>Metro</h3>
+            <p>
+              Yeraltı istasyonu ve uzun ray tünelleri. Titreyen soğuk floresanların
+              altında peronlar arası yakın temas çatışmalar.
+            </p>
+            <div class="map-specs">
+              <span>Uzun Tüneller</span>
+              <span>Titreyen Işıklar</span>
+            </div>
+          </article>
+
+          <article class="map-card reveal">
+            <div class="map-card-top">
+              <span class="mono-tag">PLANLANAN #04</span>
+              <span class="map-status">YAKINDA</span>
+            </div>
+            <h3>Hastane &amp; Liman</h3>
+            <p>
+              Gece boşaltılmış kırmızı acil ışıklı hastane katı ve sodyum projektörlü
+              konteyner limanı yol haritamızda.
+            </p>
+            <div class="map-specs">
+              <span>Cam Bölmeler</span>
+              <span>Konteyner Yığınları</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Coming Soon / Waitlist Notification CTA -->
+    <section class="section" id="bildirim">
+      <div class="container">
+        <div class="waitlist-panel reveal">
+          <div class="waitlist-glow" aria-hidden="true"></div>
+          <span class="status-pill">
+            <span class="pulse-dot" aria-hidden="true"></span>
+            TACTICALDARK · ÇOK YAKINDA
+          </span>
+          <h2>Karanlığa İlk Girenlerden Ol</h2>
+          <p>
+            TacticalDark kapalı beta, erken erişim ve çıkış tarihini kaçırmamak için
+            e-posta adresini bırak. Yalnızca önemli duyurular gönderiyoruz.
+          </p>
+
+          <form class="waitlist-form" id="waitlistForm" novalidate>
+            <label for="emailInput" class="sr-only">E-posta adresiniz</label>
+            <input
+              type="email"
+              id="emailInput"
+              name="email"
+              placeholder="eposta@adresin.com"
+              autocomplete="email"
+              required
+            />
+            <button type="submit" class="btn btn-primary btn-lg">
+              Listeye Katıl
+            </button>
+          </form>
+
+          <p class="waitlist-feedback" id="waitlistFeedback" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- About DizzGames Studio -->
+    <section class="section section--tinted" id="studyo">
+      <div class="container studio-grid reveal">
+        <div>
+          <span class="section-kicker">STÜDYO HAKKINDA</span>
+          <h2 class="section-title">DizzGames</h2>
+          <p class="section-subtitle">
+            DizzGames; yüksek atmosferli, taktiksel derinliğe sahip ve arkadaşlarla
+            unutulmaz gerilim anları yaşatan bağımsız oyunlar geliştirmek için kuruldu.
+          </p>
+        </div>
+        <div class="studio-pillars">
+          <div class="pillar">
+            <span class="mono-tag accent">01 // ATMOSFER</span>
+            <h4>Işık ve Gölgeyle Anlatım</h4>
+            <p>Görselliği sadece süs olarak değil, doğrudan oynanış mekaniği olarak tasarlıyoruz.</p>
+          </div>
+          <div class="pillar">
+            <span class="mono-tag accent">02 // TAKTİK</span>
+            <h4>Adil ve Rekabetçi Çok Oyunculu</h4>
+            <p>Refleks kadar pozisyon alma, iletişim ve takım koordinasyonunu ödüllendiren sistemler.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <span class="brand-text">DIZZ<span class="accent">GAMES</span></span>
+        <p>© 2026 DizzGames. Tüm hakları saklıdır.</p>
+      </div>
+      <div class="footer-links">
+        <a href="#oyunlar">Oyunlar</a>
+        <a href="#tacticaldark">TacticalDark</a>
+        <a href="#operatorler">Operatörler</a>
+        <a href="#bildirim">Erken Erişim</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Lightbox Modal for Real Screenshots -->
+  <div class="lightbox" id="lightbox" aria-hidden="true" role="dialog" aria-label="Oyun içi ekran görüntüsü">
+    <button type="button" class="lightbox-close" id="lightboxClose" aria-label="Kapat">×</button>
+    <figure class="lightbox-figure">
+      <img id="lightboxImg" src="" alt="" />
+      <video id="lightboxVideo" autoplay loop muted playsinline controls></video>
+      <figcaption id="lightboxCaption"></figcaption>
+    </figure>
+  </div>
+
+  <script src="patrol.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

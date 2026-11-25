@@ -853,7 +853,7 @@ func _physics_process(delta: float) -> void:
 	# Son güvenlik: haritanın altına düşen yerel oyuncu kendi takım spawn'ına döner (konum local otoriteli)
 	if (me as Node3D).global_position.y < _bounds.position.y - FALL_RESCUE_DEPTH:
 		(me as CharacterBody3D).velocity = Vector3.ZERO
-		(me as Node3D).global_position = TeamManager.get_spawn_position(int(me.team_id))
+		(me as Node3D).global_position = GameManager.get_spawn_position(NetworkManager.get_local_id(), int(me.team_id))
 		(me as Node3D).reset_physics_interpolation()
 		return
 	var space := get_world_3d().direct_space_state
@@ -900,7 +900,7 @@ func _rescue_fallen_bots() -> void:
 		if body == null or body.global_position.y >= limit:
 			continue
 		body.velocity = Vector3.ZERO
-		body.global_position = TeamManager.get_spawn_position(int(body.get("team_id")))
+		body.global_position = GameManager.get_spawn_position(int(body.get("peer_id")), int(body.get("team_id")))
 		body.reset_physics_interpolation()
 
 
