@@ -127,7 +127,9 @@ static func play_ui(tree: SceneTree, sound: String, volume_db: float = 0.0, pitc
 		_flat_players[bus] = p
 	if not p.playing:
 		p.play()
-	(p.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream(sound), 0.0, volume_db, pitch)
+	var pb := p.get_stream_playback() as AudioStreamPlaybackPolyphonic
+	if pb != null:
+		pb.play_stream(stream(sound), 0.0, volume_db, pitch)
 
 
 ## Oyuncuya bağlı polifonik 3D ses kaynağı (göğüs yüksekliğinde)
@@ -150,8 +152,9 @@ static func play_voice(voice: AudioStreamPlayer3D, sound: String, volume_db: flo
 		return
 	if not voice.playing:
 		voice.play()
-	(voice.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(
-		stream(sound), 0.0, volume_db, 1.0 + randf_range(-pitch_var, pitch_var))
+	var pb := voice.get_stream_playback() as AudioStreamPlaybackPolyphonic
+	if pb != null:
+		pb.play_stream(stream(sound), 0.0, volume_db, 1.0 + randf_range(-pitch_var, pitch_var))
 
 
 ## Dünyada tek seferlik 3D ses (bittiğinde silinir)
@@ -170,9 +173,9 @@ static func play_at(tree: SceneTree, sound: String, pos: Vector3, volume_db: flo
 	tree.current_scene.add_child(p)
 	p.global_position = pos
 	_oneshots += 1
-	p.finished.connect(func() -> void:
-		_oneshots -= 1
-		p.queue_free())
+	p.tree_exited.connect(func() -> void:
+		_oneshots = maxi(0, _oneshots - 1), CONNECT_ONE_SHOT)
+	p.finished.connect(p.queue_free, CONNECT_ONE_SHOT)
 	p.play()
 
 

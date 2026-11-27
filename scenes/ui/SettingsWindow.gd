@@ -25,6 +25,7 @@ var _dirty_lbl: Label
 var _res_option: OptionButton
 var _preset_option: OptionButton
 var _suppress_preset := false
+var _modal_tween: Tween = null
 
 
 func _ready() -> void:
@@ -44,9 +45,12 @@ func open() -> void:
 	_show_tab("graphics")
 	if embedded:
 		return
+	if _modal_tween != null and _modal_tween.is_valid():
+		_modal_tween.kill()
 	visible = true
 	_card.modulate.a = 0.0
 	var tw := create_tween().set_parallel(true)
+	_modal_tween = tw
 	tw.tween_method(func(v: float) -> void: _blur_mat.set_shader_parameter("amount", v), 0.0, 1.0, 0.18)
 	tw.tween_property(_card, "modulate:a", 1.0, 0.16)
 
@@ -54,7 +58,10 @@ func open() -> void:
 func close() -> void:
 	if embedded or not visible:
 		return
+	if _modal_tween != null and _modal_tween.is_valid():
+		_modal_tween.kill()
 	var tw := create_tween().set_parallel(true)
+	_modal_tween = tw
 	tw.tween_method(func(v: float) -> void: _blur_mat.set_shader_parameter("amount", v), 1.0, 0.0, 0.14)
 	tw.tween_property(_card, "modulate:a", 0.0, 0.12)
 	tw.chain().tween_callback(func() -> void:
@@ -332,9 +339,6 @@ func _build_audio(col: VBoxContainer) -> void:
 			func() -> float: return float(_draft[key]) * 100.0,
 			func(v: float) -> void: _draft[key] = v / 100.0,
 			func(v: float) -> String: return "%d%%" % int(v))
-	var note := UITheme.label("Not: oyunda henüz ses efekti/müzik yok. Ses kanalları hazır — sesler eklendiğinde bu ayarlar geçerli olacak.", 18, Color(UITheme.TEXT_DIM, 0.8))
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(note)
 
 
 func _build_game(col: VBoxContainer) -> void:

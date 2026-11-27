@@ -178,7 +178,9 @@ static func spawn(tree: SceneTree, pos: Vector3, dir: Vector3, strength: float =
 		holder.add_child(e)
 		e.emitting = true
 	_active_spawns.append(holder)
-	tree.create_timer(HOLDER_LIFE, false).timeout.connect(holder.queue_free)
+	var tw := holder.create_tween()
+	tw.tween_interval(HOLDER_LIFE)
+	tw.tween_callback(holder.queue_free)
 
 
 static func recent(owner: Node, within_ms: int) -> bool:

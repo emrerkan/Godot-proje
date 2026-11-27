@@ -96,6 +96,7 @@ var _match_stats_recorded := false
 enum State { MENU, LOBBY, CHARACTER_SELECT, IN_GAME, ENDED }
 
 var state: State = State.MENU
+var _session_gen: int = 0  # menüye dönüş/yeni maçta artar — eski await'leri iptal eder
 var player_scene: PackedScene = null
 var map_scene: PackedScene = null
 var char_select_scene: PackedScene = null
@@ -407,6 +408,11 @@ func _spawn_local_player() -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _notify_player_spawned(peer_id: int, team_id: int, pos: Vector3) -> void:
+	var s := multiplayer.get_remote_sender_id()
+	if s != 0 and s != 1 and s != peer_id:
+		return
+	if not NetworkManager.players.has(peer_id):
+		return
 	if peer_id == NetworkManager.get_local_id():
 		return
 	if active_players.has(peer_id):
@@ -422,18 +428,31 @@ func _notify_player_spawned(peer_id: int, team_id: int, pos: Vector3) -> void:
 	active_players[peer_id] = player
 
 
-## Client, bağlandıktan sonra host'tan mevcut aktif oyuncuları talep eder
+## Client, bağlandıktan sonra host'tan mevcut aktif oyuncuları (ve varsa kart/kapı objelerini) talep eder
 @rpc("any_peer", "reliable")
 func _request_active_players() -> void:
 	if not NetworkManager.is_host():
 		return
 	var requester := multiplayer.get_remote_sender_id()
+	if requester <= 0 or not NetworkManager.players.has(requester):
+		return
 	for pid in active_players:
 		var p: Node = active_players[pid]
 		if not is_instance_valid(p):
 			continue
 		var pteam: int = NetworkManager.players.get(pid, {}).get("team_id", 0)
 		_notify_player_spawned.rpc_id(requester, pid, pteam, p.global_position)
+	# Migration / geç yükleme sonrası kart ve kapı objelerini kaçıran client'a mevcut konumlarıyla gönder
+	if not is_timed_match() and door_instance != null and is_instance_valid(door_instance):
+		var cpos := PackedVector3Array()
+		var cids := cards.keys()
+		cids.sort()
+		for cid: int in cids:
+			var c: Variant = cards[cid]
+			if c != null and is_instance_valid(c):
+				cpos.append((c as Node3D).global_position)
+		if not cpos.is_empty():
+			_spawn_objects_rpc.rpc_id(requester, cpos, (door_instance as Node3D).global_position)
 
 
 # ─────────────────────────────────────────────
@@ -920,9 +939,12 @@ func _record_match_stats(result: String) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _end_game_rpc(winning_team: int, reason: String = "", winner_peer: int = -1) -> void:
+	var gen := _session_gen
 	_apply_end_game(winning_team, reason, winner_peer)
 	if NetworkManager.is_host():
 		await get_tree().create_timer(RETURN_TO_LOBBY_DELAY).timeout
+		if gen != _session_gen or state != State.ENDED or not NetworkManager.is_host():
+			return
 		_return_to_lobby_rpc.rpc()
 
 
@@ -954,8 +976,23 @@ func _return_to_lobby_rpc() -> void:
 # Kapı kilidi (host)
 # ─────────────────────────────────────────────
 
+## Oyuncu şu an kapı kilit çemberinin içinde mi? (görünmezlik 2x drenaj + çömelme mermi bağışıklığı kapalı)
+func is_in_door_unlock_zone(pid: int) -> bool:
+	if door_instance == null or not is_instance_valid(door_instance):
+		return false
+	if not is_card_carrier(pid):
+		return false
+	var pl: Variant = active_players.get(pid)
+	if pl == null or not is_instance_valid(pl) or pl.is_dead:
+		return false
+	var dp: Vector3 = (door_instance as Node3D).global_position
+	var cp: Vector3 = (pl as Node3D).global_position
+	return Vector2(cp.x - dp.x, cp.z - dp.z).length() <= DOOR_UNLOCK_RADIUS
+
+
 func _update_door_unlock(delta: float) -> void:
 	var inside := false
+	var contested := false
 	var total := get_card_total()
 	var team_now := -1
 	var peer_now := -1
@@ -996,16 +1033,32 @@ func _update_door_unlock(delta: float) -> void:
 					inside = true
 					team_now = tid
 				break  # N kartın hepsini tutan en fazla bir takım olabilir
+		# Çekişmeli (contested) kontrolü: çemberde canlı rakip varsa kilit ilerlemesi duraklar
+		if inside:
+			for opid: int in active_players:
+				var other: Variant = active_players[opid]
+				if other == null or not is_instance_valid(other) or other.is_dead:
+					continue
+				var is_enemy := (opid != peer_now) if is_deathmatch() else (int(NetworkManager.players.get(opid, {}).get("team_id", -1)) != team_now)
+				if not is_enemy:
+					continue
+				var op: Vector3 = (other as Node3D).global_position
+				if Vector2(op.x - dp.x, op.z - dp.z).length() <= DOOR_UNLOCK_RADIUS:
+					contested = true
+					break
 	var owner_changed := (peer_now != _unlock_peer and _unlock_peer != -1) if is_deathmatch() else (team_now != _unlock_team and _unlock_team != -1)
 	if owner_changed and door_unlock > 0.0:
 		door_unlock = 0.0  # taşıyıcı/takım değişti: sıfırdan
 		_door_sync_timer = 0.0
 		_send_door_unlock(0.0)
 	var prev := door_unlock
-	door_unlock = minf(door_unlock + delta / unlock_time, 1.0) if inside else 0.0
 	if inside:
+		if not contested:
+			door_unlock = minf(door_unlock + delta / unlock_time, 1.0)
 		_unlock_team = team_now
 		_unlock_peer = peer_now
+	else:
+		door_unlock = 0.0
 	if door_unlock >= 1.0:
 		_send_door_unlock(1.0)
 		handle_card_delivered(_unlock_team, _unlock_peer)
@@ -1478,10 +1531,13 @@ func restore_from_migration(mig: Dictionary) -> void:
 	# Migration anında zaten kesinleşmiş kazanan varsa (geriye tek takım kaldı, kimse geri bağlansa
 	# da sonuç değişmez) haritayı YENİDEN YÜKLEMEDEN doğrudan zaferi ilan et — client ekranında
 	# gereksiz 'YÜKLENİYOR' perdesi hiç görünmesin (HUD zaten canlı, game_ended sinyaline bağlı).
+	var gen := _session_gen
 	if mig.has("instant_winner"):
 		_apply_end_game(int(mig["instant_winner"]), "", int(mig.get("instant_winner_peer", -1)))
 		if NetworkManager.is_host():
 			await get_tree().create_timer(RETURN_TO_LOBBY_DELAY).timeout
+			if gen != _session_gen or state != State.ENDED or not NetworkManager.is_host():
+				return
 			_return_to_lobby_rpc.rpc()
 		return
 	door_unlock = 0.0  # kilit ilerlemesi host değişince sıfırdan
@@ -1528,6 +1584,8 @@ func restore_from_migration(mig: Dictionary) -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await _wait_map_ready()
+	if gen != _session_gen or state != State.IN_GAME:
+		return
 	_spawn_local_player()
 	LOADING.close(get_tree(), MAP_SETTLE_FRAMES)
 	if NetworkManager.is_host():
@@ -1542,6 +1600,8 @@ func restore_from_migration(mig: Dictionary) -> void:
 	# sadece kendi takımını görüp oyunu anında bitiriyordu)
 	if NetworkManager.is_host():
 		await get_tree().create_timer(NetworkManager.MIGRATION_WINDOW_MS / 1000.0).timeout
+		if gen != _session_gen or state != State.IN_GAME or not NetworkManager.is_host():
+			return
 		_check_last_team_standing()
 
 
@@ -1568,6 +1628,7 @@ func _restore_stats_by_name(by_name: Dictionary) -> void:
 
 
 func return_to_menu() -> void:
+	_session_gen += 1
 	# Maç sürerken menüye dönen = terk (player_stats temizlenmeden önce kaydet; yüklemede atılan match_live false → kaydedilmez)
 	if state == State.IN_GAME:
 		_record_match_stats("abandoned")

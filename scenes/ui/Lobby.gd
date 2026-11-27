@@ -119,11 +119,11 @@ func _build_ui() -> void:
 	bottom.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(bottom)
 
-	var chat := ChatBox.new()
-	chat.mode = ChatBox.Mode.LOBBY
-	chat.custom_minimum_size = Vector2(567, 250)
-	chat.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom.add_child(chat)
+	_chat = ChatBox.new()
+	_chat.mode = ChatBox.Mode.LOBBY
+	_chat.custom_minimum_size = Vector2(567, 250)
+	_chat.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom.add_child(_chat)
 
 
 	var right := VBoxContainer.new()
@@ -211,7 +211,6 @@ func _build_header() -> Control:
 	gear.add_theme_font_size_override("font_size", 37)
 	gear.pressed.connect(_open_settings)
 	header.add_child(gear)
-	header.move_child(gear, leave.get_index())
 	header.add_child(leave)
 	return header
 
@@ -362,13 +361,22 @@ func _build_settings_modal() -> void:
 	center.add_child(_settings_card)
 
 
+var _chat: ChatBox = null
+var _settings_tween: Tween = null
+
+
 func _open_settings() -> void:
 	_load_draft()
+	if _settings_tween != null and _settings_tween.is_valid():
+		_settings_tween.kill()
+	if _chat != null:
+		_chat.enabled = false
 	_settings_modal.visible = true
 	_settings_card.pivot_offset = _settings_card.size * 0.5
 	_settings_card.modulate.a = 0.0
 	_settings_card.scale = Vector2(0.96, 0.96)
 	var tw := create_tween().set_parallel(true)
+	_settings_tween = tw
 	tw.tween_method(func(v: float) -> void: _blur_mat.set_shader_parameter("amount", v), 0.0, 1.0, 0.18)
 	tw.tween_property(_settings_card, "modulate:a", 1.0, 0.16)
 	tw.tween_property(_settings_card, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -378,11 +386,17 @@ func _open_settings() -> void:
 func _close_settings() -> void:
 	if not _settings_modal.visible:
 		return
+	if _settings_tween != null and _settings_tween.is_valid():
+		_settings_tween.kill()
 	_pw_input.text = ""
 	var tw := create_tween().set_parallel(true)
+	_settings_tween = tw
 	tw.tween_method(func(v: float) -> void: _blur_mat.set_shader_parameter("amount", v), 1.0, 0.0, 0.14)
 	tw.tween_property(_settings_card, "modulate:a", 0.0, 0.12)
-	tw.chain().tween_callback(func() -> void: _settings_modal.visible = false)
+	tw.chain().tween_callback(func() -> void:
+		_settings_modal.visible = false
+		if _chat != null:
+			_chat.enabled = true)
 
 
 ## ODA AYARLARI kartı: harita, takım boyutu, şifre. TASLAK mantığı — kontroller sadece taslağı değiştirir,

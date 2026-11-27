@@ -44,13 +44,15 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var target := 0.0
 	var player := _get_local_player()
+	var door_unlocking := _target == GameManager.door_instance and GameManager.door_unlock > 0.0
 	if player and _target.is_visible_in_tree() and _test_reveal():
 		target = 1.0  # test modu (7): mesafeye bakmadan göster
-	elif carrier_only and player and not bool(player.get("has_card")):
-		target = 0.0  # kartı olmayan kapıyı göremez
+	elif carrier_only and player and not bool(player.get("has_card")) and not door_unlocking:
+		target = 0.0  # kartı olmayan kapıyı göremez (biri kilit açıyorsa yakın rakiplere de görünür)
 	elif player and _target.is_visible_in_tree():
 		var d := player.global_position.distance_to(_target.global_position)
-		target = clampf((reveal_far - d) / maxf(reveal_far - reveal_near, 0.01), 0.0, 1.0)
+		var far := maxf(reveal_far, 18.0) if door_unlocking else reveal_far
+		target = clampf((far - d) / maxf(far - reveal_near, 0.01), 0.0, 1.0)
 		target = target * target * (3.0 - 2.0 * target)  # smoothstep
 	var next := lerpf(_factor, target, 1.0 - exp(-fade_speed * delta))
 	if absf(next - target) < 0.002:

@@ -23,11 +23,11 @@ const CHARACTERS: Array[String] = ["Tank", "Visioner", "Runner", "Sniper", "Medi
 ## Stat sırası UI'da da bu sırayla gösterilir. per_level = seviye başına oran.
 const STATS: Array[String] = ["health", "speed", "damage", "weapon", "stamina"]
 const STAT_INFO := {
-	"health":  {"name": "CAN",          "per_level": 0.05},
-	"speed":   {"name": "HIZ",          "per_level": 0.03},
-	"damage":  {"name": "HASAR",        "per_level": 0.04},
-	"weapon":  {"name": "SİLAH",        "per_level": 0.04},
-	"stamina": {"name": "DAYANIKLILIK", "per_level": 0.10},
+	"health":  {"name": "CAN",          "per_level": 0.025},
+	"speed":   {"name": "HIZ",          "per_level": 0.015},
+	"damage":  {"name": "HASAR",        "per_level": 0.02},
+	"weapon":  {"name": "SİLAH",        "per_level": 0.03},
+	"stamina": {"name": "DAYANIKLILIK", "per_level": 0.05},
 }
 
 ## Etki cümleleri (yüzde dili, mutlak sayı yok). "weapon" yalnız şarjör süresini söyler: reload çarpanı
@@ -215,8 +215,8 @@ static func multipliers(levels: Variant) -> Dictionary:
 		"health":    1.0 + lv["health"] * STAT_INFO["health"]["per_level"],
 		"speed":     1.0 + lv["speed"] * STAT_INFO["speed"]["per_level"],
 		"damage":    1.0 + lv["damage"] * STAT_INFO["damage"]["per_level"],
-		"reload":    1.0 - w,               # şarjör süresi çarpanı (küçük = hızlı)
-		"fire_rate": 1.0 - w * 0.75,        # atış aralığı çarpanı (küçük = hızlı)
+		"reload":    1.0 - w,               # şarjör süresi çarpanı (küçük = hızlı; Lv5: -%15)
+		"fire_rate": 1.0 - w / 3.0,         # atış aralığı çarpanı (küçük = hızlı; Lv5: -%5)
 		"stamina":   1.0 + lv["stamina"] * STAT_INFO["stamina"]["per_level"],
 	}
 

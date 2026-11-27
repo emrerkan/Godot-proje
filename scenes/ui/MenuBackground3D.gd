@@ -22,6 +22,7 @@ const TURN_RATE := 1.6                     # rad/s
 const SEPARATION := 2.2                    # bu mesafeden yakın askerler birbirinden uzaklaşır
 const FOG_DENSITY := 0.0                   # hacimsel sis (0 = kapalı). Açınca ~%10 FPS; menü dumanı MenuOverlay'den geliyor
 const RENDER_SCALE := 0.6                  # arka plan 3D çözünürlüğü (1 = tam)
+const SOLDIER_BODY_LIGHT := false          # iGPU performansı: 5 ekstra OmniLight3D kapalı (geri almak için true yap)
 
 ## Fare el fenerinin rengi (Lobby takım rengine göre ayarlar)
 var light_color: Color = UITheme.ACCENT:
@@ -65,10 +66,11 @@ func _ready() -> void:
 	env.environment.background_color = UITheme.BG
 	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.environment.ambient_light_color = Color(0.3, 0.33, 0.42)
-	env.environment.ambient_light_energy = 0.07
+	env.environment.ambient_light_energy = 0.07 if SOLDIER_BODY_LIGHT else 0.13
 	env.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.environment.glow_enabled = true
 	env.environment.glow_intensity = 0.5
+	env.environment.set_glow_level(0, 0.0)   # pahalı tam-çözünürlük glow seviyesini kapat (SceneLighting ile tutarlı)
 	# Hacimsel sis: fener ve fare ışığı sisin içinde huzme olarak görünür (BF1 dumanlı menü havası)
 	env.environment.volumetric_fog_enabled = FOG_DENSITY > 0.0
 	env.environment.volumetric_fog_density = FOG_DENSITY
@@ -142,13 +144,14 @@ func _spawn_soldier(i: int) -> void:
 	fl.spot_attenuation = 0.7
 	fl.shadow_enabled = false  # performans — sadece fare feneri gölge atar
 	root.add_child(fl)
-	# Gövde ışığı (oyundaki BodyLight gibi) — karanlıkta asker silüeti seçilsin
-	var body := OmniLight3D.new()
-	body.position = Vector3(0, 1.2, 0.4)
-	body.light_energy = 0.9
-	body.omni_range = 2.2
-	body.light_color = Color(0.85, 0.88, 1.0)
-	root.add_child(body)
+	# Gövde ışığı (SOLDIER_BODY_LIGHT = true yapılırsa geri açılır)
+	if SOLDIER_BODY_LIGHT:
+		var body := OmniLight3D.new()
+		body.position = Vector3(0, 1.2, 0.4)
+		body.light_energy = 0.9
+		body.omni_range = 2.2
+		body.light_color = Color(0.85, 0.88, 1.0)
+		root.add_child(body)
 
 	var pos := Vector3(_rng.randf_range(-BOUNDS.x, BOUNDS.x), 0, _rng.randf_range(-BOUNDS.y, BOUNDS.y))
 	root.position = pos

@@ -1,9 +1,9 @@
 78098b89c88a74ebe8c20117b8754620
-::res://::1795597281
+::res://::1795710365
 CLAUDE.md::TextFile::-1::1794951460::0::1::::<><><>0<>0<><>::
-default_env.tres::Environment::6696662647191849165::1795535462::0::1::::<><><>0<>0<><>::
+default_env.tres::Environment::6696662647191849165::1795611463::0::1::::<><><>0<>0<><>::
 DOKUMANTASYON.md::TextFile::-1::1793201239::0::1::::<><><>0<>0<><>::
-export_presets.cfg::TextFile::-1::1795446999::0::1::::<><><>0<>0<><>::
+export_presets.cfg::TextFile::-1::1795709819::0::1::::<><><>0<>0<><>::
 icon.svg::CompressedTexture2D::3864269300686135935::1791462691::1791898819::1::::<><><>0<>0<>e6b9b2ed665b320379262aa861e8dd4f<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
 OYUN_TASARIM_DOKUMANI.md::TextFile::-1::1792936734::0::1::::<><><>0<>0<><>::
 tesst.txt::TextFile::-1::1792259053::0::1::::<><><>0<>0<><>::
@@ -39,31 +39,6 @@ Reloading.fbx::PackedScene::5511805981034815183::1792097557::1792098637::1::::<>
 Stabbing.fbx::PackedScene::561556108126808549::1793378659::1793379178::1::::<><><>0<>0<>67e70a2c7a004c6d157d66e4981aed63<>res://.godot/imported/Stabbing.fbx-02796188ac788f0441e0975355166bd2.scn::
 survivalist_anims.res::AnimationLibrary::-1::1793378781::0::1::::<><><>0<>0<><>::
 WalkFiring Rifle.fbx::PackedScene::7768675704610384817::1792097861::1792098637::1::::<><><>0<>0<>382f2c31ae0c68831971dce35956c2e4<>res://.godot/imported/WalkFiring Rifle.fbx-27f2595e2923fbc22c35299c4873394d.scn::
-::res://anims/Basic Shooter Pack/::1792098639
-firing rifle.fbx::PackedScene::2193061587301756202::1792087288::1792098639::1::::<><><>0<>0<>da7595551d0c8ab3c443994b786d9a82<>res://.godot/imported/firing rifle.fbx-6e20c8d9d8d0b12e0d32fa4a4bc3bb95.scn::
-hit reaction.fbx::PackedScene::7418593238686144171::1792087288::1792098639::1::::<><><>0<>0<>cf3c682003f2f05f688e99a3d38380f3<>res://.godot/imported/hit reaction.fbx-507b2dc836d8cfa27bf5b9c360b4f766.scn::
-reloading.fbx::PackedScene::6172765710914081859::1792087288::1792098639::1::::<><><>0<>0<>9aba1d1382741d79a2a7232d1760e9c1<>res://.godot/imported/reloading.fbx-61448d953751fb9c73f334a3d53b4baa.scn::
-rifle aiming idle.fbx::PackedScene::5419528247491509898::1792087288::1792098639::1::::<><><>0<>0<>9c63f9f1240a0c77bc6e8e059786ab91<>res://.godot/imported/rifle aiming idle.fbx-eaba8f0658ba53cc07923a2574aa22de.scn::
-rifle jump.fbx::PackedScene::4320045932861198831::1792087288::1792098638::1::::<><><>0<>0<>a0ae8132731f1e76dc17838c964da718<>res://.godot/imported/rifle jump.fbx-16cb91728cbea42a70c9d97ad7524866.scn::
-rifle run.fbx::PackedScene::419139931912094414::1792087288::1792098638::1::::<><><>0<>0<>a3b07d58381d5385ddb1ece71de7003e<>res://.godot/imported/rifle run.fbx-4276aade98d2fb7771334e3aa18153ca.scn::
-run backwards.fbx::PackedScene::7884949977794794813::1792087288::1792098638::1::::<><><>0<>0<>297cd70c910f2574081e6b3f96bc5c29<>res://.godot/imported/run backwards.fbx-9f18d7630d8f26088df1b2816e945e6a.scn::
-strafe (2).fbx::PackedScene::2147941374611830073::1792087288::1792098638::1::::<><><>0<>0<>6265d0b1378d74b40f18967a40798124<>res://.godot/imported/strafe (2).fbx-902b85939c9a253bc62b3a345a4decdc.scn::
-strafe left.fbx::PackedScene::9050158619890530621::1792087288::1792098638::1::::<><><>0<>0<>0f8d4eda64d2b356b20315b9abef2620<>res://.godot/imported/strafe left.fbx-91340769cb63b2b49e48d6fca56032e4.scn::
-strafe right.fbx::PackedScene::6951866333236780390::1792087288::1792098638::1::::<><><>0<>0<>8ee12a58532178a1ddc92ef11c958dd5<>res://.godot/imported/strafe right.fbx-e7a8131a1fc04b34cb98ab2d15f9a583.scn::
-strafe.fbx::PackedScene::8008271191467791223::1792087288::1792098638::1::::<><><>0<>0<>d8c271d27bc6733c95842c338d4bc69a<>res://.godot/imported/strafe.fbx-770afa20345ffe40656659e2004454af.scn::
-toss grenade.fbx::PackedScene::8565409304631177255::1792087288::1792098638::1::::<><><>0<>0<>d0f25943bf88de6a1b9823603dd7eaf9<>res://.godot/imported/toss grenade.fbx-74fc325838133883d1245f7671d5aa81.scn::
-turn left.fbx::PackedScene::3736934185530038339::1792087288::1792098638::1::::<><><>0<>0<>d17594552a4df871300702683c2cfb45<>res://.godot/imported/turn left.fbx-b64c69211fdea015693c1440e8581bb2.scn::
-turning right 45 degrees.fbx::PackedScene::7404464956447557855::1792087288::1792098638::1::::<><><>0<>0<>865581ef618e5c6a64b5ad25dc567fe4<>res://.godot/imported/turning right 45 degrees.fbx-3abe5999a5320d8999bd02f7da4b01db.scn::
-walking backwards.fbx::PackedScene::4696471255910763927::1792087288::1792098638::1::::<><><>0<>0<>5549c8c633a3da80a402e396d5a7038e<>res://.godot/imported/walking backwards.fbx-0b4f2de85079e510ab5366b414a47419.scn::
-walking.fbx::PackedScene::6820199097627035337::1792087288::1792098638::1::::<><><>0<>0<>1dd281b3c134741943815226cb457970<>res://.godot/imported/walking.fbx-baa5f2c00fc30c2a43b3ff58b4a2886c.scn::
-::res://anims/Basic+Demo+Animations/::1792006913
-Crouch_Walk.FBX::PackedScene::8429818755806976732::1593439353::1792006912::1::::<><><>0<>0<>3f37cb99ed7ac387f670c739cc21ba17<>res://.godot/imported/Crouch_Walk.FBX-40f1f3c6fb863d2940f2c14ba703d055.scn::
-Death.fbx::PackedScene::3348238156839996861::1603400788::1792006912::1::::<><><>0<>0<>d186ea9f0519927b8a572be1aef34529<>res://.godot/imported/Death.fbx-a8a389a6112b7e9fe939225ada05e77b.scn::
-Idle.fbx::PackedScene::1224752553305461230::1594931683::1792006912::1::::<><><>0<>0<>45d5227979e5115203c20d110a4061b5<>res://.godot/imported/Idle.fbx-117da9a2380b2e64d95764b1e307fc10.scn::
-Jump.FBX::PackedScene::2736993547903799733::1601144224::1792006912::1::::<><><>0<>0<>7def6f60ddc3befea2e87c34688f0ab3<>res://.godot/imported/Jump.FBX-5f73899f1b1e09cc7d468f65ce5a06c9.scn::
-Run.FBX::PackedScene::2589084609016508334::1593439234::1792006912::1::::<><><>0<>0<>77c32964c3038a3906b300f062fc6652<>res://.godot/imported/Run.FBX-a04a51075f215a742aef8c1dc2f28685.scn::
-Talk.FBX::PackedScene::8890544961047677182::1601144229::1792006913::1::::<><><>0<>0<>01b303f476fcb28df7f7aba47f0afd79<>res://.godot/imported/Talk.FBX-89a7ac7ae520ca1854b5dc48711cab1e.scn::
-Walk.FBX::PackedScene::3318186406933319463::1593439313::1792006913::1::::<><><>0<>0<>7a187f619f32b9c4e04d8a56abd92bde<>res://.godot/imported/Walk.FBX-4ab5e12c958e36369c2b8d339e3029da.scn::
 ::res://asset model/::1795519173
 Maze_minimap.png::CompressedTexture2D::1462531893630378816::1792001739::1792001947::1::::<><><>0<>0<>f9629cfa9212102f2b12c09d4c47fca4<>res://.godot/imported/Maze_minimap.png-c904ebecc948f89760bde3a6925af329.ctex::
 Maze_walls.obj::Mesh::719441962526475491::1792001676::1792001947::1::::<><><>0<>0<>d73752f1f459acb54da55d4bc448825d<>res://.godot/imported/Maze_walls.obj-669d60ea602c09d7b300fc0efc01fbf9.mesh<*>res://.godot/imported/Maze_walls.obj-669d60ea602c09d7b300fc0efc01fbf9.mesh::
@@ -1314,8 +1289,8 @@ walk_3.mp3::AudioStreamMP3::9131740722326182546::1793711354::1793711381::1::::<>
 walk_4.mp3::AudioStreamMP3::451738768531871258::1793711354::1793711381::1::::<><><>0<>0<>4b43993d8c0c161b489d7f7f30390d65<>res://.godot/imported/walk_4.mp3-1b835e7377308e0b2619edf1f73ce772.mp3str::
 ziplama-ses.mp3::AudioStreamMP3::8273799955203259275::1793711000::1793711236::1::::<><><>0<>0<>d44d5793e3c632f22eb676ab56db2455<>res://.godot/imported/ziplama-ses.mp3-13537e8aabff748e2ea8afc0d24d0a2a.mp3str::
 ::res://autoload/::1794688036
-GameManager.gd::GDScript::7747858757678665870::1795533735::0::1::::<>Node<><>0<>0<><>::
-NetworkManager.gd::GDScript::9209667055640192206::1795531656::0::1::::<>Node<><>0<>0<><>::
+GameManager.gd::GDScript::7747858757678665870::1795611899::0::1::::<>Node<><>0<>0<><>::
+NetworkManager.gd::GDScript::9209667055640192206::1795612129::0::1::::<>Node<><>0<>0<><>::
 RoomManager.gd::GDScript::5147526031797872081::1792937033::0::1::::<>Node<><>0<>0<><>::
 TeamManager.gd::GDScript::5085910100125812743::1793300921::0::1::::<>Node<><>0<>0<><>::
 ::res://docs/::1794951461
@@ -1365,23 +1340,21 @@ SKILL.md::TextFile::-1::1792934436::0::1::::<><><>0<>0<><>::
 ::res://docs/ux/::1793863853
 new-powers.md::TextFile::-1::1793863853::0::1::::<><><>0<>0<><>::
 upgrade-page.md::TextFile::-1::1793791029::0::1::::<><><>0<>0<><>::
-::res://Hatalar/::1791898819
-Kazanma Hatası.png::CompressedTexture2D::3163704995850937068::1791462695::1791898819::1::::<><><>0<>0<>0a29e15c54396c959d8e54172f27401b<>res://.godot/imported/Kazanma Hatası.png-97c074d7ff179e1365d8a001e72e2c36.ctex::
 ::res://scenes/::1795519173
 ::res://scenes/audio/::1794934528
-MenuMusic.gd::GDScript::5863518970988940652::1793799288::0::1::::<>RefCounted<><>0<>0<><>::
-Sfx.gd::GDScript::4601120786997702927::1795520106::0::1::::<>RefCounted<><>0<>0<><>::
+MenuMusic.gd::GDScript::5863518970988940652::1795610938::0::1::::<>RefCounted<><>0<>0<><>::
+Sfx.gd::GDScript::4601120786997702927::1795610936::0::1::::<>RefCounted<><>0<>0<><>::
 SfxListener.gd::GDScript::4799565186268714370::1793708888::0::1::::<>AudioListener3D<><>0<>0<><>::
 ::res://scenes/benchmark/::1794685097
 Benchmark.gd::GDScript::6364014839129744854::1795534052::0::1::::<>Node<><>0<>0<><>::
 ::res://scenes/bots/::1794688188
-BotBrain.gd::GDScript::162612626045588102::1795531730::0::1::::<>Node<><>0<>0<><>::
+BotBrain.gd::GDScript::162612626045588102::1795709871::0::1::::<>Node<><>0<>0<><>::
 BotNav.gd::GDScript::1466733265252732002::1794576196::0::1::::<>RefCounted<><>0<>0<><>::
 ::res://scenes/fx/::1795387642
-BloodFx.gd::GDScript::2403987645410240772::1795367921::0::1::::<>RefCounted<><>0<>0<><>::
+BloodFx.gd::GDScript::2403987645410240772::1795610942::0::1::::<>RefCounted<><>0<>0<><>::
 DeathFlash.gd::GDScript::68902524220982179::1795367886::0::1::::<>RefCounted<><>0<>0<><>::
 DustEmitter.gd::GDScript::7651014720281375901::1795367858::0::1::::<>Node3D<><>0<>0<><>::
-ExplosionFx.gd::GDScript::2155358997162071345::1795380594::0::1::::<>RefCounted<><>0<>0<><>::
+ExplosionFx.gd::GDScript::2155358997162071345::1795610943::0::1::::<>RefCounted<><>0<>0<><>::
 ImpactFx.gd::GDScript::7132648699901155082::1795367813::0::1::::<>RefCounted<><>0<>0<><>::
 MapEnvFx.gd::GDScript::7137814620449784772::1795509955::0::1::::<>Node3D<><>0<>0<><>::
 MuzzleFlash.gd::GDScript::742627109518492391::1794927351::0::1::::<>RefCounted<><>0<>0<><>::
@@ -1392,16 +1365,16 @@ spatial_fx_explosion.gdshader::Shader::3514714286785137096::1795380530::0::1::::
 ::res://scenes/main/::1794680689
 Main.gd::GDScript::2990680006655880912::1794680689::0::1::::<>Node<><>0<>0<><>::
 Main.tscn::PackedScene::18548884408::1791960654::0::1::::<><><>0<>0<><>::uid://biuyces7g711u::::res://scenes/main/Main.gd
-::res://scenes/player/::1795369227
+::res://scenes/player/::1795611592
 HandRifle.gd::GDScript::8654881765119272815::1795597014::0::1::::<>SkeletonModifier3D<><>0<>0<><>::
 InvisibilityShimmer.gdshader::Shader::2834899748641519635::1793827364::0::1::::<><><>0<>0<><>::
-Player.gd::GDScript::7086428762684814405::1795531732::0::1::::<>CharacterBody3D<><>0<>0<><>::
+Player.gd::GDScript::7086428762684814405::1795709870::0::1::::<>CharacterBody3D<><>0<>0<><>::
 Player.tscn::PackedScene::2036310118231742133::1794521440::0::1::::<><><>0<>0<><>::uid://c77ypgatj76cv::::res://scenes/player/Player.gd<>uid://csenp2rgquxtx::::res://scenes/player/SurvivalistModel.tscn
-SelfVisibility.gdshader::Shader::1226009312003211618::1791462695::0::1::::<><><>0<>0<><>::
+SelfVisibility.gdshader::Shader::1226009312003211618::1795709824::0::1::::<><><>0<>0<><>::
 SpineTwistModifier.gd::GDScript::8410650104438760143::1792007269::0::1::::SpineTwistModifier<>SkeletonModifier3D<><>0<>0<><>::
 SurvivalistModel.gd::GDScript::1649373067364242641::1794592316::0::1::::<>Node3D<><>0<>0<><>::
 SurvivalistModel.tscn::PackedScene::6045315616388497817::1792005321::0::1::::<><><>0<>0<><>::res://scenes/player/SurvivalistModel.gd<>res://asset model/Survivalist/SK_Military_Survivalist.fbx
-UpperBodyLayer.gd::GDScript::4573514956204456354::1792098399::0::1::::<>SkeletonModifier3D<><>0<>0<><>::
+UpperBodyLayer.gd::GDScript::4573514956204456354::1795709889::0::1::::<>SkeletonModifier3D<><>0<>0<><>::
 ::res://scenes/profile/::1793950482
 MatchStats.gd::GDScript::2623546455601844994::1793949763::0::1::::MatchStats<>RefCounted<><>0<>0<><>::
 PlayerProfile.gd::GDScript::7495841198915662343::1795436042::0::1::::PlayerProfile<>RefCounted<><>0<>0<><>::
@@ -1410,47 +1383,47 @@ PowerTrees.gd::GDScript::754348811696285178::1793791625::0::1::::<>RefCounted<><
 FpsCounter.gd::GDScript::4647926397458315530::1793618674::0::1::::<>CanvasLayer<><>0<>0<><>::
 GameSettings.gd::GDScript::2415301790995857930::1795379655::0::1::::GameSettings<>RefCounted<><>0<>0<><>::
 Lang.gd::GDScript::8106666341045231932::1793300822::0::1::::<>RefCounted<><>0<>0<><>::
-LangEN.gd::GDScript::4404694485949967786::1795533915::0::1::::<>RefCounted<><>0<>0<><>::
+LangEN.gd::GDScript::4404694485949967786::1795611073::0::1::::<>RefCounted<><>0<>0<><>::
 ::res://scenes/ui/::1795519167
 AlertTestPanel.gd::GDScript::8170637961199222443::1795440197::0::1::::<>Control<><>0<>0<><>::
-BlurBackdrop.gdshader::Shader::7215197929924138539::1792161122::0::1::::<><><>0<>0<><>::
+BlurBackdrop.gdshader::Shader::7215197929924138539::1795709827::0::1::::<><><>0<>0<><>::
 ButtonGlow.gd::GDScript::4575613962671875788::1793797898::0::1::::<>ColorRect<><>0<>0<><>::
 canvas_ui_loading_beam.gdshader::Shader::8617304694960081958::1793302146::0::1::::<><><>0<>0<><>::
 canvas_ui_menu_beam.gdshader::Shader::8913961603818953648::1793796561::0::1::::<><><>0<>0<><>::
-CharacterSelect.gd::GDScript::8797244693588930917::1795526919::0::1::::<>Control<><>0<>0<><>::
+CharacterSelect.gd::GDScript::8797244693588930917::1795611071::0::1::::<>Control<><>0<>0<><>::
 CharacterSelect.tscn::PackedScene::5265227833291186888::1791462691::0::1::::<><><>0<>0<><>::res://scenes/ui/CharacterSelect.gd
-ChatBox.gd::GDScript::4992965310883462549::1793618671::0::1::::ChatBox<>PanelContainer<><>0<>0<><>::
+ChatBox.gd::GDScript::4992965310883462549::1795709872::0::1::::ChatBox<>PanelContainer<><>0<>0<><>::
 Crosshair.gd::GDScript::7026228812099379399::1795381000::0::1::::<>Control<><>0<>0<><>::
 DeathRecap.gd::GDScript::7018879047481843138::1795368048::0::1::::<>Control<><>0<>0<><>::
-HUD.gd::GDScript::8879953225524299369::1795531944::0::1::::<>CanvasLayer<><>0<>0<><>::
+HUD.gd::GDScript::8879953225524299369::1795611060::0::1::::<>CanvasLayer<><>0<>0<><>::
 HUD.tscn::PackedScene::344922376::1791902497::0::1::::<><><>0<>0<><>::res://scenes/ui/HUD.gd
 IconSet.gd::GDScript::5514173660624733722::1795369943::0::1::::<>Control<><>0<>0<><>::
 KillNotice.gd::GDScript::8837665884753055991::1795380997::0::1::::<>Control<><>0<>0<><>::
 LoadingScreen.gd::GDScript::2537174481377333505::1793618512::0::1::::<>CanvasLayer<><>0<>0<><>::
-Lobby.gd::GDScript::4296871368415808814::1795532501::0::1::::<>Control<><>0<>0<><>::
+Lobby.gd::GDScript::4296871368415808814::1795611055::0::1::::<>Control<><>0<>0<><>::
 Lobby.tscn::PackedScene::599431858240::1791901794::0::1::::<><><>0<>0<><>::res://scenes/ui/Lobby.gd
-MainMenu.gd::GDScript::8439908814310268348::1795533042::0::1::::<>Control<><>0<>0<><>::
+MainMenu.gd::GDScript::8439908814310268348::1795611117::0::1::::<>Control<><>0<>0<><>::
 MainMenu.tscn::PackedScene::24787520941091264::1791901250::0::1::::<><><>0<>0<><>::uid://dsimchieg6245::::res://scenes/ui/MainMenu.gd
-MatchEndOverlay.gd::GDScript::704356288845839368::1795531913::0::1::::<>Control<><>0<>0<><>::
-MenuBackground3D.gd::GDScript::3928217606991327291::1794639335::0::1::::<>TextureRect<><>0<>0<><>::
+MatchEndOverlay.gd::GDScript::704356288845839368::1795611070::0::1::::<>Control<><>0<>0<><>::
+MenuBackground3D.gd::GDScript::3928217606991327291::1795709838::0::1::::<>TextureRect<><>0<>0<><>::
 MenuFloor.gdshader::Shader::1612001672391569187::1793108880::0::1::::<><><>0<>0<><>::
 MenuOverlay.gdshader::Shader::1917707799597340858::1793109218::0::1::::<><><>0<>0<><>::
-Minimap.gd::GDScript::469848642242604473::1795531878::0::1::::<>Control<><>0<>0<><>::
+Minimap.gd::GDScript::469848642242604473::1795709833::0::1::::<>Control<><>0<>0<><>::
 NumberStepper.gd::GDScript::2682836895016449447::1793887862::0::1::::<>HBoxContainer<><>0<>0<><>::
-SettingsWindow.gd::GDScript::5973615292798000246::1795534087::0::1::::<>Control<><>0<>0<><>::
+SettingsWindow.gd::GDScript::5973615292798000246::1795611065::0::1::::<>Control<><>0<>0<><>::
 SharpViewport.gd::GDScript::6302344673585518953::1793618596::0::1::::<>TextureRect<><>0<>0<><>::
 StatsPage.gd::GDScript::8535445286980426893::1793951431::0::1::::<>VBoxContainer<><>0<>0<><>::
 ToggleSwitch.gd::GDScript::1557326574484812343::1793887999::0::1::::<>Button<><>0<>0<><>::
-UITheme.gd::GDScript::8308980242542175942::1793797125::0::1::::UITheme<>RefCounted<><>0<>0<><>::
+UITheme.gd::GDScript::8308980242542175942::1795611072::0::1::::UITheme<>RefCounted<><>0<>0<><>::
 UpgradePage.gd::GDScript::2551666789966317583::1793949867::0::1::::<>VBoxContainer<><>0<>0<><>::
 WeaponRender.gd::GDScript::8698443637256891233::1794691717::0::1::::<>RefCounted<><>0<>0<><>::
 ::res://scenes/weapons/::1794950340
-Bullet.gd::GDScript::604230341112233499::1795526802::0::1::::<>Area3D<><>0<>0<><>::
+Bullet.gd::GDScript::604230341112233499::1795608139::0::1::::<>Area3D<><>0<>0<><>::
 Bullet.tscn::PackedScene::-1::1793460938::0::1::::<><><>0<>0<><>::res://scenes/weapons/Bullet.gd<>res://asset model/mermiler/Mermi_OyunIci_Tracer_Scale.glb
 SpecialGunFx.gd::GDScript::6178131228615577730::1793863832::0::1::::<>RefCounted<><>0<>0<><>::
 special_laser.gdshader::Shader::3617615159348561470::1793863833::0::1::::<><><>0<>0<><>::
 special_tracer.gdshader::Shader::1587195906286298883::1793863841::0::1::::<><><>0<>0<><>::
-Weapon.gd::GDScript::7535938827061385862::1795431135::0::1::::<>Node3D<><>0<>0<><>::
+Weapon.gd::GDScript::7535938827061385862::1795610941::0::1::::<>Node3D<><>0<>0<><>::
 Weapon.tscn::PackedScene::-1::1791462691::0::1::::<><><>0<>0<><>::res://scenes/weapons/Weapon.gd
 ::res://scenes/world/::1794951452
 Bomb.gd::GDScript::3073748922878818649::1795380397::0::1::::<>Node3D<><>0<>0<><>::
@@ -1465,11 +1438,11 @@ LightShaft.gdshader::Shader::1065006354266005747::1792076810::0::1::::<><><>0<>0
 Map.gd::GDScript::1360093020774556044::1795385640::0::1::::<>Node3D<><>0<>0<><>::
 Map.tscn::PackedScene::563665040004979031::1792076698::0::1::::<><><>0<>0<><>::uid://tm3sesnswm8k::::res://scenes/world/Map.gd<>uid://c2n6b5bvfe8sv::::res://default_env.tres<>uid://hud001::::res://scenes/ui/HUD.tscn<>uid://mbwlrq0rtfam::::res://scenes/world/CameraController.gd<>res://asset model/Maze_walls.obj<>res://scenes/world/PowerupManager.gd<>res://scenes/world/WallLamps.gd
 Powerup.gd::GDScript::9092547252677725295::1795436628::0::1::::<>Area3D<><>0<>0<><>::
-PowerupManager.gd::GDScript::7824874032987097163::1795526854::0::1::::<>Node<><>0<>0<><>::
+PowerupManager.gd::GDScript::7824874032987097163::1795610945::0::1::::<>Node<><>0<>0<><>::
 ProximityReveal.gd::GDScript::4701791085338037522::1794594889::0::1::::<>Node<><>0<>0<><>::
 SceneLighting.gd::GDScript::7196870394737121873::1795509954::0::1::::<>RefCounted<><>0<>0<><>::
 SmokeCloud.gd::GDScript::8618150523978425076::1795367887::0::1::::<>Node3D<><>0<>0<><>::
 spatial_door_beam.gdshader::Shader::2265866685239459818::1793300524::0::1::::<><><>0<>0<><>::
-spatial_door_zone.gdshader::Shader::7387160539093715792::1793300523::0::1::::<><><>0<>0<><>::
+spatial_door_zone.gdshader::Shader::7387160539093715792::1795709826::0::1::::<><><>0<>0<><>::
 Trap.gd::GDScript::9020685958409370608::1793827275::0::1::::<>Node3D<><>0<>0<><>::
-WallLamps.gd::GDScript::7115055305590786808::1795367997::0::1::::<>Node3D<><>0<>0<><>::
+WallLamps.gd::GDScript::7115055305590786808::1795709841::0::1::::<>Node3D<><>0<>0<><>::

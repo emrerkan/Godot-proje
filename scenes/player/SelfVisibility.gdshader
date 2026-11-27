@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded, blend_add, cull_back;
+render_mode unshaded, blend_add, cull_back, depth_draw_never, shadows_disabled;
 
 // Kendi karakterini karanlıkta görünür kılan kenar parıltısı (self rim light).
 // Gerçek bir ışık kaynağı değildir — zemine/duvara ışık veya gölge taşırmaz,
@@ -10,7 +10,7 @@ uniform float rim_power : hint_range(0.5, 8.0) = 2.2;
 uniform float rim_strength : hint_range(0.0, 2.0) = 0.85;
 
 void fragment() {
-	float fresnel = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), rim_power);
+	float fresnel = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), rim_power);
 	ALBEDO = rim_color.rgb;
 	ALPHA = fresnel * rim_strength;
 }

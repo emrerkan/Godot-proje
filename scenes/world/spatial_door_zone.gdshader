@@ -47,10 +47,11 @@ void fragment() {
 	// Üç ok: alttan üste (UV.y azalan = ekranda yukarı) sırayla parlar
 	float speed = chevron_speed * mix(1.0, ACTIVE_SPEED_MULT, active);
 	float chev = 0.0;
-	for (float i = 0.0; i < CHEVRON_COUNT; i += 1.0) {
+	for (int idx = 0; idx < 3; idx++) {
+		float i = float(idx);
 		float top = chevron_gap * (1.0 - i) - chevron_size * 0.5;   // i=0 alt, i=2 üst
 		float phase = fract(TIME * speed - i / CHEVRON_COUNT);
-		float glow = 0.35 + 0.65 * smoothstep(0.6, 1.0, 1.0 - phase) ;
+		float glow = 0.35 + 0.65 * smoothstep(0.6, 1.0, 1.0 - phase);
 		chev = max(chev, chevron(p, top) * glow);
 	}
 

@@ -124,16 +124,19 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
-	# GAME + kapalı: görünür/sönen satır varsa her kare yeniden çiz (en fazla birkaç satır)
+	# GAME + kapalı: yalnızca sönme aralığında (age >= SHOW_TIME) veya temizleme gerektiğinde yeniden çiz
 	if mode != Mode.GAME or _line.has_focus():
 		return
 	var now := Time.get_ticks_msec() / 1000.0
 	var any_visible := false
+	var any_fading := false
 	for e: Dictionary in _game_lines:
-		if now - float(e["t"]) < SHOW_TIME + FADE_TIME:
+		var age := now - float(e["t"])
+		if age < SHOW_TIME + FADE_TIME:
 			any_visible = true
-			break
-	if any_visible or _rendered_any:
+			if age >= SHOW_TIME:
+				any_fading = true
+	if any_fading or (not any_visible and _rendered_any):
 		_render_game()
 
 

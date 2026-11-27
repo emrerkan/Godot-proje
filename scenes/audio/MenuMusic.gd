@@ -16,6 +16,13 @@ const DUCK_TIME := 1.0
 
 
 static var _player: AudioStreamPlayer   # root'a ertelenmiş eklenir → ağaçta aramak yerine referans (çift player olmasın)
+static var _tween: Tween
+
+
+static func _kill_tween() -> void:
+	if _tween != null and _tween.is_valid():
+		_tween.kill()
+	_tween = null
 
 
 static func play(tree: SceneTree) -> void:
@@ -23,7 +30,10 @@ static func play(tree: SceneTree) -> void:
 	if existing != null:
 		if existing.has_meta("stopping") or existing.volume_db < VOLUME_DB - 0.5:   # sönerken/kısıkken menüye dönüldü → geri aç
 			existing.remove_meta("stopping")
-			existing.create_tween().tween_property(existing, "volume_db", VOLUME_DB, FADE_IN)
+			if existing.is_inside_tree():
+				_kill_tween()
+				_tween = existing.create_tween()
+				_tween.tween_property(existing, "volume_db", VOLUME_DB, FADE_IN)
 		return
 	for path: String in FILES:
 		if not ResourceLoader.exists(path):
@@ -42,8 +52,15 @@ static func play(tree: SceneTree) -> void:
 		_player = player
 		tree.root.add_child.call_deferred(player)
 		player.ready.connect(func() -> void:
+			if player.has_meta("stopping"):
+				player.queue_free()
+				if _player == player:
+					_player = null
+				return
 			player.play()
-			player.create_tween().tween_property(player, "volume_db", VOLUME_DB, FADE_IN) \
+			_kill_tween()
+			_tween = player.create_tween()
+			_tween.tween_property(player, "volume_db", VOLUME_DB, FADE_IN) \
 				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT), CONNECT_ONE_SHOT)
 		return
 
@@ -55,7 +72,11 @@ static func duck(tree: SceneTree) -> void:
 	if player == null or player.has_meta("stopping"):
 		return
 	var to_duck := func() -> void:
-		player.create_tween().tween_property(player, "volume_db", DUCK_DB, DUCK_TIME) \
+		if not is_instance_valid(player) or player.has_meta("stopping"):
+			return
+		_kill_tween()
+		_tween = player.create_tween()
+		_tween.tween_property(player, "volume_db", DUCK_DB, DUCK_TIME) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	if player.is_inside_tree():
 		to_duck.call()
@@ -67,15 +88,15 @@ static func stop(_tree: SceneTree) -> void:
 	var player := _player if is_instance_valid(_player) else null
 	if player == null or player.has_meta("stopping"):
 		return
-	if not player.is_inside_tree():   # henüz eklenmedi (aynı karede play+stop) → doğrudan iptal
-		player.queue_free()
+	player.set_meta("stopping", true)
+	_kill_tween()
+	if not player.is_inside_tree():   # henüz eklenmedi (aynı karede play+stop) → ready'de temizlenir
 		_player = null
 		return
-	player.set_meta("stopping", true)
-	var tw := player.create_tween()
-	tw.tween_property(player, "volume_db", SILENT_DB, FADE_OUT)
-	tw.tween_callback(func() -> void:
-		if player.has_meta("stopping"):
+	_tween = player.create_tween()
+	_tween.tween_property(player, "volume_db", SILENT_DB, FADE_OUT)
+	_tween.tween_callback(func() -> void:
+		if is_instance_valid(player) and player.has_meta("stopping"):
 			player.queue_free()
 			if _player == player:
 				_player = null)

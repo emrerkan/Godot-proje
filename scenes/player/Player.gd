@@ -37,9 +37,6 @@ const HALO_ENERGY := 1.4
 const HALO_RANGE := 4.5
 const HALO_HEIGHT := 1.6
 const SELF_RIM_SHADER: Shader = preload("res://scenes/player/SelfVisibility.gdshader")
-const SNIPER_RANGE_SHADER: Shader = preload("res://scenes/player/spatial_player_sniper_range.gdshader")
-const SNIPER_RANGE_RING_UV_DIAMETER := 0.96   # spatial_player_sniper_range.gdshader RING_RADIUS=0.48 → 0.96
-var _sniper_range_ring: MeshInstance3D = null
 ## Uzak oyuncu ışık LOD'u (20 oyunculu maçta gölge atlası taşıyordu → ani FPS düşüşü). Işık HERKESE görünür kalır;
 ## sadece GÖLGE kırpılır. Yerel oyuncunun feneri + halesi hep gölgeli. Uzaklarda: motor tarafı mesafe sönümü
 ## (statik ayar) + `LIGHT_LOD_INTERVAL` aralıkla kameraya en yakın `REMOTE_SHADOW_SPOTS` uzak fener gölgeli.
@@ -64,11 +61,11 @@ const CHARACTER_STATS: Dictionary = {
 }
 
 const WEAPON_CONFIGS: Dictionary = {
-	"Tank":     {"damage": 22.0,  "fire_rate": 0.10, "max_ammo": 30, "reload_time": 2.0, "spread_degrees": 3.0, "bullet_speed": 32.0, "is_semi_auto": false, "max_distance": 45.0},
+	"Tank":     {"damage": 17.0,  "fire_rate": 0.10, "max_ammo": 30, "reload_time": 2.0, "spread_degrees": 3.0, "bullet_speed": 32.0, "is_semi_auto": false, "max_distance": 45.0},
 	"Visioner": {"damage": 18.0,  "fire_rate": 0.09, "max_ammo": 28, "reload_time": 1.7, "spread_degrees": 2.5, "bullet_speed": 32.0, "is_semi_auto": false, "max_distance": 35.0},
-	"Runner":   {"damage": 11.0,  "fire_rate": 0.06, "max_ammo": 40, "reload_time": 1.2, "spread_degrees": 4.5, "bullet_speed": 30.0, "is_semi_auto": false, "max_distance": 25.0},
-	"Sniper":   {"damage": 120.0, "fire_rate": 1.3,  "max_ammo": 5,  "reload_time": 2.5, "spread_degrees": 0.0, "bullet_speed": 80.0, "is_semi_auto": true,  "max_distance": 400.0, "pierce_walls": true, "one_shot_radius": 18.0, "one_shot_damage": 999.0, "falloff_end": 80.0, "min_damage_ratio": 0.20},  # çember içi (18 m) tek atış, dışı 80 m'ye kadar %20 hasara düşer
-	"Medic":    {"damage": 45.0,  "fire_rate": 0.4,  "max_ammo": 7,  "reload_time": 2.0, "spread_degrees": 1.5, "bullet_speed": 35.0, "is_semi_auto": true,  "max_distance": 55.0},
+	"Runner":   {"damage": 13.0,  "fire_rate": 0.06, "max_ammo": 40, "reload_time": 1.2, "spread_degrees": 3.5, "bullet_speed": 30.0, "is_semi_auto": false, "max_distance": 25.0},
+	"Sniper":   {"damage": 120.0, "fire_rate": 1.3,  "max_ammo": 5,  "reload_time": 2.5, "spread_degrees": 0.0, "bullet_speed": 80.0, "is_semi_auto": true,  "max_distance": 400.0, "pierce_walls": false, "one_shot_radius": 18.0, "one_shot_damage": 999.0, "falloff_end": 80.0, "min_damage_ratio": 0.20},  # çember içi (18 m) tek atış, dışı 80 m'ye kadar %20 hasara düşer; duvar delme sadece Özel Silah'ta
+	"Medic":    {"damage": 45.0,  "fire_rate": 0.32, "max_ammo": 10, "reload_time": 2.0, "spread_degrees": 1.5, "bullet_speed": 35.0, "is_semi_auto": true,  "max_distance": 55.0},
 }
 
 var peer_id: int = 0
@@ -296,6 +293,7 @@ const SPAWN_BLINK_TRANS := 0.65    # sönük fazda yarı saydamlık (tamamen kay
 var _spawn_invuln_left := 0.0
 var _spawn_blink_active := false
 var _spawn_meshes: Array[GeometryInstance3D] = []
+var _reload_sfx_tween: Tween = null
 
 ## Profil yükseltme çarpanları (PlayerProfile.multipliers) — initialize'da dolar
 const PROFILE := preload("res://scenes/profile/PlayerProfile.gd")
@@ -770,7 +768,6 @@ func _equip_default_weapon() -> void:
 	cfg["reload_time"] = float(cfg["reload_time"]) * float(_upgrade_mult["reload"])
 	cfg["fire_rate"] = float(cfg["fire_rate"]) * float(_upgrade_mult["fire_rate"])
 	current_weapon.configure(cfg)
-	_setup_sniper_range_ring(float(cfg.get("one_shot_radius", 0.0)))
 	_add_render_layer(current_weapon, BODY_LIGHT_LAYER_BIT)
 	_disable_shadow_casting(current_weapon)
 	# Üst gövde taban pozu: tüfek nişanda
@@ -778,28 +775,6 @@ func _equip_default_weapon() -> void:
 	var base_anim: StringName = ANIM_IDLE if is_knife_mode() else ANIM_AIM
 	if _upper and _anim_player and _anim_player.has_animation(base_anim):
 		_upper.set_base(_anim_player.get_animation(base_anim))
-
-
-## Yerel Sniper oyuncusu için tek-vuruş çemberini yerde ince bir halka olarak gösterir (rakipler görmez).
-func _setup_sniper_range_ring(radius: float) -> void:
-	if _sniper_range_ring != null and is_instance_valid(_sniper_range_ring):
-		_sniper_range_ring.queue_free()
-		_sniper_range_ring = null
-	if not is_local or radius <= 0.0 or is_knife_mode() or DisplayServer.get_name() == "headless":
-		return
-	var ring := MeshInstance3D.new()
-	ring.name = "SniperRangeRing"
-	var pm := PlaneMesh.new()
-	var d := radius * 2.0 / SNIPER_RANGE_RING_UV_DIAMETER
-	pm.size = Vector2(d, d)
-	ring.mesh = pm
-	ring.position.y = 0.06
-	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var mat := ShaderMaterial.new()
-	mat.shader = SNIPER_RANGE_SHADER
-	ring.material_override = mat
-	add_child(ring)
-	_sniper_range_ring = ring
 
 
 # ─────────────────────────────────────────────
@@ -862,6 +837,9 @@ func _broadcast_action(action: int) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _action_rpc(action: int) -> void:
+	var s := multiplayer.get_remote_sender_id()
+	if s != 0 and (s != 1 if is_bot else s != peer_id):
+		return
 	play_action(action)
 
 
@@ -903,12 +881,20 @@ func play_action(action: int) -> void:
 # Fizik Döngüsü
 # ─────────────────────────────────────────────
 
+func _kill_reload_sfx() -> void:
+	if _reload_sfx_tween != null and _reload_sfx_tween.is_valid():
+		_reload_sfx_tween.kill()
+	_reload_sfx_tween = null
+
+
 ## Şarjör: çıkar (hemen) → tak (%55) → kurma kolu (%85) — süre karakterin (yükseltilmiş) şarjör süresine göre
 func _play_reload_sounds() -> void:
+	_kill_reload_sfx()
 	var t: float = current_weapon.reload_time if current_weapon else 1.8
 	SFX.play_voice(_voice, "mag_out", -6.0)
 	# Tween düğüme bağlı → oyuncu silinirse kendiliğinden iptal
 	var tw := create_tween()
+	_reload_sfx_tween = tw
 	tw.tween_interval(t * 0.55)
 	tw.tween_callback(func() -> void:
 		if not is_dead:
@@ -929,7 +915,7 @@ func flash_fx(color: Color, strength: float) -> void:
 
 
 func _process(delta: float) -> void:
-	if not _lod_remotes.is_empty():
+	if is_local and not _lod_remotes.is_empty():
 		_update_light_lod(get_viewport())
 	if _special_laser != null:
 		_aim_special_laser()   # animasyon namluyu oynattıkça lazer nişangaha kilitli kalsın
@@ -937,7 +923,8 @@ func _process(delta: float) -> void:
 		_spawn_invuln_left = maxf(_spawn_invuln_left - delta, 0.0)
 	_update_spawn_blink()
 	if is_invisible:
-		_invis_left -= delta
+		var invis_rate := 2.0 if GameManager.is_in_door_unlock_zone(peer_id) else 1.0
+		_invis_left -= delta * invis_rate
 		if _invis_left <= 0.0:
 			set_invisible(false, 0.0)
 		else:
@@ -1177,10 +1164,14 @@ func _update_laser() -> void:
 				_aim_special_laser()
 
 
+var _special_laser_tip: Node3D = null
+
+
 ## Yerel: lazeri namludan nişan noktasına yönelt + boyunu mesafeye uydur (uçtaki nokta = nişangah).
 ## SpecialGunFx lazeri -Z'ye LASER_LENGTH boyunda; kök Z ölçeğiyle kısaltılır, uç küresi ters ölçekle yuvarlak kalır.
 func _aim_special_laser() -> void:
 	if _special_laser == null or not is_instance_valid(_special_laser) or not _special_laser.is_inside_tree():
+		_special_laser_tip = null
 		return
 	var from := (_special_laser.get_parent() as Node3D).global_position
 	var to := _get_aim_target()
@@ -1189,9 +1180,10 @@ func _aim_special_laser() -> void:
 		return
 	var look := Basis.looking_at((to - from) / dist, Vector3.UP)
 	_special_laser.global_transform = Transform3D(look.scaled_local(Vector3(1.0, 1.0, dist / SPECIAL_LASER_LENGTH)), from)
-	var tip := _special_laser.get_node_or_null("Tip") as Node3D
-	if tip:
-		tip.scale = Vector3(1.0, 1.0, SPECIAL_LASER_LENGTH / dist)
+	if _special_laser_tip == null or not is_instance_valid(_special_laser_tip):
+		_special_laser_tip = _special_laser.get_node_or_null("Tip") as Node3D
+	if _special_laser_tip:
+		_special_laser_tip.scale = Vector3(1.0, 1.0, SPECIAL_LASER_LENGTH / dist)
 
 
 func _get_special_fx() -> GDScript:
@@ -1422,6 +1414,9 @@ func _use_capsule_shape() -> void:
 	collision_shape.position = Vector3(0, BODY_HEIGHT * 0.5, 0)
 
 
+var _step_col: KinematicCollision3D = KinematicCollision3D.new()
+
+
 ## Basamak çıkma: önde alçak bir kenar varsa (alt seviyede tıkalı, STEP_HEIGHT yukarıda boş) gövdeyi kenarın
 ## üstüne kaldırır; ardından move_and_slide ileri taşır. Duvar (yukarıda da tıkalı) ve tavan kontrolü var.
 func _try_step_up(horizontal_velocity: Vector3) -> void:
@@ -1441,11 +1436,10 @@ func _try_step_up(horizontal_velocity: Vector3) -> void:
 	if test_move(t_up, probe):
 		return                                   # yukarıda da tıkalı → gerçek duvar
 	# Kenarın tam yüksekliği: yukarı + ileri konumdan aşağı in, nereye oturuyorsa o kadar kaldır
-	var col := KinematicCollision3D.new()
 	var t_fwd := t_up.translated(probe)
-	if not test_move(t_fwd, -up, col):
+	if not test_move(t_fwd, -up, _step_col):
 		return                                   # önde zemin yok (çukur) — basamak değil
-	var rise := step - col.get_travel().length()
+	var rise := step - _step_col.get_travel().length()
 	if rise <= 0.02:
 		return
 	global_position.y += rise + 0.01
@@ -1514,6 +1508,9 @@ func _wall_between(other: Node3D) -> bool:
 	return not get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
 
+var _host_last_stab_ms: int = 0
+
+
 ## Host: bıçaklayanın (bu node) isteğini doğrular → tek vuruş. Gönderen bu oyuncunun sahibi olmalı.
 @rpc("any_peer", "reliable")
 func _request_stab(target_peer: int) -> void:
@@ -1525,12 +1522,18 @@ func _request_stab(target_peer: int) -> void:
 	# Bot: gönderen sahibi değil HOST olmalı (bot id'sinden RPC gelmez; yerel doğrudan çağrı → sender 1)
 	if (sender != 1 if is_bot else sender != peer_id) or is_dead:
 		return
+	# Sunucu tarafı bıçak bekleme süresi doğrulaması (ağ jitter'ı için 80 ms tolerans)
+	var now_ms := Time.get_ticks_msec()
+	var cd_ms := int(((KNIFE_STAB_COOLDOWN if is_knife_mode() else STAB_COOLDOWN) * 1000.0)) - 80
+	if _host_last_stab_ms > 0 and now_ms - _host_last_stab_ms < cd_ms:
+		return
 	var target: Variant = GameManager.active_players.get(target_peer)
 	if target == null or not is_instance_valid(target) or target.is_dead or GameManager.are_allies(peer_id, target_peer):
 		return
 	var to: Vector3 = (target as Node3D).global_position - global_position
 	if Vector2(to.x, to.z).length() > STAB_RANGE + STAB_RANGE_TOLERANCE or _wall_between(target as Node3D):
 		return
+	_host_last_stab_ms = now_ms
 	# Arkadan mı: hedefin nişan yönü (root -Z) ile hedeften saldırana vektör zıt yöndeyse
 	var target_fwd := -(target as Node3D).global_transform.basis.z
 	var to_attacker := Vector2(-to.x, -to.z).normalized()
@@ -1558,6 +1561,9 @@ func _start_local_flip(dir: Vector3) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _flip_rpc(kind: int, face_yaw: float) -> void:
+	var s := multiplayer.get_remote_sender_id()
+	if s != 0 and (s != 1 if is_bot else s != peer_id):
+		return
 	if is_dead or kind < 0 or kind >= FLIP_ANIMS.size():
 		return
 	_flip = kind
@@ -1724,8 +1730,9 @@ func _update_spawn_blink() -> void:
 		return
 	if _spawn_meshes.is_empty() and _char_mesh != null:
 		for child in _char_mesh.find_children("*", "GeometryInstance3D", true, false):
-			if child != _special_laser:
-				_spawn_meshes.append(child as GeometryInstance3D)
+			if _special_laser != null and (child == _special_laser or _special_laser.is_ancestor_of(child)):
+				continue
+			_spawn_meshes.append(child as GeometryInstance3D)
 	_spawn_blink_active = true
 	# Son 0.8 sn'de yanıp sönme hafifçe hızlanır (koruma bitiyor ipucu)
 	var freq := SPAWN_BLINK_HZ * (1.45 if _spawn_invuln_left < 0.8 else 1.0)
@@ -1794,8 +1801,12 @@ func _interpolate_remote(delta: float) -> void:
 func _broadcast_state(pos: Vector3, aim_y: float, mode: int = MoveMode.WALK) -> void:
 	if is_local:
 		return
-	# Bot: durumu SADECE host yayınlar (host'taki bot node'u kendi fiziğini sürer, dışarıdan gelen yok sayılır)
-	if is_bot and (_bot_driven or multiplayer.get_remote_sender_id() != 1):
+	var sender := multiplayer.get_remote_sender_id()
+	# Bot: durumu SADECE host yayınlar; insan: SADECE kendi peer_id'si yayınlar
+	if is_bot:
+		if _bot_driven or (sender != 0 and sender != 1):
+			return
+	elif sender != 0 and sender != peer_id:
 		return
 	_target_position = pos
 	_target_aim_y = aim_y
@@ -1818,12 +1829,37 @@ func _broadcast_state(pos: Vector3, aim_y: float, mode: int = MoveMode.WALK) -> 
 func take_damage(amount: float, shooter_peer_id: int, source: int = DAMAGE_BULLET) -> void:
 	if not NetworkManager.is_host():
 		return
+	if amount <= 0.0 or is_nan(amount) or is_inf(amount):
+		return
 	if is_dead or not GameManager.match_live:
 		return  # ısınmada (diğer oyuncuların yüklemesi bekleniyor) hasar yok
 	if is_spawn_protected():
 		return  # doğma koruması (2.5 sn): görünür kalır ama hiçbir hasar işlemez
-	# Çömelme: mermiler üstünden geçer (host, hedefin _broadcast_state ile gelen moduna göre karar verir)
-	if source == DAMAGE_BULLET and is_crouching():
+	# Uzak istemciden gelen hasar RPC'sini doğrula (yerel host/bot/bomba/tuzak çağrıları sender == 0)
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0:
+		if shooter_peer_id != sender:
+			return
+		if source != DAMAGE_BULLET and source != DAMAGE_SPECIAL:
+			return
+		if GameManager.are_allies(shooter_peer_id, peer_id):
+			return
+		var shooter: Variant = GameManager.active_players.get(shooter_peer_id)
+		if shooter == null or not is_instance_valid(shooter) or shooter.is_dead:
+			return
+		if source == DAMAGE_SPECIAL:
+			amount = minf(amount, 999.0)
+		else:
+			var cfg: Dictionary = WEAPON_CONFIGS.get(String(shooter.character_type), {})
+			var max_dmg: float = float(cfg.get("damage", 50.0)) * 1.35
+			if cfg.has("one_shot_radius"):
+				var hdist := Vector2((shooter as Node3D).global_position.x - global_position.x,
+						(shooter as Node3D).global_position.z - global_position.z).length()
+				if hdist <= float(cfg["one_shot_radius"]) + 3.0:
+					max_dmg = maxf(max_dmg, float(cfg.get("one_shot_damage", 999.0)))
+			amount = minf(amount, max_dmg)
+	# Çömelme: mermiler üstünden geçer (kapı kilit çemberindeyken çömelme korumaz)
+	if source == DAMAGE_BULLET and is_crouching() and not GameManager.is_in_door_unlock_zone(peer_id):
 		return
 	health -= amount
 	health = clampf(health, 0.0, max_health)
@@ -1855,6 +1891,8 @@ func _hit_confirm_rpc(killed: bool) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _sync_health(new_health: float) -> void:
+	if multiplayer.get_remote_sender_id() not in [0, 1]:
+		return
 	var diff := new_health - health
 	if diff < 0.0:
 		# Hasar → her peer'da kırmızı parıltı (hasara göre), ölmediyse sarsılma
@@ -1887,6 +1925,8 @@ func _die(killer_peer_id: int, source: int = DAMAGE_BULLET) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _apply_death() -> void:
+	if multiplayer.get_remote_sender_id() not in [0, 1]:
+		return
 	is_dead = true
 	_spawn_invuln_left = 0.0
 	BLOOD_FX.splat(get_tree(), global_position, 1.8)   # yerde kan gölü (solarak kaybolur)
@@ -1919,9 +1959,10 @@ func _apply_death() -> void:
 	body_light.visible = false
 	collision_shape.set_deferred("disabled", true)
 	if current_weapon:
+		if current_weapon.has_method("cancel_reload"):
+			current_weapon.cancel_reload()
 		current_weapon.hide()
-	if _sniper_range_ring:
-		_sniper_range_ring.visible = false
+	_kill_reload_sfx()
 	card_indicator.visible = false
 	name_label.visible = false
 
@@ -1944,6 +1985,10 @@ func respawn(spawn_pos: Vector3) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _apply_respawn(spawn_pos: Vector3) -> void:
+	var s := multiplayer.get_remote_sender_id()
+	# Host (0/1) her oyuncuyu, insan client ise maç başı ısınma ışınlamasında yalnızca kendi düğümünü respawn edebilir
+	if s not in [0, 1] and (is_bot or s != peer_id):
+		return
 	is_dead = false
 	_spawn_invuln_left = SPAWN_INVULN_DURATION
 	drop_card()
@@ -1957,6 +2002,7 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 	_last_anim_pos = spawn_pos  # ışınlanma koşu animasyonu tetiklemesin
 	_move_speed = 0.0
 	_death_token += 1
+	_kill_reload_sfx()
 	_reset_leg_facing()
 	_reset_stamina()
 	if is_bot:
@@ -1976,8 +2022,6 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 	if current_weapon:
 		current_weapon.show()
 		current_weapon.refill_ammo()
-	if _sniper_range_ring:
-		_sniper_range_ring.visible = true
 
 
 # ─────────────────────────────────────────────

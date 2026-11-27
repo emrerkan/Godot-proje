@@ -53,6 +53,8 @@ func _ready() -> void:
 	reload_timer.wait_time = reload_time
 	reload_timer.one_shot = true
 	fire_timer.one_shot = true
+	if not reload_timer.timeout.is_connected(_on_reload_timeout):
+		reload_timer.timeout.connect(_on_reload_timeout)
 	# AmmoLabel, Player.tscn'dedir — ağaçta iki seviye üstte
 	var player := get_parent().get_parent()
 	if player and player.has_node("AmmoLabel"):
@@ -254,11 +256,23 @@ func reload() -> void:
 	is_reloading = true
 	if _ammo_label:
 		_ammo_label.text = "Şarj..."
-	emit_signal("ammo_changed", current_ammo, max_ammo, true)
+	ammo_changed.emit(current_ammo, max_ammo, true)
 	reload_timer.start()
-	await reload_timer.timeout
+
+
+func _on_reload_timeout() -> void:
+	if not is_reloading:
+		return
 	current_ammo = max_ammo
 	is_reloading = false
+	_update_ammo_label()
+
+
+func cancel_reload() -> void:
+	if not is_reloading:
+		return
+	is_reloading = false
+	reload_timer.stop()
 	_update_ammo_label()
 
 
@@ -272,4 +286,4 @@ func refill_ammo() -> void:
 func _update_ammo_label() -> void:
 	if _ammo_label:
 		_ammo_label.text = "%d/%d" % [current_ammo, max_ammo]
-	emit_signal("ammo_changed", current_ammo, max_ammo, false)
+	ammo_changed.emit(current_ammo, max_ammo, false)

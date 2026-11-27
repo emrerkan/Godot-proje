@@ -471,7 +471,9 @@ static func spawn(tree: SceneTree, pos: Vector3, radius: float = 4.0) -> void:
 	stw.tween_property(smat, "albedo_color:a", 0.0, 2.0).set_ease(Tween.EASE_IN)
 
 	_active.append(holder)
-	tree.create_timer(HOLDER_LIFE, false).timeout.connect(holder.queue_free)
+	var htw := holder.create_tween()
+	htw.tween_interval(HOLDER_LIFE)
+	htw.tween_callback(holder.queue_free)
 
 
 static func prewarm(rig: Node3D) -> void:

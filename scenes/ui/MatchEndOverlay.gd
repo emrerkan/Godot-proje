@@ -285,7 +285,7 @@ func present(winning_team: int, won: bool, team_color: Color, end_reason: String
 			var ch_lbl := UITheme.label(String(m.get("character", "")), 14, UITheme.TEXT_DIM)
 			ch_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			cv.add_child(ch_lbl)
-			var kd_m := UITheme.label("%dK / %dÖ" % [int(m.get("kills", 0)), int(m.get("deaths", 0))], 15, UITheme.TEXT, UITheme.font_mono)
+			var kd_m := UITheme.label(tr("%dK / %dÖ") % [int(m.get("kills", 0)), int(m.get("deaths", 0))], 15, UITheme.TEXT, UITheme.font_mono)
 			kd_m.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			cv.add_child(kd_m)
 			_mvp_row.add_child(card)
@@ -298,7 +298,7 @@ func present(winning_team: int, won: bool, team_color: Color, end_reason: String
 	else:
 		_title_lbl.text = "ZAFER" if won else "YENİLGİ"
 		_title_lbl.add_theme_color_override("font_color", team_color if won else UITheme.DANGER)
-		var win_name: String = TeamManager.get_team_name(winning_team).to_upper()
+		var win_name: String = UITheme.upper_tr(TeamManager.get_team_name(winning_team))
 		if end_reason == "time":
 			_sub_lbl.text = tr("SÜRE DOLDU · %s TAKIMI KAZANDI") % win_name
 		else:
@@ -315,7 +315,7 @@ func present(winning_team: int, won: bool, team_color: Color, end_reason: String
 	var start_lv := PROFILE.level_for_xp(start_total_xp)
 	var end_total_xp := start_total_xp + match_xp
 	var end_xp := start_xp + match_xp
-	_level_badge.text = "SV %d" % start_lv
+	_level_badge.text = tr("SV %d") % start_lv
 	_level_badge.add_theme_color_override("font_color", UITheme.TEXT)
 	_level_up_pill.visible = false
 	_profile_xp_lbl.text = tr("PROFİL: %d XP") % start_xp
@@ -492,7 +492,7 @@ func _animate_profile_bar(my_seq: int, start_xp: int, end_xp: int, start_total_x
 
 
 func _trigger_level_up(new_level: int) -> void:
-	_level_badge.text = "SV %d" % new_level
+	_level_badge.text = tr("SV %d") % new_level
 	_level_badge.add_theme_color_override("font_color", UITheme.ACCENT)
 	_pulse_control(_level_badge, 1.42, 0.32)
 

@@ -331,6 +331,7 @@ func _new_life() -> void:
 	_target = null
 	_target_lost_for = 99.0
 	_last_seen_left = 0.0
+	_hunt_left = 0.0
 	_alert_left = 0.0
 	_burst_left = 0.0
 	_burst_pause = 0.0
@@ -384,6 +385,9 @@ func _perceive(live: bool) -> void:
 	var my_team: int = int(_pl.team_id)
 	var is_dm: bool = GameManager.is_deathmatch()
 
+	const SMOKE_CLOUD := preload("res://scenes/world/SmokeCloud.gd")
+	const DARK_VIEW_RANGE := 5.0   # feneri kapalı (F) hedefi bot yalnızca bu mesafeden fark eder
+
 	var best = null
 	var best_score := INF
 	var best_clear := false
@@ -395,11 +399,20 @@ func _perceive(live: bool) -> void:
 			continue
 		var opos: Vector3 = (other as Node3D).global_position
 		var d := pos.distance_to(opos)
-		if d > _d_view:
+		var eff_view := minf(_d_view, DARK_VIEW_RANGE) if bool(other.get("flashlight_off")) else _d_view
+		if d > eff_view:
+			if d <= _d_hear and not bool(other.is_crouching()):
+				_alert_pos = opos
+				_alert_left = ALERT_MEMORY
 			continue
 		var to := _flat(opos - pos, facing)
 		var in_cone := facing.dot(to) >= cone_cos
 		if not in_cone and d > _d_hear:
+			continue
+		if SMOKE_CLOUD.blocks_segment(pos, opos):
+			if d <= _d_hear and not bool(other.is_crouching()):
+				_alert_pos = opos
+				_alert_left = ALERT_MEMORY
 			continue
 		var hit := _ray(eye, opos + Vector3(0.0, TARGET_HEIGHT, 0.0))
 		var visible := false

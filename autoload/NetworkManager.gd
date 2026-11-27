@@ -52,7 +52,7 @@ const MAPS: Array[Dictionary] = [
 	{"id": "forest_v3_1", "name": "Orman v3_1", "scene": IMPORTED_MAP_SCENE, "max_team": 5,
 		"glb": "res://asset model/haritalar/Map4_Orman_v3_1/Map4_Orman_Kereste_Kampi_5v5v5v5_v3_1.gltf",
 		"convex_props": true, "outer_world": true},
-	{"id": "hospital_v3", "name": "Karantina Hastanesi v3", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
+	{"id": "hospital_v3", "name": "Karantina Hastanesi v3", "scene": IMPORTED_MAP_SCENE, "max_team": 3,
 		"glb": "res://asset model/haritalar/Map5_Hastane_v3/Map5_Karantina_Hastanesi_3v3v3v3_v3.gltf",
 		"convex_props": true, "outer_world": true},
 	{"id": "subway_v3", "name": "Yeraltı Metro İstasyonu v3", "scene": IMPORTED_MAP_SCENE, "max_team": 4,
@@ -115,16 +115,19 @@ const BOT_NAME_FORMAT := "BOT %d"
 # Sunucu / İstemci Kurulum
 # ─────────────────────────────────────────────
 
+var _pw_fail_counts: Dictionary = {}  # peer_id -> yanlış şifre deneme sayısı (brute-force koruması)
+
 ## p_settings: MainMenu ODA KUR'da seçilen {map, team_size} (yayına ilk andan itibaren doğru girsin diye kurulumda)
-func create_server(player_name: String, p_room_name: String = "", p_password: String = "", p_settings: Dictionary = {}) -> void:
+func create_server(player_name: String, p_room_name: String = "", p_password: String = "", p_settings: Dictionary = {}) -> bool:
 	local_player_name = player_name
 	room_name         = p_room_name
 	_room_password    = p_password
+	_pw_fail_counts.clear()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(PORT, MAX_PLAYERS)
 	if err != OK:
 		push_error("Sunucu oluşturulamadı: %s" % err)
-		return
+		return false
 	multiplayer.multiplayer_peer = peer
 	_local_id_cache = 1  # Host her zaman 1
 	_connect_multiplayer_signals()
@@ -160,6 +163,7 @@ func create_server(player_name: String, p_room_name: String = "", p_password: St
 	RoomManager.create_room(p_room_name, p_password)
 	emit_signal("server_created")
 	emit_signal("player_list_updated")
+	return true
 
 
 func join_server(address: String, player_name: String, p_password: String = "") -> void:
@@ -264,6 +268,10 @@ func _relax_timeout(id: int) -> void:
 
 func _on_peer_disconnected(id: int) -> void:
 	var left_name: String = players.get(id, {}).get("name", "")
+	_pw_fail_counts.erase(id)
+	# Oyun sırasında ayrılan oyuncunun düğümünü/kartını players.erase(id) ÖNCESİNDE temizle (takım bilgisi korunur)
+	if GameManager.state == GameManager.State.IN_GAME:
+		GameManager.on_player_disconnected(id)
 	players.erase(id)
 	if multiplayer.is_server() and peer_addresses.erase(id) and multiplayer.get_peers().size() > 0:
 		_sync_peer_addresses.rpc(peer_addresses)
@@ -273,10 +281,7 @@ func _on_peer_disconnected(id: int) -> void:
 		_broadcast_player_list()
 		if not left_name.is_empty():
 			_chat_system("%s odadan ayrıldı", [left_name])
-	# Oyun sırasında ayrılan oyuncunun node'unu temizle (host + client)
-	if GameManager.state == GameManager.State.IN_GAME:
-		GameManager.on_player_disconnected(id)
-	elif GameManager.state == GameManager.State.CHARACTER_SELECT and multiplayer.is_server():
+	if GameManager.state == GameManager.State.CHARACTER_SELECT and multiplayer.is_server():
 		GameManager.check_all_characters_selected()
 
 
@@ -402,7 +407,12 @@ func _on_server_disconnected() -> void:
 	if my_id == remaining[0]:
 		# Ben yeni host oluyorum
 		await get_tree().create_timer(0.3).timeout
-		create_server(local_player_name, saved_room, saved_pw)
+		if not create_server(local_player_name, saved_room, saved_pw):
+			_is_migrating = false
+			players.clear()
+			GameManager.menu_notice = "Yeni sunucu başlatılamadı (port meşgul)"
+			get_tree().change_scene_to_file("res://scenes/main/Main.tscn")
+			return
 		# Kendi player datasını migration bilgisiyle güncelle (karakter de korunur)
 		players[1] = { "name": local_player_name, "team_id": _saved_team_id, "is_ready": false, "powers": PROFILE.get_powers() }
 		if not _saved_character.is_empty():
@@ -422,6 +432,7 @@ func _on_server_disconnected() -> void:
 		if gstate == GameManager.State.IN_GAME:
 			GameManager.restore_from_migration(_pending_migration_state)
 		else:
+			GameManager.state = GameManager.State.LOBBY
 			get_tree().change_scene_to_file.call_deferred("res://scenes/ui/Lobby.tscn")
 	else:
 		# Yeni hostu bekle ve yeniden bağlan — önce bilinen IP'sine doğrudan, olmazsa LAN yayınıyla ara
@@ -482,12 +493,26 @@ func _reconnect_loop(target_room: String, password: String) -> void:
 func register_player(peer_id: int, player_name: String, password: String, saved_team_id: int = -1, saved_character: String = "", saved_upgrades: Dictionary = {}, powers: Dictionary = {}) -> void:
 	if not multiplayer.is_server():
 		return
-	# Şifre kontrolü
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and peer_id != sender:
+		return  # istemci başkasının peer_id'sini taklit edemez
+	# Şifre kontrolü + brute-force sınırı
 	if not _room_password.is_empty() and password != _room_password:
-		_reject_player.rpc_id(peer_id, "Yanlış şifre!")
+		var fails: int = int(_pw_fail_counts.get(peer_id, 0)) + 1
+		_pw_fail_counts[peer_id] = fails
+		if fails <= 5:
+			_reject_player.rpc_id(peer_id, "Yanlış şifre!")
 		return
-	# Oyun sürüyorsa yeni katılım yok — sadece host migration sonrası geri dönenler (pencere içinde)
-	var reconnecting := Time.get_ticks_msec() < _migration_window_until
+	_pw_fail_counts.erase(peer_id)
+	# Oyun sürüyorsa yeni katılım yok — sadece host migration sonrası eski listeden geri dönenler (pencere içinde)
+	var in_mig_window := Time.get_ticks_msec() < _migration_window_until
+	var was_in_match := false
+	if in_mig_window:
+		for mp: Variant in _migration_players.values():
+			if mp is Dictionary and String((mp as Dictionary).get("name", "")) == player_name:
+				was_in_match = true
+				break
+	var reconnecting := in_mig_window and was_in_match
 	if is_game_running() and not reconnecting:
 		_reject_player.rpc_id(peer_id, "Oyun devam ediyor — bitince tekrar dene")
 		return
@@ -574,10 +599,15 @@ func request_change_team(team_id: int) -> void:
 func _change_team(peer_id: int, team_id: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if not players.has(peer_id) or team_id >= TEAM_COUNT:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != peer_id:
+		return
+	if is_game_running():
+		return
+	if not players.has(peer_id) or team_id < -1 or team_id >= TEAM_COUNT:
 		return
 	# Botun takımını sadece host (doğrudan çağrı) değiştirebilir; client RPC'si bot id'siyle gelirse reddedilir
-	if is_bot(peer_id) and multiplayer.get_remote_sender_id() != 0:
+	if is_bot(peer_id) and sender != 0:
 		return
 	# Takım boyutu sınırı host'ta da uygulanır (client UI'yi atlatmaya karşı)
 	if team_id >= 0 and players[peer_id].get("team_id", -1) != team_id and get_team_count(team_id) >= get_team_size():
@@ -602,6 +632,11 @@ func set_ready(is_ready: bool) -> void:
 @rpc("any_peer", "reliable")
 func _set_ready_rpc(peer_id: int, is_ready: bool) -> void:
 	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != peer_id:
+		return
+	if is_game_running():
 		return
 	if is_bot(peer_id):
 		return  # botlar hep hazır
@@ -651,6 +686,11 @@ func request_select_character(char_name: String) -> void:
 @rpc("any_peer", "reliable")
 func _apply_character_selection(peer_id: int, char_name: String, levels: Dictionary = {}, powers: Dictionary = {}) -> void:
 	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != peer_id:
+		return
+	if GameManager.state != GameManager.State.CHARACTER_SELECT:
 		return
 	if not players.has(peer_id):
 		return

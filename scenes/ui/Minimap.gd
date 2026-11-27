@@ -124,8 +124,7 @@ func _draw() -> void:
 			var cone := PackedVector2Array([p, p1, p2])
 			draw_colored_polygon(cone, Color(UITheme.ACCENT, 0.22))
 
-		draw_circle(p, radius + 2.5, Color(0.05, 0.05, 0.08))
-		draw_circle(p, radius, color)
+		_draw_team_marker(p, radius, team_id, color, 2.5)
 
 		# Kart taşıyorsa sarı halka
 		if player.has_card:
@@ -142,6 +141,42 @@ func _draw() -> void:
 			var p := _w2m(_alert_pos)
 			draw_circle(p, 11.7, Color(_alert_color.r, _alert_color.g, _alert_color.b, alpha))
 			draw_arc(p, 18.3, 0.0, TAU, 20, Color(_alert_color.r, _alert_color.g, _alert_color.b, alpha * 0.7), 4.0)
+
+
+## Takım şekli (UITheme.TEAM_GLYPHS ile aynı: 0=● daire, 1=▲ üçgen, 2=■ kare, 3=◆ elmas)
+func _draw_team_marker(pos: Vector2, r: float, team_id: int, color: Color, outline: float = 0.0) -> void:
+	var bg := Color(0.05, 0.05, 0.08)
+	match team_id:
+		1:  # ▲ üçgen
+			if outline > 0.0:
+				var ro := (r + outline) * 1.15
+				draw_colored_polygon(PackedVector2Array([
+					pos + Vector2(0.0, -ro), pos + Vector2(ro * 0.92, ro * 0.78), pos + Vector2(-ro * 0.92, ro * 0.78)
+				]), bg)
+			var ri := r * 1.15
+			draw_colored_polygon(PackedVector2Array([
+				pos + Vector2(0.0, -ri), pos + Vector2(ri * 0.92, ri * 0.78), pos + Vector2(-ri * 0.92, ri * 0.78)
+			]), color)
+		2:  # ■ kare
+			if outline > 0.0:
+				var so := (r + outline) * 0.9
+				draw_rect(Rect2(pos - Vector2(so, so), Vector2(so * 2.0, so * 2.0)), bg)
+			var si := r * 0.9
+			draw_rect(Rect2(pos - Vector2(si, si), Vector2(si * 2.0, si * 2.0)), color)
+		3:  # ◆ elmas
+			if outline > 0.0:
+				var do_r := (r + outline) * 1.15
+				draw_colored_polygon(PackedVector2Array([
+					pos + Vector2(0.0, -do_r), pos + Vector2(do_r, 0.0), pos + Vector2(0.0, do_r), pos + Vector2(-do_r, 0.0)
+				]), bg)
+			var di_r := r * 1.15
+			draw_colored_polygon(PackedVector2Array([
+				pos + Vector2(0.0, -di_r), pos + Vector2(di_r, 0.0), pos + Vector2(0.0, di_r), pos + Vector2(-di_r, 0.0)
+			]), color)
+		_:  # ● daire (takım 0 ve varsayılan)
+			if outline > 0.0:
+				draw_circle(pos, r + outline, bg)
+			draw_circle(pos, r, color)
 
 
 func _draw_satellite_reveals(local_team: int) -> void:
@@ -169,7 +204,7 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			var tid: int = NetworkManager.players.get(pid, {}).get("team_id", -1)
 			var pp := _w2m((pl as Node3D).global_position)
 			if pid != NetworkManager.get_local_id():
-				draw_circle(pp, 6.7, TeamManager.get_color(tid))
+				_draw_team_marker(pp, 6.7, tid, TeamManager.get_color(tid), 1.8)
 				draw_arc(pp, 11.7, 0.0, TAU, 16, Color(c, pulse), 2.5)
 			if GameManager.is_card_carrier(pid):
 				var dia := PackedVector2Array([pp + Vector2(0, -25), pp + Vector2(8.3, -16.7), pp + Vector2(0, -8.3), pp + Vector2(-8.3, -16.7)])
@@ -193,7 +228,7 @@ func _draw_satellite_reveals(local_team: int) -> void:
 			elif tid == local_team:
 				continue
 			var ep := _w2m((pl as Node3D).global_position)
-			draw_circle(ep, 6.7, TeamManager.get_color(tid))
+			_draw_team_marker(ep, 6.7, tid, TeamManager.get_color(tid), 1.8)
 			draw_arc(ep, 11.7, 0.0, TAU, 16, Color(c2, pulse), 2.5)
 		status += "◉ %d" % ceili(_powerups.reveal_until["enemies"] - now)
 

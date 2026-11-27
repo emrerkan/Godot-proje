@@ -200,7 +200,10 @@ func _notification(what: int) -> void:
 	if what != NOTIFICATION_TRANSLATION_CHANGED or _objective_lbl == null:
 		return
 	if _local_player and is_instance_valid(_local_player):
-		_team_chip_lbl.text = tr("%s TAKIM") % UITheme.team_tag(_local_player.team_id)
+		if GameManager.is_deathmatch_cards():
+			_team_chip_lbl.text = tr("HERKES TEK")
+		else:
+			_team_chip_lbl.text = tr("%s TAKIM") % UITheme.team_tag(_local_player.team_id)
 	_update_objective()
 
 
@@ -423,7 +426,6 @@ func _setup_kill_feed() -> void:
 	_kill_feed_root.offset_left = -680
 	_kill_feed_root.offset_right = -27
 	_kill_feed_root.offset_top = 27
-	_kill_feed_root.z_index = 10   # U uyarı test paneli açıkken üstte görünsün (fareyi geçirir)
 	_kill_feed_root.add_theme_constant_override("separation", 10)
 	_kill_feed_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_kill_feed_root)
@@ -1063,6 +1065,7 @@ func _setup_scoreboard() -> void:
 	_scoreboard_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_scoreboard_content)
 	_ignore_mouse_recursive(holder)
+	scroll.mouse_filter = Control.MOUSE_FILTER_PASS
 
 
 func _setup_pause_menu() -> void:
@@ -1723,7 +1726,7 @@ func _update_objective() -> void:
 
 
 ## ── Uyarı test paneli (debug) ──
-const ALERT_TEST_SCRIPT := preload("res://scenes/ui/AlertTestPanel.gd")
+const ALERT_TEST_PATH := "res://scenes/ui/AlertTestPanel.gd"
 var _alert_test: Control = null
 
 
@@ -1731,11 +1734,20 @@ func _toggle_alert_test() -> void:
 	if _alert_test != null:
 		_alert_test.queue_free()
 		_alert_test = null
+		if _kill_feed_root != null:
+			_kill_feed_root.z_index = 0
 		ChatBox.is_typing = false
 		return
-	_alert_test = ALERT_TEST_SCRIPT.new()
+	if not OS.is_debug_build():
+		return
+	var script: GDScript = load(ALERT_TEST_PATH) as GDScript
+	if script == null:
+		return
+	_alert_test = script.new()
 	_alert_test.hud = self
 	_root.add_child(_alert_test)
+	if _kill_feed_root != null:
+		_kill_feed_root.z_index = 10   # sadece U uyarı test paneli açıkken üstte görünsün
 	# Panel açıkken oyuncu hareket/ateş etmesin (tıklamalar ateşe dönmesin) — sohbet kilidini kullanır
 	ChatBox.is_typing = true
 
@@ -2267,6 +2279,8 @@ func _on_leave_pressed() -> void:
 
 func _on_game_ended(winning_team: int) -> void:
 	_pause_panel.hide()
+	if _settings_window != null:
+		_settings_window.close()
 	_scoreboard_panel.hide()
 	_scoreboard_visible = false
 	_death_overlay.hide()

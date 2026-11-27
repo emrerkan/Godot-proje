@@ -114,32 +114,40 @@ func _process_modification_with_delta(delta: float) -> void:
 
 	if layer_weight <= 0.001:
 		return
-	var base_tracks := _tracks(_base)
-	var act_tracks := _tracks(_action) if _action != null else {}
-	var act_t := minf(_action_t, _action.length) if _action != null else 0.0
+	var base_tracks: PackedInt32Array = _tracks(_base)
+	var has_act := _action != null and _action_w > 0.0
+	var act_tracks: PackedInt32Array = _tracks(_action) if has_act else PackedInt32Array()
+	var act_t := minf(_action_t, _action.length) if has_act else 0.0
 	for i in _bones.size():
-		var b := _bones[i]
-		if not base_tracks.has(b):
+		var bt := base_tracks[i]
+		if bt < 0:
 			continue
-		var q: Quaternion = _base.rotation_track_interpolate(base_tracks[b], _base_t)
-		if _action_w > 0.0 and act_tracks.has(b):
-			q = q.slerp(_action.rotation_track_interpolate(act_tracks[b], act_t), _action_w)
+		var b := _bones[i]
+		var q: Quaternion = _base.rotation_track_interpolate(bt, _base_t)
+		if has_act:
+			var at := act_tracks[i]
+			if at >= 0:
+				q = q.slerp(_action.rotation_track_interpolate(at, act_t), _action_w)
 		var w := _weights[i] * layer_weight
 		sk.set_bone_pose_rotation(b, sk.get_bone_pose_rotation(b).slerp(q, w))
 
 
-func _tracks(anim: Animation) -> Dictionary:
+func _tracks(anim: Animation) -> PackedInt32Array:
 	if anim == null:
-		return {}
+		return PackedInt32Array()
 	if _track_cache.has(anim):
 		return _track_cache[anim]
 	var sk := get_skeleton()
-	var out := {}
+	var by_bone := {}
 	for t in anim.get_track_count():
 		if anim.track_get_type(t) != Animation.TYPE_ROTATION_3D:
 			continue
 		var bone := sk.find_bone(str(anim.track_get_path(t).get_concatenated_subnames()))
 		if bone >= 0:
-			out[bone] = t
+			by_bone[bone] = t
+	var out := PackedInt32Array()
+	out.resize(_bones.size())
+	for i in _bones.size():
+		out[i] = int(by_bone.get(_bones[i], -1))
 	_track_cache[anim] = out
 	return out

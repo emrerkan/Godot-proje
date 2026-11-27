@@ -17,7 +17,7 @@ const CHARACTERS: Array[Dictionary] = [
 	{
 		"name": "Tank", "role": "Ön Hat", "color": Color(0.92, 0.35, 0.25),
 		"weapon": "AĞIR TÜFEK", "power_icon": "bomb", "power": "BOMBA", "power_color": Color(1.0, 0.42, 0.22),
-		"stats": {"Can": 150.0, "Hız": 5.5, "Hasar": 22.0, "Menzil": 45.0},
+		"stats": {"Can": 150.0, "Hız": 5.5, "Hasar": 17.0, "Menzil": 45.0},
 	},
 	{
 		"name": "Visioner", "role": "Keşif", "color": Color(0.25, 0.58, 1.0),
@@ -27,7 +27,7 @@ const CHARACTERS: Array[Dictionary] = [
 	{
 		"name": "Runner", "role": "Hızlı Sızma", "color": Color(0.25, 0.90, 0.38),
 		"weapon": "HAFİF MAKİNELİ", "power_icon": "smoke", "power": "SİS BOMBASI", "power_color": Color(0.72, 0.78, 0.86),
-		"stats": {"Can": 75.0, "Hız": 10.0, "Hasar": 11.0, "Menzil": 25.0},
+		"stats": {"Can": 75.0, "Hız": 10.0, "Hasar": 13.0, "Menzil": 25.0},
 	},
 	{
 		"name": "Sniper", "role": "Uzun Menzil", "color": Color(0.96, 0.84, 0.18),
@@ -781,7 +781,8 @@ func _update_card_visuals() -> void:
 			badge_style.content_margin_top    = 5
 			badge_style.content_margin_bottom = 5
 			badge.add_theme_stylebox_override("panel", badge_style)
-			badge_lbl.text = String(taken[char_name]).to_upper()
+			badge_lbl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+			badge_lbl.text = UITheme.upper_tr(String(taken[char_name]))
 
 		panel.modulate = Color(1, 1, 1, 0.4) if is_taken_other else Color.WHITE
 		var selectable := not _confirmed and not is_taken_other

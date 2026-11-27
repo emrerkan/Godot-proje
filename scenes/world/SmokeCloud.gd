@@ -22,6 +22,7 @@ const ALBEDO := Color(0.82, 0.84, 0.86)   # ışığı saçan açık gri duman
 const AMBIENT := Color(0.13, 0.135, 0.14)  # kendi hafif parlaklığı — karanlık haritada da gri bir duman kütlesi olarak seçilsin
 
 static var _active_count := 0
+static var _active_clouds: Array[Node3D] = []
 static var _env_prev: Dictionary = {}   # hacimsel sis açılmadan önceki Environment ayarları
 static var _noise_tex: NoiseTexture3D = null
 
@@ -69,6 +70,7 @@ func _ready() -> void:
 	var tw := create_tween()
 	tw.tween_property(_volume, "size", full, GROW_TIME).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	if not prewarm:
+		_active_clouds.append(self)
 		_fade_later()
 
 
@@ -88,10 +90,34 @@ func _fade_later() -> void:
 
 
 func _exit_tree() -> void:
+	_active_clouds.erase(self)
 	_active_count -= 1
 	if _active_count <= 0:
 		_active_count = 0
 		_restore_volumetric_fog()
+
+
+## Bot görüş kontrolü: a → b yatay doğru parçası aktif yoğun bir sis bulutundan geçiyor mu?
+static func blocks_segment(a: Vector3, b: Vector3) -> bool:
+	if _active_clouds.is_empty():
+		return false
+	var a2 := Vector2(a.x, a.z)
+	var b2 := Vector2(b.x, b.z)
+	var ab := b2 - a2
+	var ab_len2 := ab.length_squared()
+	for cloud: Node3D in _active_clouds:
+		if not is_instance_valid(cloud) or not cloud.is_inside_tree():
+			continue
+		var mat: FogMaterial = cloud.get("_mat") as FogMaterial
+		if mat != null and mat.density < 1.0:
+			continue  # dağılmak üzere olan ince sis görüşü kesmez
+		var r: float = float(cloud.get("_radius")) * 0.85
+		var c2 := Vector2(cloud.global_position.x, cloud.global_position.z)
+		var t := clampf((c2 - a2).dot(ab) / ab_len2, 0.0, 1.0) if ab_len2 > 0.0001 else 0.0
+		var closest := a2 + ab * t
+		if closest.distance_squared_to(c2) <= r * r:
+			return true
+	return false
 
 
 # ─────────────────────────────────────────────

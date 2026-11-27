@@ -43,17 +43,23 @@ func rebuild() -> void:
 			idx += 1
 
 
+static var _housing_mesh: BoxMesh
+static var _bulb_mesh: CylinderMesh
+static var _shaft_mesh: CylinderMesh
+
+
 func _build_lamp(marker: Marker3D, idx: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1000 + idx * 7919
 	var kind := _pick_kind(rng)
 	var color: Color = COLORS[kind]
 
-	# Armatür: duvar tepesine oturan koyu metal gövde + koridora uzanan kısa kol
+	# Armatür: duvar tepesine oturan koyu metal gövde + koridora uzanan kısa kol (paylaşılan mesh)
+	if _housing_mesh == null:
+		_housing_mesh = BoxMesh.new()
+		_housing_mesh.size = Vector3(0.42, 0.12, 0.34)
 	var housing := MeshInstance3D.new()
-	var hb := BoxMesh.new()
-	hb.size = Vector3(0.42, 0.12, 0.34)
-	housing.mesh = hb
+	housing.mesh = _housing_mesh
 	housing.position = Vector3(0, 0.12, -0.12)
 	if _housing_mat == null:
 		_housing_mat = StandardMaterial3D.new()
@@ -64,13 +70,14 @@ func _build_lamp(marker: Marker3D, idx: int) -> void:
 	housing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	marker.add_child(housing)
 
-	# Ampul: ışığa göre parlayan emissive küçük silindir (sarkık)
+	# Ampul: ışığa göre parlayan emissive küçük silindir (sarkık, paylaşılan mesh)
+	if _bulb_mesh == null:
+		_bulb_mesh = CylinderMesh.new()
+		_bulb_mesh.top_radius = 0.07
+		_bulb_mesh.bottom_radius = 0.09
+		_bulb_mesh.height = 0.14
 	var bulb := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.07
-	cm.bottom_radius = 0.09
-	cm.height = 0.14
-	bulb.mesh = cm
+	bulb.mesh = _bulb_mesh
 	bulb.position = Vector3(0, 0.0, -LIGHT_OFFSET * 0.55)
 	var bulb_mat := StandardMaterial3D.new()
 	bulb_mat.albedo_color = color
@@ -91,15 +98,16 @@ func _build_lamp(marker: Marker3D, idx: int) -> void:
 	light.shadow_enabled = false
 	marker.add_child(light)
 
-	# Sızıntı huzmesi: aşağı doğru genişleyen, toplamalı (additive) saydam koni
+	# Sızıntı huzmesi: aşağı doğru genişleyen, toplamalı (additive) saydam koni (paylaşılan mesh)
+	if _shaft_mesh == null:
+		_shaft_mesh = CylinderMesh.new()
+		_shaft_mesh.top_radius = 0.08
+		_shaft_mesh.bottom_radius = 1.25
+		_shaft_mesh.height = 2.6
+		_shaft_mesh.cap_top = false
+		_shaft_mesh.cap_bottom = false
 	var shaft := MeshInstance3D.new()
-	var sm := CylinderMesh.new()
-	sm.top_radius = 0.08
-	sm.bottom_radius = 1.25
-	sm.height = 2.6
-	sm.cap_top = false
-	sm.cap_bottom = false
-	shaft.mesh = sm
+	shaft.mesh = _shaft_mesh
 	shaft.position = Vector3(0, -1.35, -LIGHT_OFFSET - 0.25)
 	var shaft_mat := ShaderMaterial.new()
 	shaft_mat.shader = SHAFT_SHADER
@@ -127,7 +135,7 @@ func _pick_kind(rng: RandomNumberGenerator) -> int:
 ## Performans: titreşim 30 Hz'de güncellenir (gözle fark edilmez, ışık/shader parametresi yazımı yarıya iner) ve kameradan
 ## ACTIVE_DIST'ten uzak lambalar tamamen atlanır + ışıkları gizlenir (ekran ~40 m kapsar; uzak ışık kümeleme maliyeti boşuna).
 const UPDATE_INTERVAL := 1.0 / 30.0
-const ACTIVE_DIST := 80.0   # kameradan; FOV 40 kamerası oyuncudan ~39 m uzak (eskiden ~18 → 60 idi)
+const ACTIVE_DIST := 58.0   # kameradan; ekran ~40 m kapsar, 58 m dışı ışık kümeleme maliyetini azaltır
 var _acc := 0.0
 
 

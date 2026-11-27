@@ -138,11 +138,18 @@ static func _make_crisp(f: FontFile) -> void:
 	f.force_autohinter = false
 
 
+## Türkçe uyumlu büyük harf dönüşümü ("i" → "İ", "ı" → "I")
+static func upper_tr(s: String) -> String:
+	if TranslationServer.get_locale().begins_with("tr"):
+		return s.replace("i", "İ").replace("ı", "I").to_upper()
+	return s.to_upper()
+
+
 ## Takım adı + sembol: "▲ KIRMIZI"
 static func team_tag(team_id: int, upper: bool = true) -> String:
 	var n: String = TeamManager.get_team_name(team_id)
 	var g: String = TEAM_GLYPHS[team_id] if team_id >= 0 and team_id < TEAM_GLYPHS.size() else "○"
-	return "%s %s" % [g, n.to_upper() if upper else n]
+	return "%s %s" % [g, upper_tr(n) if upper else n]
 
 
 ## Panelin köşelerine taktik braket çizer (┌ ┐ └ ┘) — hedefin kendi `draw` sinyaline bağlanır

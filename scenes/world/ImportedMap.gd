@@ -547,20 +547,30 @@ func _scan_heights(space: PhysicsDirectSpaceState3D) -> void:
 			var p := _cell_center(x, z)
 			sq.transform = Transform3D(Basis(), Vector3(p.x, top, p.z))
 			var frac: PackedFloat32Array = space.cast_motion(sq)
-			_heights[z * _grid_w + x] = top + (bottom - top) * frac[0] - 0.025 if frac[0] < 1.0 else NAN
+			var h := top + (bottom - top) * frac[0] - 0.025 if frac[0] < 1.0 else NAN
+			# Çatılı geçit / tünel / hangar kontrolü: üst yüzey tabandan >= 2.4 m yüksekse altındaki yürünebilir zemini ara
+			if not is_nan(h) and h > _bounds.position.y + 2.4:
+				var rq := PhysicsRayQueryParameters3D.create(Vector3(p.x, h - 0.5, p.z), Vector3(p.x, bottom, p.z), 1)
+				var rhit := space.intersect_ray(rq)
+				if not rhit.is_empty():
+					var under_y: float = (rhit["position"] as Vector3).y
+					if h - under_y >= 2.1:
+						h = under_y
+			_heights[z * _grid_w + x] = h
 	_build_void_walls(space)
-	# Duvar/engel: 3×3 komşuluğunun en alçağından belirgin yüksek hücre (yumuşak tepeler duvar sayılmaz)
+	# Duvar/engel: 3×3 komşuluğunun en alçağından belirgin yüksek hücre veya gerçek boşluk (_nav_block)
 	_wall.resize(_grid_w * _grid_h)
 	for z in _grid_h:
 		for x in _grid_w:
-			var h := _heights[z * _grid_w + x]
+			var idx := z * _grid_w + x
+			var h := _heights[idx]
 			var low := h
 			for dz in range(-1, 2):
 				for dx in range(-1, 2):
 					var nx := clampi(x + dx, 0, _grid_w - 1)
 					var nz := clampi(z + dz, 0, _grid_h - 1)
 					low = minf(low, _heights[nz * _grid_w + nx])
-			_wall[z * _grid_w + x] = 1 if h - low > WALL_STEP_HEIGHT or h == VOID_WALL_HEIGHT else 0
+			_wall[idx] = 1 if h - low > WALL_STEP_HEIGHT or _nav_block[idx] != 0 else 0
 
 
 ## Işın hiçbir şeye çarpmayan (NAN) hücreleri satır satır birleştirip kutu çarpışma olarak kapatır; hücre yüksekliği
@@ -850,11 +860,7 @@ func _physics_process(delta: float) -> void:
 	_occluders.clear()
 	if me == null or not is_instance_valid(me) or cam == null or me.is_dead:
 		return
-	# Son güvenlik: haritanın altına düşen yerel oyuncu kendi takım spawn'ına döner (konum local otoriteli)
-	if (me as Node3D).global_position.y < _bounds.position.y - FALL_RESCUE_DEPTH:
-		(me as CharacterBody3D).velocity = Vector3.ZERO
-		(me as Node3D).global_position = GameManager.get_spawn_position(NetworkManager.get_local_id(), int(me.team_id))
-		(me as Node3D).reset_physics_interpolation()
+	if _rescue_local_if_fallen(me as CharacterBody3D):
 		return
 	var space := get_world_3d().direct_space_state
 	var cpos := cam.global_position
@@ -889,18 +895,43 @@ func _physics_process(delta: float) -> void:
 		_occluders[_canopies[i]] = true
 
 
+var _last_safe_pos: Vector3 = Vector3.INF
+var _bot_safe_pos: Dictionary = {}
+
+
+func _rescue_local_if_fallen(me: CharacterBody3D) -> bool:
+	if me == null:
+		return false
+	if me.is_on_floor() and me.global_position.y >= _bounds.position.y - 0.5:
+		_last_safe_pos = me.global_position
+		return false
+	if me.global_position.y >= _bounds.position.y - FALL_RESCUE_DEPTH:
+		return false
+	# Haritadan düşme engeli: üsse (kartla bedava kaçış) değil son güvenli zemine geri koy
+	me.velocity = Vector3.ZERO
+	me.global_position = _last_safe_pos if _last_safe_pos != Vector3.INF else GameManager.get_spawn_position(NetworkManager.get_local_id(), int(me.get("team_id")))
+	me.reset_physics_interpolation()
+	return true
+
+
 ## Düşme kurtarmasının bot karşılığı: botları SADECE host sürer (konum host otoriteli, _broadcast_state ile yayılır) →
-## haritanın altına düşen canlı bot, yerel oyuncudaki gibi kendi takım spawn'ına ışınlanır. Botsuz maçta döngü boş geçer.
+## haritanın altına düşen canlı bot son güvenli zemine (yoksa spawn'ına) geri konur.
 func _rescue_fallen_bots() -> void:
 	var limit := _bounds.position.y - FALL_RESCUE_DEPTH
 	for p in GameManager.active_players.values():
 		if not is_instance_valid(p) or p.get("is_bot") != true or p.get("is_dead") == true:
 			continue
 		var body := p as CharacterBody3D
-		if body == null or body.global_position.y >= limit:
+		if body == null:
+			continue
+		var bid := int(body.get("peer_id"))
+		if body.is_on_floor() and body.global_position.y >= _bounds.position.y - 0.5:
+			_bot_safe_pos[bid] = body.global_position
+			continue
+		if body.global_position.y >= limit:
 			continue
 		body.velocity = Vector3.ZERO
-		body.global_position = GameManager.get_spawn_position(int(body.get("peer_id")), int(body.get("team_id")))
+		body.global_position = _bot_safe_pos.get(bid, GameManager.get_spawn_position(bid, int(body.get("team_id"))))
 		body.reset_physics_interpolation()
 
 

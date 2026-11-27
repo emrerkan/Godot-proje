@@ -463,7 +463,12 @@ func _modal_head(title: Label, on_close: Callable) -> Control:
 
 
 func _fade_layer(layer: Control, mat: ShaderMaterial, card: Control, show: bool) -> void:
+	if layer.has_meta("_fade_tw"):
+		var prev: Variant = layer.get_meta("_fade_tw")
+		if prev is Tween and (prev as Tween).is_valid():
+			(prev as Tween).kill()
 	var tw := create_tween().set_parallel(true)
+	layer.set_meta("_fade_tw", tw)
 	if show:
 		layer.visible = true   # açılış sesi yok — kullanıcı: sadece düğmenin fener tıkı
 		card.modulate.a = 0.0

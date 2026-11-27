@@ -977,7 +977,6 @@ func _place_trap(peer: int, team: int, player: Node3D) -> void:
 	var id := _next_id
 	_next_id += 1
 	_trap_spawn_rpc.rpc(id, target, team, peer)
-	notice.emit(tr("Tuzak yere bırakıldı"), Color(INFO[Type.TRAP]["color"]))
 
 
 @rpc("authority", "call_local", "reliable")
@@ -990,6 +989,8 @@ func _trap_spawn_rpc(id: int, pos: Vector3, team: int, owner_peer: int) -> void:
 	(trap as Node3D).global_position = pos
 	trap._dot_timer = 0.0
 	_traps[id] = trap
+	if owner_peer == NetworkManager.get_local_id():
+		notice.emit(tr("Tuzak yere bırakıldı"), Color(INFO[Type.TRAP]["color"]))
 
 
 @rpc("authority", "call_local", "reliable")
