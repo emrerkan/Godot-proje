@@ -278,12 +278,17 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	# Uyarı test paneli (sadece debug derleme): U aç/kapa, açıkken ESC kapatır
+	# Debug kısayolları (sadece debug derleme): U uyarı test paneli (ESC kapatır), L haritayı aydınlat
 	if OS.is_debug_build() and event is InputEventKey and event.pressed and not event.echo \
 			and (_alert_test != null or not ChatBox.is_typing):
 		var k := (event as InputEventKey).physical_keycode
 		if k == KEY_U or (k == KEY_ESCAPE and _alert_test != null):
 			_toggle_alert_test()
+			get_viewport().set_input_as_handled()
+			return
+		if k == KEY_L and not ChatBox.is_typing:
+			var on: bool = preload("res://scenes/world/SceneLighting.gd").toggle_test_bright(get_tree().current_scene)
+			_on_powerup_notice(tr("TEST: harita aydınlatması AÇIK" if on else "TEST: harita aydınlatması KAPALI"), UITheme.SIGNAL)
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventKey and event.keycode == KEY_ESCAPE and event.pressed and not event.echo:
@@ -637,9 +642,9 @@ func _setup_test_hint() -> void:
 	box.add_theme_constant_override("separation", 3)
 	chip.add_child(box)
 	box.add_child(UITheme.label("TEST MODU", 15, UITheme.ACCENT, UITheme.font_caps))
-	var lines: Array[String] = ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster", "4 Görünmezlik   - Özel silah   = Tuzak çözücü", "5 Önüne güç doğur   Q Kullan   U HUD test"]
+	var lines: Array[String] = ["1 Bomba   2 Sağlık", "3 Uydu", "6 Flaş   8 Sis bombası", "9 Tuzak   0 Düşman tuzağı", "7 Kart/kapı göster   L Haritayı aydınlat", "4 Görünmezlik   - Özel silah   = Tuzak çözücü", "5 Önüne güç doğur   Q Kullan   U HUD test"]
 	if not NetworkManager.powers_enabled():
-		lines = ["7 Kart/kapı göster   U HUD test"]
+		lines = ["7 Kart/kapı göster   L Haritayı aydınlat   U HUD test"]
 	for line: String in lines:
 		box.add_child(UITheme.label(line, 18, UITheme.TEXT_DIM))
 	_ignore_mouse_recursive(chip)

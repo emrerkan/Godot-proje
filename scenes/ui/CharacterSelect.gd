@@ -126,8 +126,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_step_selection(dir)
 		get_viewport().set_input_as_handled()
 	elif k.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE] and not _confirmed and not _local_selected.is_empty():
-		_on_confirm()
 		get_viewport().set_input_as_handled()
+		_on_confirm()
 
 
 func _step_selection(dir: int) -> void:
@@ -249,7 +249,8 @@ func _build_ui() -> void:
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(hud)
 
-	hud.add_child(_build_top_bar(team_id))
+	hud.add_child(_build_top_bar())
+	hud.add_child(_build_match_info(team_id))
 	hud.add_child(_build_roster_strip())
 	hud.add_child(_build_bottom_briefing())
 
@@ -500,7 +501,7 @@ func _build_interactive_stage_overlay() -> void:
 		sl["sub_lbl"] = slbl
 
 
-func _build_top_bar(team_id: int) -> Control:
+func _build_top_bar() -> Control:
 	var bar := PanelContainer.new()
 	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	bar.offset_bottom = 74
@@ -508,38 +509,26 @@ func _build_top_bar(team_id: int) -> Control:
 	var st := bar.get_theme_stylebox("panel") as StyleBoxFlat
 	st.border_width_bottom = 1
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 20)
-	bar.add_child(row)
+	# Gerçek ekran ortası için Control katmanı (sol/sağ genişlik farkı başlığı kaydırmaz)
+	var holder := Control.new()
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	bar.add_child(holder)
 
-	# Sol: Takım / Deathmatch rozeti
-	var badge := PanelContainer.new()
-	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var is_dm := NetworkManager.is_deathmatch()
-	var bcol := UITheme.ACCENT if is_dm else _team_color
-	badge.add_theme_stylebox_override("panel", UITheme.style(Color(bcol, 0.14), UITheme.RADIUS, Color(bcol, 0.45), 1, 16, 7))
-	var blbl := UITheme.label(
-		"DEATHMATCH  ·  HERKES TEK" if is_dm else tr("%s TAKIM") % UITheme.team_tag(team_id),
-		18, bcol, UITheme.font_caps)
-	badge.add_child(blbl)
-	row.add_child(badge)
-
-	var map_lbl := UITheme.label(UITheme.upper_tr(String(NetworkManager.get_map_info().get("name", ""))), 16, UITheme.TEXT_DIM, UITheme.font_caps)
-	map_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(map_lbl)
-
-	# Orta başlık
+	# Tam ekran ortasında başlık
 	var title := UITheme.label("OPERATÖR SEÇİMİ", 24, UITheme.TEXT, UITheme.font_title)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(title)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	holder.add_child(title)
 
 	# Sağ: Hazır sayacı + ince bar
 	var right := HBoxContainer.new()
+	right.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	right.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	right.grow_vertical = Control.GROW_DIRECTION_BOTH
 	right.add_theme_constant_override("separation", 14)
-	right.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(right)
+	holder.add_child(right)
 
 	_status_lbl = UITheme.label("0 / 0 OYUNCU HAZIR", 16, UITheme.TEXT_DIM, UITheme.font_mono)
 	_status_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -555,6 +544,36 @@ func _build_top_bar(team_id: int) -> Control:
 	_progress.add_theme_stylebox_override("fill", UITheme.style(UITheme.TEXT, 3, Color.TRANSPARENT, 0, 0, 0))
 	right.add_child(_progress)
 	return bar
+
+
+## Üst çizginin hemen altında sol üstte alt alta: TAKIM / HARİTA bilgisi
+func _build_match_info(team_id: int) -> Control:
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	box.offset_left = 36
+	box.offset_top = 88
+	box.add_theme_constant_override("separation", 6)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var is_dm := NetworkManager.is_deathmatch()
+	var row1 := HBoxContainer.new()
+	row1.add_theme_constant_override("separation", 8)
+	row1.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row1.add_child(UITheme.label("MOD:" if is_dm else "TAKIM:", 15, UITheme.TEXT_DIM, UITheme.font_caps))
+	var team_val := "DEATHMATCH  ·  HERKES TEK" if is_dm else UITheme.team_tag(team_id)
+	row1.add_child(UITheme.label(team_val, 16, UITheme.ACCENT if is_dm else _team_color, UITheme.font_bold))
+	box.add_child(row1)
+
+	var row2 := HBoxContainer.new()
+	row2.add_theme_constant_override("separation", 8)
+	row2.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row2.add_child(UITheme.label("HARİTA:", 15, UITheme.TEXT_DIM, UITheme.font_caps))
+	var map_name := UITheme.upper_tr(String(NetworkManager.get_map_info().get("name", "")))
+	var map_val := UITheme.label(map_name, 16, UITheme.TEXT, UITheme.font_caps)
+	map_val.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	row2.add_child(map_val)
+	box.add_child(row2)
+	return box
 
 
 func _build_roster_strip() -> Control:

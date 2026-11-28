@@ -1,48 +1,40 @@
-[gd_scene format=3 uid="uid://card_3d_scene"]
+[gd_scene format=3 uid="uid://pguust3qfqap"]
 
-[ext_resource type="Script" path="res://scenes/world/Card.gd" id="1_card"]
-[ext_resource type="Script" path="res://scenes/world/ProximityReveal.gd" id="2_reveal"]
+[ext_resource type="Script" uid="uid://d3mt3fyk2yvxv" path="res://scenes/world/Card.gd" id="1_card"]
+[ext_resource type="Script" uid="uid://b78t2u7dgv8qg" path="res://scenes/world/ProximityReveal.gd" id="2_reveal"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_card"]
 size = Vector3(0.5, 0.05, 0.7)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_card"]
-size = Vector3(1.0, 1.0, 1.0)
 
-[node name="Card" type="Area3D"]
+[node name="Card" type="Area3D" unique_id=1891843131]
 collision_layer = 4
-collision_mask = 1
-monitoring = true
 monitorable = false
 script = ExtResource("1_card")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.025, 0)
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=767067049]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.025, 0)
 mesh = SubResource("BoxMesh_card")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-position = Vector3(0, 0.5, 0)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=947808340]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 shape = SubResource("BoxShape3D_card")
 
-[node name="OmniLight3D" type="OmniLight3D" parent="."]
-position = Vector3(0, 0.5, 0)
+[node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=1955705592]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 light_color = Color(1, 0.9, 0.1, 1)
 light_energy = 2.0
-omni_range = 5.0
 
-[node name="Label3D" type="Label3D" parent="."]
-position = Vector3(0, 1.4, 0)
+[node name="Label3D" type="Label3D" parent="." unique_id=258236832]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
 billboard = 1
 no_depth_test = true
+modulate = Color(1, 0.92, 0.1, 1)
 text = "♦ KART"
 font_size = 64
-modulate = Color(1, 0.92, 0.1, 1)
-outline_size = 12
-outline_modulate = Color(0, 0, 0, 1)
 
-[node name="ProximityReveal" type="Node" parent="."]
+[node name="ProximityReveal" type="Node" parent="." unique_id=320577034]
 script = ExtResource("2_reveal")
-reveal_far = 12.0
-reveal_near = 5.0
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]

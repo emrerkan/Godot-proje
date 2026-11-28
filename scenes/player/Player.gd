@@ -37,6 +37,7 @@ const HALO_ENERGY := 1.4
 const HALO_RANGE := 4.5
 const HALO_HEIGHT := 1.6
 const SELF_RIM_SHADER: Shader = preload("res://scenes/player/SelfVisibility.gdshader")
+const OVERHEAD_CARDS_SCRIPT := preload("res://scenes/player/OverheadCards3D.gd")
 ## Uzak oyuncu ışık LOD'u (20 oyunculu maçta gölge atlası taşıyordu → ani FPS düşüşü). Işık HERKESE görünür kalır;
 ## sadece GÖLGE kırpılır. Yerel oyuncunun feneri + halesi hep gölgeli. Uzaklarda: motor tarafı mesafe sönümü
 ## (statik ayar) + `LIGHT_LOD_INTERVAL` aralıkla kameraya en yakın `REMOTE_SHADOW_SPOTS` uzak fener gölgeli.
@@ -80,6 +81,7 @@ var has_card: bool:
 	get:
 		return cards_held > 0
 var _card_base_text: String = ""
+var _overhead_cards: Node3D = null
 var is_trapped: bool = false   # Ayı kapanı — tam hareketsiz/çaresiz (PowerupManager._trap_trigger_rpc/_trap_freed_rpc)
 
 var _char_mesh: Node3D = null
@@ -429,11 +431,12 @@ func initialize(p_peer_id: int, p_team_id: int, p_character: String = "Visioner"
 	card_indicator.visible = false
 	_setup_ally_name_label()
 
-	# Kart göstergesi: büyük, okunaklı
-	card_indicator.font_size       = 72
-	card_indicator.outline_size    = 14
-	card_indicator.outline_modulate = Color(0.0, 0.0, 0.0, 1.0)
-	card_indicator.no_depth_test   = true
+	# Kafa üstü 3D kart göstergesi ("♦ KART / ×2 / ×3" yazısı yerine 1-2-3 süzülen taktik kart)
+	if _overhead_cards == null:
+		_overhead_cards = OVERHEAD_CARDS_SCRIPT.new()
+		_overhead_cards.position = Vector3(0.0, 3.52, 0.0)
+		_overhead_cards.visible = false
+		add_child(_overhead_cards)
 
 	# Body ışığı sadece yerel oyuncuda — uzak oyuncuların üzerinde hale olmasın
 	body_light.visible = is_local
@@ -1043,6 +1046,8 @@ func _apply_invis_visuals() -> void:
 		_update_flashlight_visible()
 		name_label.visible = false
 		card_indicator.visible = false
+		if _overhead_cards:
+			_overhead_cards.visible = false
 		ammo_label.visible = false
 		if _fx_light:
 			_fx_light.visible = false
@@ -1964,6 +1969,8 @@ func _apply_death() -> void:
 		current_weapon.hide()
 	_kill_reload_sfx()
 	card_indicator.visible = false
+	if _overhead_cards:
+		_overhead_cards.visible = false
 	name_label.visible = false
 
 
@@ -2018,6 +2025,8 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 	_update_flashlight_visible()
 	body_light.visible = is_local
 	card_indicator.visible = false
+	if _overhead_cards:
+		_overhead_cards.visible = false
 	name_label.visible = _is_local_ally()
 	if current_weapon:
 		current_weapon.show()
@@ -2030,20 +2039,20 @@ func _apply_respawn(spawn_pos: Vector3) -> void:
 
 func pick_up_card() -> void:
 	cards_held += 1
-	if _card_base_text == "":
-		_card_base_text = card_indicator.text
-	# 2+ kartta "×n" eklenir
-	card_indicator.text = _card_base_text if cards_held < 2 else "%s ×%d" % [_card_base_text, cards_held]
+	card_indicator.visible = false
 	# Sadece taşıyıcının kendisi (ve takım modunda kendi takımı) görür; görünmezken gösterge de gizli
-	var local_id := NetworkManager.get_local_id()
-	card_indicator.visible = GameManager.are_allies(local_id, peer_id) and not is_hidden_from_local()
+	if _overhead_cards:
+		_overhead_cards.set_card_count(cards_held)
+		var local_id := NetworkManager.get_local_id()
+		_overhead_cards.visible = GameManager.are_allies(local_id, peer_id) and not is_hidden_from_local()
 
 
 func drop_card() -> void:
 	cards_held = 0
-	if _card_base_text != "":
-		card_indicator.text = _card_base_text
 	card_indicator.visible = false
+	if _overhead_cards:
+		_overhead_cards.set_card_count(0)
+		_overhead_cards.visible = false
 
 
 # ─────────────────────────────────────────────

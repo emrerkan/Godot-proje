@@ -14,6 +14,7 @@ const NAME_MAX_LEN := 16
 const CALLSIGNS: Array[String] = ["Kurt", "Gölge", "Baykuş", "Şahin", "Kobra", "Tilki", "Atmaca", "Hayalet", "Puma", "Akrep"]
 
 const MENU_BACKGROUND := preload("res://scenes/ui/MenuBackground3D.gd")
+const MENU_CARDS_3D := preload("res://scenes/ui/MenuCards3D.gd")
 const MENU_OVERLAY := preload("res://scenes/ui/MenuOverlay.gdshader")
 const MENU_BEAM := preload("res://scenes/ui/canvas_ui_menu_beam.gdshader")
 const BLUR_BACKDROP := preload("res://scenes/ui/BlurBackdrop.gdshader")
@@ -44,7 +45,13 @@ var _profile_level_lbl: Label
 var _profile_xp_lbl: Label
 var _profile_page: Node
 var _background: Node = null
+var _cards_3d: Control = null
+var _use_card_menu := true
+var _design_toggle_btn: Button
+var _quit_btn: Button
 var _top_bar: Control
+var _sub_bar: Control                 # yeni tasarımda PROFİL / AYARLAR üst başlık çubuğu
+var _sub_bar_title: Label             # "PROFİL" veya "AYARLAR"
 var _nav_strip: ColorRect             # aktif sekme altında kayan beyaz şerit
 var _nav_buttons: Dictionary = {}     # "play"/"profile"/"settings" → Button
 var _sections: Dictionary = {}        # "play"/"profile"/"settings" → Control
@@ -139,11 +146,13 @@ func _ready() -> void:
 	RoomManager.rooms_updated.connect(_refresh_room_list)
 
 	_load_room_filters()
+	_use_card_menu = _load_menu_design()
 	_build_ui()
 	MENU_MUSIC.play(get_tree()) # karakter seçimine kadar sürer (lobi de çalar, kesilmez)
 	_name_input.text = _load_name()
 	_show_tab("browse")
 	_set_section("play", true, false)
+	_apply_menu_design()
 	_sync_nav_strip.call_deferred(true)
 	_update_listening()
 	# Maçtan atılarak dönüldüyse (yükleme süresi aşımı) sebebi göster
@@ -212,6 +221,11 @@ func _build_ui() -> void:
 	_page_scrim.color = Color(UITheme.BG, 0.0)
 	add_child(_page_scrim)
 
+	# Yeni ana menü tasarımı: sağ tarafta dikeyde ortalı 3D kartlar + spot ışığı + toz
+	_cards_3d = MENU_CARDS_3D.new()
+	_cards_3d.item_activated.connect(_on_card_item_activated)
+	add_child(_cards_3d)
+
 	# 1) OYNA bölümü: solda kimlik + operatör kartı, OYNA altında alt menü
 	var play_sec := _make_section_root()
 	var margin := MarginContainer.new()
@@ -229,8 +243,9 @@ func _build_ui() -> void:
 	columns.add_child(_build_brand_column())
 	_play_menu = _build_play_menu()
 	play_sec.add_child(_play_menu)
-	# Sağ alt köşe (operatör/profil kartıyla aynı alt ve kenar hizasında): kırmızı genel cam buton
+	# Sağ alt köşe (operatör/profil kartıyla aynı alt ve kenar hizasında): kırmızı genel cam buton (eski tasarım)
 	var quit_btn := Button.new()
+	_quit_btn = quit_btn
 	quit_btn.text = "OYUNDAN ÇIK"
 	quit_btn.focus_mode = Control.FOCUS_NONE
 	quit_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -282,8 +297,14 @@ func _build_ui() -> void:
 	set_sec.add_child(_settings_window)
 	_sections["settings"] = set_sec
 
-	# Üst gezinme çubuğu (tam genişlik + alt şerit + kayan aktif sekme çizgisi)
+	# Üst gezinme çubuğu (eski tasarım: OYNA | PROFİL | AYARLAR)
 	add_child(_build_top_nav())
+
+	# Yeni tasarım alt sayfa başlık çubuğu (← ANA MENÜ | PROFİL/AYARLAR | ✕)
+	add_child(_build_card_sub_bar())
+
+	# Eski / Yeni ana menü tasarımı geçiş butonu (sağ üst köşe, FPS sayacından içeride)
+	add_child(_build_design_toggle())
 
 	_build_toast()
 	_build_play_modal()
@@ -302,13 +323,200 @@ func _make_section_root() -> Control:
 	return c
 
 
-## OYNA düğmesi: ana ekrandayken alt menüyü aç/kapat; PROFİL/AYARLAR'dan geliyorsa ana ekrana dönüp alt menüyü aç
+## OYNA düğmesi: ana ekrandayken alt menüyü aç/kapat; PROFİL/AYARLAR'dan geliyorsa ana ekrana dön
 func _on_nav_play_pressed() -> void:
+	if _use_card_menu:
+		_set_section("play", false, false)
+		return
 	if _section == "play":
 		_set_play_open(not _play_open)
 		_sync_nav_strip(false)
 	else:
 		_set_section("play", false, true)
+
+
+## Eski / Yeni ana menü tasarımı geçiş butonu (sağ üst köşe)
+func _build_design_toggle() -> Button:
+	_design_toggle_btn = Button.new()
+	_design_toggle_btn.focus_mode = Control.FOCUS_NONE
+	_design_toggle_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_design_toggle_btn.tooltip_text = "Eski ve yeni ana menü tasarımı arasında geçiş yap"
+	_design_toggle_btn.custom_minimum_size = Vector2(190, 44)
+	_design_toggle_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_design_toggle_btn.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_design_toggle_btn.offset_right = -120.0   # sağ üstteki FPS sayacıyla çakışmasın
+	_design_toggle_btn.offset_top = 16.0
+	_design_toggle_btn.add_theme_font_override("font", UITheme.font_caps)
+	_design_toggle_btn.add_theme_font_size_override("font_size", 17)
+	_design_toggle_btn.add_theme_stylebox_override("normal", UITheme.style(Color(UITheme.SURFACE, 0.72), UITheme.RADIUS, Color(UITheme.BORDER, 0.9), 1, 16, 8))
+	_design_toggle_btn.add_theme_stylebox_override("hover", UITheme.style(Color(UITheme.SURFACE_3, 0.9), UITheme.RADIUS, UITheme.FRAME, 1, 16, 8))
+	_design_toggle_btn.add_theme_stylebox_override("pressed", UITheme.style(Color(UITheme.SURFACE_3, 1.0), UITheme.RADIUS, UITheme.ACCENT, 1, 16, 8))
+	_design_toggle_btn.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+	_design_toggle_btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	_design_toggle_btn.add_theme_color_override("font_pressed_color", UITheme.ACCENT)
+	_design_toggle_btn.pressed.connect(_toggle_menu_design)
+	return _design_toggle_btn
+
+
+func _toggle_menu_design() -> void:
+	_use_card_menu = not _use_card_menu
+	_save_menu_design(_use_card_menu)
+	_apply_menu_design()
+
+
+func _apply_menu_design() -> void:
+	if _design_toggle_btn:
+		_design_toggle_btn.text = "ESKİ TASARIM" if _use_card_menu else "YENİ TASARIM"
+		_design_toggle_btn.visible = (_section == "play")
+	var show_cards := _use_card_menu and _section == "play"
+	var show_sub_bar := _use_card_menu and _section != "play"
+	if _cards_3d:
+		_cards_3d.set_cards_active(show_cards)
+	if _top_bar:
+		_top_bar.visible = not _use_card_menu
+	if _sub_bar:
+		_sub_bar.visible = show_sub_bar
+		if show_sub_bar and _sub_bar_title:
+			_sub_bar_title.text = "PROFİL" if _section == "profile" else "AYARLAR"
+	if _quit_btn:
+		_quit_btn.visible = not _use_card_menu
+	if show_cards and _play_open:
+		_set_play_open(false)
+	if not _use_card_menu:
+		_sync_nav_strip.call_deferred(true)
+
+
+## Yeni tasarım (3D kartlar) için PROFİL / AYARLAR üst başlık barı:
+## Solda `← ANA MENÜ` + `ESC` rozeti, ortada başlık + kehribar vurgu çizgisi, sağda `✕`.
+func _build_card_sub_bar() -> Control:
+	_sub_bar = Control.new()
+	_sub_bar.anchor_left = 0.0
+	_sub_bar.anchor_right = 1.0
+	_sub_bar.anchor_top = 0.0
+	_sub_bar.anchor_bottom = 0.0
+	_sub_bar.offset_bottom = TOP_BAR_H
+	_sub_bar.visible = false
+
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.color = Color(UITheme.BG, 0.78)
+	_sub_bar.add_child(bg)
+
+	# Alt ince tam genişlik ayırıcı çizgi
+	var base_strip := ColorRect.new()
+	base_strip.anchor_left = 0.0
+	base_strip.anchor_right = 1.0
+	base_strip.anchor_top = 1.0
+	base_strip.anchor_bottom = 1.0
+	base_strip.offset_top = -1.0
+	base_strip.offset_bottom = 0.0
+	base_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	base_strip.color = Color(UITheme.TEXT, 0.22)
+	_sub_bar.add_child(base_strip)
+
+	# Sol: ← ANA MENÜ + ESC rozeti (içerik margin_left=120 ile hizalı)
+	var left_row := HBoxContainer.new()
+	left_row.anchor_left = 0.0
+	left_row.anchor_top = 0.0
+	left_row.anchor_bottom = 1.0
+	left_row.offset_left = 120.0
+	left_row.add_theme_constant_override("separation", 12)
+	left_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sub_bar.add_child(left_row)
+
+	var back_btn := Button.new()
+	back_btn.text = "←  ANA MENÜ"
+	back_btn.focus_mode = Control.FOCUS_NONE
+	back_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	back_btn.custom_minimum_size = Vector2(186, 44)
+	back_btn.add_theme_font_override("font", UITheme.font_caps)
+	back_btn.add_theme_font_size_override("font_size", 18)
+	back_btn.add_theme_stylebox_override("normal", UITheme.style(Color(UITheme.SURFACE, 0.72), UITheme.RADIUS, Color(UITheme.BORDER, 0.9), 1, 18, 8))
+	back_btn.add_theme_stylebox_override("hover", UITheme.style(Color(UITheme.SURFACE_3, 0.92), UITheme.RADIUS, UITheme.FRAME, 1, 18, 8))
+	back_btn.add_theme_stylebox_override("pressed", UITheme.style(Color(UITheme.SURFACE_3, 1.0), UITheme.RADIUS, UITheme.ACCENT, 1, 18, 8))
+	back_btn.add_theme_color_override("font_color", UITheme.TEXT)
+	back_btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	back_btn.add_theme_color_override("font_pressed_color", UITheme.ACCENT)
+	back_btn.pressed.connect(func() -> void: _set_section("play", false, false))
+	left_row.add_child(back_btn)
+
+	# Orta: Sayfa başlığı (PROFİL / AYARLAR) + altında kısa kehribar vurgu çizgisi
+	var center_box := CenterContainer.new()
+	center_box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sub_bar.add_child(center_box)
+
+	_sub_bar_title = UITheme.label("AYARLAR", 28, UITheme.TEXT, UITheme.font_title)
+	center_box.add_child(_sub_bar_title)
+
+	var accent_line := ColorRect.new()
+	accent_line.anchor_left = 0.5
+	accent_line.anchor_right = 0.5
+	accent_line.anchor_top = 1.0
+	accent_line.anchor_bottom = 1.0
+	accent_line.offset_left = -64.0
+	accent_line.offset_right = 64.0
+	accent_line.offset_top = -3.0
+	accent_line.offset_bottom = 0.0
+	accent_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	accent_line.color = UITheme.ACCENT
+	_sub_bar.add_child(accent_line)
+
+	# Sağ: ✕ kapatma butonu (içerik margin_right=120 ile hizalı, FPS sayacına değmez)
+	var close_btn := Button.new()
+	close_btn.text = "✕"
+	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	close_btn.custom_minimum_size = Vector2(44, 44)
+	close_btn.anchor_left = 1.0
+	close_btn.anchor_right = 1.0
+	close_btn.anchor_top = 0.5
+	close_btn.anchor_bottom = 0.5
+	close_btn.offset_left = -164.0
+	close_btn.offset_right = -120.0
+	close_btn.offset_top = -22.0
+	close_btn.offset_bottom = 22.0
+	close_btn.add_theme_font_size_override("font_size", 20)
+	close_btn.add_theme_stylebox_override("normal", UITheme.style(Color(UITheme.SURFACE, 0.55), UITheme.RADIUS, Color(UITheme.BORDER, 0.8), 1, 0, 0))
+	close_btn.add_theme_stylebox_override("hover", UITheme.style(Color(UITheme.SURFACE_3, 0.9), UITheme.RADIUS, UITheme.FRAME, 1, 0, 0))
+	close_btn.add_theme_stylebox_override("pressed", UITheme.style(Color(UITheme.SURFACE_3, 1.0), UITheme.RADIUS, UITheme.ACCENT, 1, 0, 0))
+	close_btn.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+	close_btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	close_btn.pressed.connect(func() -> void: _set_section("play", false, false))
+	_sub_bar.add_child(close_btn)
+
+	return _sub_bar
+
+
+func _on_card_item_activated(key: String) -> void:
+	if _play_modal.visible or _modal.visible:
+		return
+	match key:
+		"create", "browse", "code":
+			_open_play_panel(key)
+		"profile":
+			_set_section("profile")
+		"settings":
+			_set_section("settings")
+		"quit":
+			NetworkManager.disconnect_all()
+			get_tree().quit()
+
+
+func _load_menu_design() -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		return String(cfg.get_value("ui", "menu_design", "cards")) == "cards"
+	return true
+
+
+func _save_menu_design(use_cards: bool) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("ui", "menu_design", "cards" if use_cards else "classic")
+	cfg.save(SETTINGS_PATH)
 
 
 ## Sekme geçişi (OYNA / PROFİL / AYARLAR): ana ekranda yönlü kayma + solma animasyonu ve kayan üst şerit
@@ -332,7 +540,8 @@ func _set_section(sec: String, instant: bool = false, open_play: bool = true) ->
 		_menu_bg_setting = bool(GAME_SETTINGS.get_value("menu_background"))
 		_settings_window.open()
 
-	_set_play_open(sec == "play" and open_play)
+	_set_play_open(sec == "play" and open_play and not _use_card_menu)
+	_apply_menu_design()
 	for k: String in _nav_buttons:
 		var active := (k == sec) and (k != "play" or _play_open)
 		(_nav_buttons[k] as Button).set_pressed_no_signal(active)
@@ -827,6 +1036,8 @@ func _build_play_modal() -> void:
 
 func _open_play_panel(which: String) -> void:
 	_show_tab(which)
+	if _cards_3d:
+		_cards_3d.set_input_blocked(true)
 	if not _play_modal.visible:
 		_fade_layer(_play_modal, _play_blur, _play_card, true)
 	_update_listening()
@@ -840,6 +1051,8 @@ func _close_play_panel() -> void:
 	if not _play_modal.visible:
 		return
 	_fade_layer(_play_modal, _play_blur, _play_card, false)
+	if _cards_3d:
+		_cards_3d.set_input_blocked(false)
 	_set_status("")
 	# Alt menü açık kalır; odak geri gelsin (klavyeyle gezinme kopmasın)
 	if _play_open:

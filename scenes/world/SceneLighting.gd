@@ -17,6 +17,16 @@ const WHITE := 6.0
 const FOG_COLOR := Color(0.035, 0.05, 0.10)
 const FOG_DENSITY := 0.0019                        # kamera ~39 m (FOV 40) → oyuncuda yine ~%7 pus
 
+## Test modu (L tuşu, sadece debug build): haritayı gün ışığı gibi aydınlatıp tüm objeleri/engelleri net görmek için
+const TEST_AMBIENT_COLOR := Color(0.84, 0.87, 0.92)
+const TEST_AMBIENT_ENERGY := 0.78
+const TEST_SUN_NAME := "TestBrightLight"
+const TEST_SUN_COLOR := Color(1.0, 0.98, 0.94)
+const TEST_SUN_ENERGY := 1.25
+const TEST_SUN_ROT_DEG := Vector3(-55.0, 35.0, 0.0)
+
+static var test_bright := false
+
 ## Harita bazlı ince gece atmosfer tonları (karanlık gerilimini koruyarak her haritaya kimlik verir)
 const MAP_THEMES := {
 	"maze":        {"ambient": Color(0.08, 0.105, 0.18), "fog": Color(0.025, 0.038, 0.075), "fog_density": 0.0023},
@@ -48,6 +58,14 @@ static func apply_tree(tree: SceneTree) -> void:
 	apply_node(tree.current_scene)
 
 
+## Test modu: harita aydınlatmasını aç/kapa (sadece yerel görsel, ağ/oyun mantığına dokunmaz)
+static func toggle_test_bright(scene_root: Node) -> bool:
+	test_bright = not test_bright
+	if scene_root != null:
+		apply_node(scene_root)
+	return test_bright
+
+
 ## Sahne kökünden WorldEnvironment'ı bulup uygular (yoksa sessiz geçer — menü/lobi kendi Environment'larını kurar)
 static func apply_node(scene_root: Node) -> void:
 	var we := scene_root.find_child("WorldEnvironment", false, false) as WorldEnvironment
@@ -58,10 +76,43 @@ static func apply_node(scene_root: Node) -> void:
 	if nm != null and nm.has_method("get_map_info"):
 		map_id = String(nm.call("get_map_info").get("id", ""))
 	apply(we.environment, int(GameSettings.get_value("shadows")), map_id)
+	_sync_test_sun(scene_root)
+
+
+static func _sync_test_sun(scene_root: Node) -> void:
+	var sun := scene_root.get_node_or_null(TEST_SUN_NAME) as DirectionalLight3D
+	if test_bright:
+		if sun == null:
+			sun = DirectionalLight3D.new()
+			sun.name = TEST_SUN_NAME
+			sun.light_color = TEST_SUN_COLOR
+			sun.light_energy = TEST_SUN_ENERGY
+			sun.shadow_enabled = false
+			sun.rotation_degrees = TEST_SUN_ROT_DEG
+			scene_root.add_child(sun)
+		sun.visible = true
+	elif sun != null:
+		sun.queue_free()
 
 
 ## quality = GameSettings "shadows" (0 kapalı .. 3 yüksek — kalite presetine bağlı)
 static func apply(env: Environment, quality: int, map_id: String = "") -> void:
+	if test_bright:
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = TEST_AMBIENT_COLOR
+		env.ambient_light_energy = TEST_AMBIENT_ENERGY
+		env.tonemap_mode = Environment.TONE_MAPPER_ACES
+		env.tonemap_exposure = 1.0
+		env.tonemap_white = WHITE
+		env.glow_enabled = false
+		env.ssao_enabled = false
+		env.adjustment_enabled = true
+		env.adjustment_brightness = 1.0
+		env.adjustment_contrast = 1.0
+		env.adjustment_saturation = 1.0
+		env.fog_enabled = false
+		return
+
 	var theme: Dictionary = MAP_THEMES.get(map_id, {})
 	var amb: Color = theme.get("ambient", AMBIENT_COLOR)
 	var fog_col: Color = theme.get("fog", FOG_COLOR)
